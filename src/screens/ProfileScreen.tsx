@@ -10,11 +10,16 @@ import {
   TextInput,
   ActivityIndicator,
   Platform,
+  Linking,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as SecureStore from 'expo-secure-store';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
 import { useAppStore, InstagramCredentials } from '../store/appStore';
+
+const INSTAGRAM_APP_ID = process.env.EXPO_PUBLIC_INSTAGRAM_APP_ID ?? '';
+const REDIRECT_URI = 'https://instaai-app.vercel.app/';
+const SCOPES = 'instagram_business_basic,instagram_business_content_publish,instagram_business_manage_media';
 
 const STORAGE_KEY_USER_ID = 'instagram_user_id';
 const STORAGE_KEY_TOKEN = 'instagram_access_token';
@@ -69,6 +74,21 @@ export default function ProfileScreen() {
       }
     })();
   }, []);
+
+  const handleInstagramLogin = () => {
+    const url =
+      `https://www.instagram.com/oauth/authorize?` +
+      `client_id=${INSTAGRAM_APP_ID}` +
+      `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
+      `&scope=${SCOPES}` +
+      `&response_type=code`;
+
+    if (Platform.OS === 'web') {
+      window.location.href = url;
+    } else {
+      Linking.openURL(url);
+    }
+  };
 
   const openConnectModal = () => {
     setUserId(instagramCredentials?.userId ?? '');
@@ -160,8 +180,8 @@ export default function ProfileScreen() {
               </TouchableOpacity>
             </View>
           ) : (
-            <TouchableOpacity style={styles.connectBtn} onPress={openConnectModal}>
-              <Text style={styles.connectBtnText}>連携する</Text>
+            <TouchableOpacity style={styles.connectBtn} onPress={handleInstagramLogin}>
+              <Text style={styles.connectBtnText}>ログイン</Text>
             </TouchableOpacity>
           )}
         </View>
