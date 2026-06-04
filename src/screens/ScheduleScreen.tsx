@@ -29,6 +29,7 @@ function formatDate(iso: string) {
   return d.toLocaleDateString('ja-JP', {
     month: 'short',
     day: 'numeric',
+    weekday: 'short',
     hour: '2-digit',
     minute: '2-digit',
   });
@@ -38,6 +39,37 @@ function parseDate(str: string): Date | null {
   const normalized = str.replace(/\//g, '-').replace(' ', 'T');
   const d = new Date(normalized);
   return isNaN(d.getTime()) ? null : d;
+}
+
+function getQuickDates(): { label: string; value: string; isOptimal: boolean }[] {
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const fmt = (d: Date, h: number) => {
+    d.setHours(h, 0, 0, 0);
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(h)}:00`;
+  };
+
+  const today = new Date(now);
+  const tomorrow = new Date(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const dayAfter = new Date(now);
+  dayAfter.setDate(dayAfter.getDate() + 2);
+
+  const currentHour = now.getHours();
+  const todayBestHour = currentHour < 12 ? 12 : currentHour < 18 ? 18 : 20;
+  const isWeekend = now.getDay() === 0 || now.getDay() === 6;
+
+  return [
+    { label: `今日 ${todayBestHour}:00`, value: fmt(new Date(today), todayBestHour), isOptimal: true },
+    { label: '明日 18:00', value: fmt(new Date(tomorrow), 18), isOptimal: true },
+    { label: '明日 12:00', value: fmt(new Date(tomorrow), 12), isOptimal: false },
+    { label: isWeekend ? '月曜 18:00' : '土曜 11:00', value: (() => {
+      const d = new Date(now);
+      const daysUntil = isWeekend ? (1 + 7 - now.getDay()) % 7 || 7 : (6 - now.getDay() + 7) % 7 || 7;
+      d.setDate(d.getDate() + daysUntil);
+      return fmt(d, isWeekend ? 18 : 11);
+    })(), isOptimal: false },
+  ];
 }
 
 export default function ScheduleScreen() {
@@ -58,6 +90,8 @@ export default function ScheduleScreen() {
   const [type, setType] = useState<'feed' | 'story'>('feed');
   const [instagramUserId, setInstagramUserId] = useState('');
   const [accessToken, setAccessToken] = useState('');
+
+  const quickDates = getQuickDates();
 
   const fetchPosts = useCallback(async () => {
     try {
@@ -92,7 +126,7 @@ export default function ScheduleScreen() {
     }
     const scheduledDate = parseDate(dateText);
     if (!scheduledDate) {
-      Alert.alert('エラー', '日時の形式が正しくありません\n例: 2024-06-15T14:30');
+      Alert.alert('エラー', '日時の形式が正しくありません\n例: 2026-06-15T18:00');
       return;
     }
     if (scheduledDate <= new Date()) {
@@ -157,6 +191,13 @@ export default function ScheduleScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* Japan best time hint */}
+        <View style={styles.hintCard}>
+          <Text style={styles.hintText}>
+            💡 最適な投稿時間: 平日18〜21時・12〜13時 ／ 休日11〜13時・19〜21時
+          </Text>
+        </View>
+
         <View style={styles.filterRow}>
           {(['all', 'pending', 'published', 'failed'] as Filter[]).map((f) => (
             <TouchableOpacity
@@ -176,9 +217,10 @@ export default function ScheduleScreen() {
         ) : filtered.length === 0 ? (
           <View style={styles.empty}>
             <Text style={styles.emptyEmoji}>📭</Text>
-            <Text style={styles.emptyText}>予約投稿はありません</Text>
+            <Text style={styles.emptyTitle}>予約投稿はありません</Text>
+            <Text style={styles.emptyDesc}>AI生成した投稿を最適な時間に自動投稿できます</Text>
             <TouchableOpacity style={styles.emptyAddBtn} onPress={openModal}>
-              <Text style={styles.emptyAddBtnText}>最初の予約を追加する</Text>
+              <Text style={styles.emptyAddBtnText}>＋ 最初の予約を追加する</Text>
             </TouchableOpacity>
           </View>
         ) : (
@@ -199,11 +241,7 @@ export default function ScheduleScreen() {
                     ]}
                   >
                     <Text style={styles.statusText}>
-                      {post.status === 'pending'
-                        ? '⏳ 予約中'
-                        : post.status === 'published'
-                        ? '✅ 投稿済'
-                        : '❌ 失敗'}
+                      {post.status === 'pending' ? '⏳ 予約中' : post.status === 'published' ? '✅ 投稿済' : '❌ 失敗'}
                     </Text>
                   </View>
                 </View>
@@ -214,11 +252,11 @@ export default function ScheduleScreen() {
                 )}
               </View>
 
-              <Text style={styles.caption} numberOfLines={2}>
+              <Text style={styles.postCaption} numberOfLines={2}>
                 {post.caption}
               </Text>
               {post.hashtags?.length > 0 && (
-                <Text style={styles.hashtags} numberOfLines={1}>
+                <Text style={styles.postHashtags} numberOfLines={1}>
                   {post.hashtags.join(' ')}
                 </Text>
               )}
@@ -297,12 +335,30 @@ export default function ScheduleScreen() {
               keyboardType="url"
             />
 
-            <Text style={styles.fieldLabel}>予約日時（例: 2024-06-15T14:30）</Text>
+            <Text style={styles.fieldLabel}>予約日時</Text>
+
+            {/* Quick date buttons */}
+            <Text style={styles.quickLabel}>おすすめ時間帯</Text>
+            <View style={styles.quickDatesGrid}>
+              {quickDates.map((qd) => (
+                <TouchableOpacity
+                  key={qd.value}
+                  style={[styles.quickDateBtn, dateText === qd.value && styles.quickDateBtnActive, qd.isOptimal && styles.quickDateBtnOptimal]}
+                  onPress={() => setDateText(qd.value)}
+                >
+                  {qd.isOptimal && <Text style={styles.quickDateOptimalDot}>●</Text>}
+                  <Text style={[styles.quickDateText, dateText === qd.value && styles.quickDateTextActive]}>
+                    {qd.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
             <TextInput
-              style={styles.input}
+              style={[styles.input, { marginTop: SPACING.sm }]}
               value={dateText}
               onChangeText={setDateText}
-              placeholder="2024-06-15T14:30"
+              placeholder="例: 2026-06-15T18:00"
               placeholderTextColor={COLORS.textMuted}
               autoCapitalize="none"
             />
@@ -343,7 +399,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: SPACING.lg,
+    marginBottom: SPACING.md,
   },
   title: { color: COLORS.text, fontSize: 28, fontWeight: '800' },
   addBtn: {
@@ -353,6 +409,15 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.full,
   },
   addBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  hintCard: {
+    backgroundColor: COLORS.secondary + '18',
+    borderRadius: RADIUS.md,
+    padding: SPACING.sm,
+    marginBottom: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.secondary + '33',
+  },
+  hintText: { color: COLORS.secondary, fontSize: 12, lineHeight: 18 },
   filterRow: {
     flexDirection: 'row',
     backgroundColor: COLORS.surface,
@@ -402,8 +467,8 @@ const styles = StyleSheet.create({
   statusFailed: { backgroundColor: COLORS.error + '33' },
   statusText: { color: COLORS.text, fontSize: 11, fontWeight: '600' },
   deleteBtn: { fontSize: 18 },
-  caption: { color: COLORS.text, fontSize: 14, lineHeight: 20, marginBottom: 4 },
-  hashtags: { color: '#4FC3F7', fontSize: 12, marginBottom: SPACING.sm },
+  postCaption: { color: COLORS.text, fontSize: 14, lineHeight: 20, marginBottom: 4 },
+  postHashtags: { color: '#4FC3F7', fontSize: 12, marginBottom: SPACING.sm },
   postFooter: {
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
@@ -411,15 +476,16 @@ const styles = StyleSheet.create({
     marginTop: SPACING.sm,
   },
   scheduleTime: { color: COLORS.textMuted, fontSize: 12 },
-  empty: { alignItems: 'center', paddingTop: 80, gap: SPACING.md },
+  empty: { alignItems: 'center', paddingTop: 60, gap: SPACING.sm },
   emptyEmoji: { fontSize: 48 },
-  emptyText: { color: COLORS.textMuted, fontSize: 15 },
+  emptyTitle: { color: COLORS.text, fontSize: 16, fontWeight: '700' },
+  emptyDesc: { color: COLORS.textMuted, fontSize: 13, textAlign: 'center' },
   emptyAddBtn: {
     backgroundColor: COLORS.primary,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.sm,
     borderRadius: RADIUS.full,
-    marginTop: SPACING.sm,
+    marginTop: SPACING.md,
   },
   emptyAddBtnText: { color: '#fff', fontWeight: '700' },
   modal: { flex: 1, backgroundColor: COLORS.background },
@@ -443,6 +509,38 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.xs,
     marginTop: SPACING.md,
   },
+  quickLabel: {
+    color: COLORS.textMuted,
+    fontSize: 11,
+    fontWeight: '600',
+    marginBottom: SPACING.sm,
+  },
+  quickDatesGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+  },
+  quickDateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 7,
+    gap: 4,
+  },
+  quickDateBtnActive: {
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.primary + '22',
+  },
+  quickDateBtnOptimal: {
+    borderColor: COLORS.success + '66',
+  },
+  quickDateOptimalDot: { color: COLORS.success, fontSize: 8 },
+  quickDateText: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '600' },
+  quickDateTextActive: { color: COLORS.primary },
   input: {
     backgroundColor: COLORS.surface,
     borderWidth: 1,
@@ -469,7 +567,7 @@ const styles = StyleSheet.create({
   typeBtnTextActive: { color: COLORS.primary },
   sectionDivider: {
     color: COLORS.textMuted,
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
     marginTop: SPACING.xl,
     marginBottom: SPACING.xs,

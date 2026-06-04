@@ -13,6 +13,14 @@ export interface InstagramCredentials {
   username?: string;
 }
 
+export interface BrandSettings {
+  brandName: string;
+  industry: string;
+  targetAudience: string;
+  tone: string;
+  apiKey: string;
+}
+
 interface ScheduledPost {
   id: string;
   imageUri: string;
@@ -29,6 +37,9 @@ interface AppState {
 
   instagramCredentials: InstagramCredentials | null;
   setInstagramCredentials: (creds: InstagramCredentials | null) => void;
+
+  brandSettings: BrandSettings;
+  setBrandSettings: (settings: Partial<BrandSettings>) => void;
 
   scheduledPosts: ScheduledPost[];
   addScheduledPost: (post: ScheduledPost) => void;
@@ -51,6 +62,16 @@ export const useAppStore = create<AppState>((set) => ({
 
   instagramCredentials: null,
   setInstagramCredentials: (creds) => set({ instagramCredentials: creds }),
+
+  brandSettings: {
+    brandName: '',
+    industry: '',
+    targetAudience: '',
+    tone: '明るい・ポジティブ',
+    apiKey: '',
+  },
+  setBrandSettings: (settings) =>
+    set((state) => ({ brandSettings: { ...state.brandSettings, ...settings } })),
 
   scheduledPosts: [],
   addScheduledPost: (post) =>
