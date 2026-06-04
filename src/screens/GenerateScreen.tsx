@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -15,7 +15,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
-import { generatePost, generateFromImage } from '../services/aiService';
+import { generatePost, generateFromImage, getSeasonalThemes, INDUSTRIES } from '../services/aiService';
 import { useAppStore } from '../store/appStore';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
 
@@ -23,23 +23,23 @@ type Mode = 'photo' | 'text';
 type ContentType = 'feed' | 'story' | 'reel';
 
 const CONTENT_TYPES: { key: ContentType; label: string; emoji: string; desc: string }[] = [
-  { key: 'feed', label: 'フィード', emoji: '📷', desc: '通常の投稿' },
-  { key: 'story', label: 'ストーリー', emoji: '📖', desc: '24時間限定' },
+  { key: 'feed', label: 'フィード', emoji: '📷', desc: '通常投稿' },
+  { key: 'story', label: 'ストーリー', emoji: '📖', desc: '24時間' },
   { key: 'reel', label: 'リール', emoji: '🎬', desc: '短尺動画' },
 ];
 
 const TONES = ['明るい・ポジティブ', 'プロフェッショナル', 'カジュアル', '感情的・共感', 'ユーモラス'];
-const THEMES = ['新商品・サービス', '日常・ライフスタイル', '旅行・観光', 'フード・グルメ', 'ファッション', 'ビジネス・キャリア', 'イベント告知'];
 
 type GenerationResult = { caption: string; hashtags: string[]; suggestions: string[] };
 
 export default function GenerateScreen() {
   const insets = useSafeAreaInsets();
-  const setDraft = useAppStore((s) => s.setDraft);
+  const { setDraft, brandSettings, setBrandSettings } = useAppStore();
 
   const [mode, setMode] = useState<Mode>('photo');
   const [contentType, setContentType] = useState<ContentType>('feed');
-  const [tone, setTone] = useState('明るい・ポジティブ');
+  const [tone, setTone] = useState(brandSettings.tone || '明るい・ポジティブ');
+  const [selectedIndustry, setSelectedIndustry] = useState(brandSettings.industry || '');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<GenerationResult | null>(null);
 
@@ -54,6 +54,9 @@ export default function GenerateScreen() {
   const [theme, setTheme] = useState('');
   const [customTheme, setCustomTheme] = useState('');
   const [keywords, setKeywords] = useState('');
+
+  const month = new Date().getMonth() + 1;
+  const seasonalEvents = useMemo(() => getSeasonalThemes(month), [month]);
 
   const pickImage = async () => {
     if (Platform.OS !== 'web') {
@@ -82,11 +85,7 @@ export default function GenerateScreen() {
       });
     }
 
-    setSelectedImage({
-      uri: asset.uri,
-      base64,
-      mimeType: asset.mimeType ?? 'image/jpeg',
-    });
+    setSelectedImage({ uri: asset.uri, base64, mimeType: asset.mimeType ?? 'image/jpeg' });
     setResult(null);
   };
 
@@ -107,6 +106,7 @@ export default function GenerateScreen() {
           mimeType: selectedImage.mimeType as any,
           contentType,
           tone,
+          industry: selectedIndustry,
         });
       } else {
         const selectedTheme = customTheme || theme;
@@ -121,6 +121,7 @@ export default function GenerateScreen() {
           keywords: keywords.split('、').filter(Boolean),
           includeHashtags: true,
           language: 'ja',
+          industry: selectedIndustry,
         });
       }
 
@@ -131,7 +132,7 @@ export default function GenerateScreen() {
         type: contentType === 'reel' ? 'feed' : contentType,
       });
     } catch {
-      Alert.alert('エラー', 'AI生成に失敗しました。APIキーを確認してください。');
+      Alert.alert('エラー', 'AI生成に失敗しました。\nプロフィール画面でAPIキーを設定してください。');
     } finally {
       setLoading(false);
     }
@@ -143,6 +144,13 @@ export default function GenerateScreen() {
     Alert.alert('コピーしました ✅');
   };
 
+  const handleIndustrySelect = (key: string) => {
+    setSelectedIndustry(key);
+    if (key && key !== brandSettings.industry) {
+      setBrandSettings({ industry: key });
+    }
+  };
+
   return (
     <ScrollView
       style={styles.container}
@@ -151,6 +159,23 @@ export default function GenerateScreen() {
       keyboardShouldPersistTaps="handled"
     >
       <Text style={styles.title}>AI コンテンツ生成</Text>
+
+      {/* Industry Selector */}
+      <Text style={styles.label}>業種・ジャンル</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.industryRow}>
+        {INDUSTRIES.map((ind) => (
+          <TouchableOpacity
+            key={ind.key}
+            style={[styles.industryChip, selectedIndustry === ind.key && ind.key !== '' && styles.industryChipActive]}
+            onPress={() => handleIndustrySelect(ind.key)}
+          >
+            <Text style={styles.industryEmoji}>{ind.emoji}</Text>
+            <Text style={[styles.industryLabel, selectedIndustry === ind.key && ind.key !== '' && styles.industryLabelActive]}>
+              {ind.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
 
       {/* Mode toggle */}
       <View style={styles.modeRow}>
@@ -187,7 +212,6 @@ export default function GenerateScreen() {
 
       {mode === 'photo' ? (
         <>
-          {/* Photo picker */}
           <Text style={styles.label}>写真を選択</Text>
           <TouchableOpacity style={styles.imagePicker} onPress={pickImage} activeOpacity={0.8}>
             {selectedImage ? (
@@ -196,7 +220,7 @@ export default function GenerateScreen() {
               <View style={styles.imagePlaceholder}>
                 <Text style={styles.imagePlaceholderEmoji}>📸</Text>
                 <Text style={styles.imagePlaceholderText}>タップして写真を選択</Text>
-                <Text style={styles.imagePlaceholderSub}>ギャラリーから選択できます</Text>
+                <Text style={styles.imagePlaceholderSub}>AIが写真を分析してキャプションを生成します</Text>
               </View>
             )}
           </TouchableOpacity>
@@ -208,22 +232,31 @@ export default function GenerateScreen() {
         </>
       ) : (
         <>
-          {/* Text mode: theme selection */}
+          {/* Seasonal quick themes */}
+          {seasonalEvents.length > 0 && (
+            <>
+              <Text style={styles.label}>今月のおすすめテーマ</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.seasonalRow}>
+                {seasonalEvents.flatMap((ev) =>
+                  ev.themes.map((t) => (
+                    <TouchableOpacity
+                      key={`${ev.event}-${t}`}
+                      style={[styles.seasonChip, theme === t && styles.seasonChipActive]}
+                      onPress={() => { setTheme(t); setCustomTheme(''); }}
+                    >
+                      <Text style={styles.seasonChipEmoji}>{ev.emoji}</Text>
+                      <Text style={[styles.seasonChipText, theme === t && styles.seasonChipTextActive]}>{t}</Text>
+                    </TouchableOpacity>
+                  ))
+                )}
+              </ScrollView>
+            </>
+          )}
+
           <Text style={styles.label}>投稿テーマ</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chips}>
-            {THEMES.map((t) => (
-              <TouchableOpacity
-                key={t}
-                style={[styles.chip, theme === t && styles.chipActive]}
-                onPress={() => { setTheme(t); setCustomTheme(''); }}
-              >
-                <Text style={[styles.chipText, theme === t && styles.chipTextActive]}>{t}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
           <TextInput
             style={styles.input}
-            placeholder="または自由入力（例：新しいカフェのオープン）"
+            placeholder="例: 新しいカフェのオープン、秋の新作メニュー"
             placeholderTextColor={COLORS.textMuted}
             value={customTheme}
             onChangeText={(t) => { setCustomTheme(t); setTheme(''); }}
@@ -231,7 +264,7 @@ export default function GenerateScreen() {
           <Text style={styles.label}>キーワード（任意）</Text>
           <TextInput
             style={styles.input}
-            placeholder="例: 春、限定、新作（「、」で区切る）"
+            placeholder="例: 秋、限定、新作（「、」で区切る）"
             placeholderTextColor={COLORS.textMuted}
             value={keywords}
             onChangeText={setKeywords}
@@ -283,7 +316,7 @@ export default function GenerateScreen() {
           <Text style={styles.resultLabel}>キャプション</Text>
           <Text style={styles.caption}>{result.caption}</Text>
 
-          <Text style={styles.resultLabel}>ハッシュタグ</Text>
+          <Text style={styles.resultLabel}>ハッシュタグ（{result.hashtags.length}個）</Text>
           <Text style={styles.hashtags}>{result.hashtags.join(' ')}</Text>
 
           {result.suggestions.length > 0 && (
@@ -297,7 +330,7 @@ export default function GenerateScreen() {
 
           <TouchableOpacity
             style={styles.scheduleBtn}
-            onPress={() => Alert.alert('下書き保存', 'スケジュール画面から予約投稿できます')}
+            onPress={() => Alert.alert('下書き保存 ✅', 'スケジュール画面で予約投稿に追加できます')}
             activeOpacity={0.8}
           >
             <Text style={styles.scheduleBtnText}>📅 予約投稿に追加 →</Text>
@@ -320,6 +353,31 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     marginBottom: SPACING.lg,
   },
+  label: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: SPACING.sm,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  industryRow: { marginBottom: SPACING.lg },
+  industryChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.surface,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.md,
+    marginRight: SPACING.sm,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    gap: 4,
+  },
+  industryChipActive: { borderColor: COLORS.primary, backgroundColor: COLORS.primary + '18' },
+  industryEmoji: { fontSize: 16 },
+  industryLabel: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '600' },
+  industryLabelActive: { color: COLORS.primary },
   modeRow: {
     flexDirection: 'row',
     backgroundColor: COLORS.surface,
@@ -336,14 +394,6 @@ const styles = StyleSheet.create({
   modeBtnActive: { backgroundColor: COLORS.primary },
   modeBtnText: { color: COLORS.textMuted, fontSize: 14, fontWeight: '600' },
   modeBtnTextActive: { color: '#fff' },
-  label: {
-    color: COLORS.textSecondary,
-    fontSize: 13,
-    fontWeight: '600',
-    marginBottom: SPACING.sm,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
   contentTypeRow: {
     flexDirection: 'row',
     gap: SPACING.sm,
@@ -363,12 +413,12 @@ const styles = StyleSheet.create({
     borderColor: COLORS.primary,
     backgroundColor: COLORS.primary + '18',
   },
-  contentTypeEmoji: { fontSize: 24 },
-  contentTypeLabel: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' },
+  contentTypeEmoji: { fontSize: 22 },
+  contentTypeLabel: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '700' },
   contentTypeLabelActive: { color: COLORS.primary },
   contentTypeDesc: { color: COLORS.textMuted, fontSize: 10 },
   imagePicker: {
-    height: 240,
+    height: 220,
     backgroundColor: COLORS.surface,
     borderRadius: RADIUS.lg,
     overflow: 'hidden',
@@ -383,12 +433,30 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     gap: SPACING.sm,
+    padding: SPACING.lg,
   },
-  imagePlaceholderEmoji: { fontSize: 48 },
-  imagePlaceholderText: { color: COLORS.text, fontSize: 16, fontWeight: '600' },
-  imagePlaceholderSub: { color: COLORS.textMuted, fontSize: 13 },
+  imagePlaceholderEmoji: { fontSize: 44 },
+  imagePlaceholderText: { color: COLORS.text, fontSize: 15, fontWeight: '600' },
+  imagePlaceholderSub: { color: COLORS.textMuted, fontSize: 12, textAlign: 'center' },
   changePhotoBtn: { alignSelf: 'center', marginBottom: SPACING.lg },
   changePhotoBtnText: { color: COLORS.primary, fontSize: 14, fontWeight: '600' },
+  seasonalRow: { marginBottom: SPACING.sm },
+  seasonChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.surface,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 6,
+    borderRadius: RADIUS.full,
+    marginRight: SPACING.sm,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    gap: 4,
+  },
+  seasonChipActive: { backgroundColor: COLORS.secondary + '22', borderColor: COLORS.secondary },
+  seasonChipEmoji: { fontSize: 14 },
+  seasonChipText: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '500' },
+  seasonChipTextActive: { color: COLORS.secondary },
   chips: { marginBottom: SPACING.sm },
   chip: {
     backgroundColor: COLORS.surface,
@@ -451,15 +519,15 @@ const styles = StyleSheet.create({
   copyBtnText: { color: COLORS.textSecondary, fontSize: 13 },
   resultLabel: {
     color: COLORS.primary,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginTop: SPACING.md,
     marginBottom: 6,
   },
-  caption: { color: COLORS.text, fontSize: 15, lineHeight: 24 },
-  hashtags: { color: '#4FC3F7', fontSize: 13, lineHeight: 22 },
+  caption: { color: COLORS.text, fontSize: 14, lineHeight: 22 },
+  hashtags: { color: '#4FC3F7', fontSize: 12, lineHeight: 20 },
   suggestion: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 22 },
   scheduleBtn: {
     backgroundColor: COLORS.primary,

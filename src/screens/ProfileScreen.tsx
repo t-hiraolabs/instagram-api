@@ -15,62 +15,100 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as SecureStore from 'expo-secure-store';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
-import { useAppStore, InstagramCredentials } from '../store/appStore';
+import { useAppStore, InstagramCredentials, BrandSettings } from '../store/appStore';
+import { INDUSTRIES } from '../services/aiService';
 
 const INSTAGRAM_APP_ID = process.env.EXPO_PUBLIC_INSTAGRAM_APP_ID ?? '';
 const REDIRECT_URI = 'https://instaai-app.vercel.app/';
 const SCOPES = 'instagram_business_basic,instagram_business_content_publish,instagram_business_manage_media';
 
-const STORAGE_KEY_USER_ID = 'instagram_user_id';
-const STORAGE_KEY_TOKEN = 'instagram_access_token';
-const STORAGE_KEY_USERNAME = 'instagram_username';
+const SK_USER_ID = 'instagram_user_id';
+const SK_TOKEN = 'instagram_access_token';
+const SK_USERNAME = 'instagram_username';
+const SK_BRAND = 'brand_settings_v1';
 
-async function saveToStorage(key: string, value: string) {
-  if (Platform.OS === 'web') {
-    localStorage.setItem(key, value);
-  } else {
-    await SecureStore.setItemAsync(key, value);
-  }
+async function save(key: string, value: string) {
+  if (Platform.OS === 'web') localStorage.setItem(key, value);
+  else await SecureStore.setItemAsync(key, value);
 }
 
-async function loadFromStorage(key: string): Promise<string | null> {
-  if (Platform.OS === 'web') {
-    return localStorage.getItem(key);
-  }
+async function load(key: string): Promise<string | null> {
+  if (Platform.OS === 'web') return localStorage.getItem(key);
   return SecureStore.getItemAsync(key);
 }
 
-async function removeFromStorage(key: string) {
-  if (Platform.OS === 'web') {
-    localStorage.removeItem(key);
-  } else {
-    await SecureStore.deleteItemAsync(key);
-  }
+async function remove(key: string) {
+  if (Platform.OS === 'web') localStorage.removeItem(key);
+  else await SecureStore.deleteItemAsync(key);
 }
+
+const TONES = ['明るい・ポジティブ', 'プロフェッショナル', 'カジュアル', '感情的・共感', 'ユーモラス'];
+
+const PLANS = [
+  {
+    id: 'free',
+    name: 'フリー',
+    price: '無料',
+    features: ['AI生成 月10回', '予約投稿 5件', '基本テンプレート'],
+    color: COLORS.textMuted,
+    current: true,
+  },
+  {
+    id: 'standard',
+    name: 'スタンダード',
+    price: '¥980/月',
+    features: ['AI生成 月100回', '予約投稿 無制限', '業種別テンプレート', 'ハッシュタグ分析'],
+    color: COLORS.primary,
+    current: false,
+  },
+  {
+    id: 'pro',
+    name: 'プロ',
+    price: '¥2,980/月',
+    features: ['AI生成 無制限', '予約投稿 無制限', '画像AI生成', '分析ダッシュボード', '優先サポート'],
+    color: COLORS.secondary,
+    current: false,
+  },
+];
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
-  const { instagramCredentials, setInstagramCredentials } = useAppStore();
+  const { instagramCredentials, setInstagramCredentials, brandSettings, setBrandSettings } = useAppStore();
 
-  const [modalVisible, setModalVisible] = useState(false);
+  const [igModalVisible, setIgModalVisible] = useState(false);
+  const [brandModalVisible, setBrandModalVisible] = useState(false);
+  const [apiModalVisible, setApiModalVisible] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  // Instagram form
   const [userId, setUserId] = useState('');
   const [accessToken, setAccessToken] = useState('');
   const [username, setUsername] = useState('');
   const [showGuide, setShowGuide] = useState(false);
 
-  // Load saved credentials on mount
+  // Brand form
+  const [draftBrand, setDraftBrand] = useState<BrandSettings>({ ...brandSettings });
+
+  // API key form
+  const [apiKey, setApiKey] = useState('');
+  const [showApiKey, setShowApiKey] = useState(false);
+
   useEffect(() => {
     (async () => {
-      const savedUserId = await loadFromStorage(STORAGE_KEY_USER_ID);
-      const savedToken = await loadFromStorage(STORAGE_KEY_TOKEN);
-      const savedUsername = await loadFromStorage(STORAGE_KEY_USERNAME);
+      const savedUserId = await load(SK_USER_ID);
+      const savedToken = await load(SK_TOKEN);
+      const savedUsername = await load(SK_USERNAME);
       if (savedUserId && savedToken) {
-        setInstagramCredentials({
-          userId: savedUserId,
-          accessToken: savedToken,
-          username: savedUsername ?? undefined,
-        });
+        setInstagramCredentials({ userId: savedUserId, accessToken: savedToken, username: savedUsername ?? undefined });
+      }
+
+      const savedBrand = await load(SK_BRAND);
+      if (savedBrand) {
+        try {
+          const parsed = JSON.parse(savedBrand) as BrandSettings;
+          setBrandSettings(parsed);
+          setApiKey(parsed.apiKey || '');
+        } catch {}
       }
     })();
   }, []);
@@ -82,38 +120,30 @@ export default function ProfileScreen() {
       `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
       `&scope=${SCOPES}` +
       `&response_type=code`;
-
-    if (Platform.OS === 'web') {
-      window.location.href = url;
-    } else {
-      Linking.openURL(url);
-    }
+    if (Platform.OS === 'web') window.location.href = url;
+    else Linking.openURL(url);
   };
 
-  const openConnectModal = () => {
+  const openIgModal = () => {
     setUserId(instagramCredentials?.userId ?? '');
     setAccessToken(instagramCredentials?.accessToken ?? '');
     setUsername(instagramCredentials?.username ?? '');
     setShowGuide(false);
-    setModalVisible(true);
+    setIgModalVisible(true);
   };
 
-  const handleSave = async () => {
+  const handleSaveIg = async () => {
     if (!userId.trim() || !accessToken.trim()) {
       Alert.alert('エラー', 'ユーザーIDとアクセストークンを入力してください');
       return;
     }
     setSaving(true);
     try {
-      await saveToStorage(STORAGE_KEY_USER_ID, userId.trim());
-      await saveToStorage(STORAGE_KEY_TOKEN, accessToken.trim());
-      await saveToStorage(STORAGE_KEY_USERNAME, username.trim());
-      setInstagramCredentials({
-        userId: userId.trim(),
-        accessToken: accessToken.trim(),
-        username: username.trim() || undefined,
-      });
-      setModalVisible(false);
+      await save(SK_USER_ID, userId.trim());
+      await save(SK_TOKEN, accessToken.trim());
+      await save(SK_USERNAME, username.trim());
+      setInstagramCredentials({ userId: userId.trim(), accessToken: accessToken.trim(), username: username.trim() || undefined });
+      setIgModalVisible(false);
       Alert.alert('連携完了 ✅', 'Instagramアカウントを連携しました');
     } catch {
       Alert.alert('エラー', '保存に失敗しました');
@@ -129,16 +159,63 @@ export default function ProfileScreen() {
         text: '解除',
         style: 'destructive',
         onPress: async () => {
-          await removeFromStorage(STORAGE_KEY_USER_ID);
-          await removeFromStorage(STORAGE_KEY_TOKEN);
-          await removeFromStorage(STORAGE_KEY_USERNAME);
+          await remove(SK_USER_ID);
+          await remove(SK_TOKEN);
+          await remove(SK_USERNAME);
           setInstagramCredentials(null);
         },
       },
     ]);
   };
 
+  const openBrandModal = () => {
+    setDraftBrand({ ...brandSettings });
+    setBrandModalVisible(true);
+  };
+
+  const handleSaveBrand = async () => {
+    setSaving(true);
+    try {
+      setBrandSettings(draftBrand);
+      await save(SK_BRAND, JSON.stringify({ ...brandSettings, ...draftBrand }));
+      setBrandModalVisible(false);
+      Alert.alert('保存しました ✅', 'ブランド設定を更新しました');
+    } catch {
+      Alert.alert('エラー', '保存に失敗しました');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openApiModal = () => {
+    setApiKey(brandSettings.apiKey || '');
+    setShowApiKey(false);
+    setApiModalVisible(true);
+  };
+
+  const handleSaveApiKey = async () => {
+    if (!apiKey.trim()) {
+      Alert.alert('エラー', 'APIキーを入力してください');
+      return;
+    }
+    setSaving(true);
+    try {
+      const updated = { ...brandSettings, apiKey: apiKey.trim() };
+      setBrandSettings({ apiKey: apiKey.trim() });
+      await save(SK_BRAND, JSON.stringify(updated));
+      setApiModalVisible(false);
+      Alert.alert('保存しました ✅', 'APIキーを設定しました');
+    } catch {
+      Alert.alert('エラー', '保存に失敗しました');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const isConnected = !!instagramCredentials;
+  const hasBrandSetup = !!(brandSettings.brandName || brandSettings.industry);
+  const hasApiKey = !!(brandSettings.apiKey || process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY);
+  const industryInfo = INDUSTRIES.find((i) => i.key === brandSettings.industry);
 
   return (
     <View style={styles.wrapper}>
@@ -157,9 +234,7 @@ export default function ProfileScreen() {
             {isConnected ? (
               <>
                 <Text style={styles.accountName}>
-                  {instagramCredentials.username
-                    ? `@${instagramCredentials.username}`
-                    : 'Instagram連携済み'}
+                  {instagramCredentials.username ? `@${instagramCredentials.username}` : 'Instagram連携済み'}
                 </Text>
                 <Text style={styles.accountSub}>ID: {instagramCredentials.userId}</Text>
               </>
@@ -172,7 +247,7 @@ export default function ProfileScreen() {
           </View>
           {isConnected ? (
             <View style={styles.connectedBtns}>
-              <TouchableOpacity style={styles.editBtn} onPress={openConnectModal}>
+              <TouchableOpacity style={styles.editBtn} onPress={openIgModal}>
                 <Text style={styles.editBtnText}>編集</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.disconnectBtn} onPress={handleDisconnect}>
@@ -181,70 +256,129 @@ export default function ProfileScreen() {
             </View>
           ) : (
             <TouchableOpacity style={styles.connectBtn} onPress={handleInstagramLogin}>
-              <Text style={styles.connectBtnText}>ログイン</Text>
+              <Text style={styles.connectBtnText}>連携する</Text>
             </TouchableOpacity>
           )}
         </View>
 
         {isConnected && (
           <View style={styles.connectedBadge}>
-            <Text style={styles.connectedBadgeText}>✅ 予約投稿機能が使えます</Text>
+            <Text style={styles.connectedBadgeText}>✅ 予約自動投稿が利用できます</Text>
           </View>
         )}
 
-        {/* Plan */}
-        <View style={styles.planCard}>
-          <View>
-            <Text style={styles.planLabel}>現在のプラン</Text>
-            <Text style={styles.planName}>Free プラン</Text>
-            <Text style={styles.planDetail}>月10回のAI生成 / 予約投稿5件</Text>
+        {/* Brand Settings Card */}
+        <Text style={styles.sectionTitle}>ブランド設定</Text>
+        <TouchableOpacity style={styles.brandCard} onPress={openBrandModal} activeOpacity={0.8}>
+          <View style={styles.brandInfo}>
+            <Text style={styles.brandEmoji}>
+              {industryInfo ? industryInfo.emoji : '🏪'}
+            </Text>
+            <View style={styles.brandText}>
+              <Text style={styles.brandName}>
+                {brandSettings.brandName || 'ブランド名を設定'}
+              </Text>
+              <Text style={styles.brandSub}>
+                {industryInfo ? industryInfo.label : '業種を設定するとAI精度が向上します'}
+              </Text>
+            </View>
+            <Text style={styles.brandArrow}>›</Text>
           </View>
-          <TouchableOpacity style={styles.upgradeBtn}>
-            <Text style={styles.upgradeBtnText}>アップグレード 💎</Text>
-          </TouchableOpacity>
-        </View>
+          {hasBrandSetup && (
+            <View style={styles.brandTags}>
+              {brandSettings.tone && (
+                <View style={styles.brandTag}>
+                  <Text style={styles.brandTagText}>{brandSettings.tone}</Text>
+                </View>
+              )}
+              {brandSettings.targetAudience && (
+                <View style={styles.brandTag}>
+                  <Text style={styles.brandTagText}>{brandSettings.targetAudience}</Text>
+                </View>
+              )}
+            </View>
+          )}
+        </TouchableOpacity>
 
-        {/* Settings */}
-        <Text style={styles.sectionTitle}>設定</Text>
+        {/* API Key Card */}
+        <TouchableOpacity style={styles.apiKeyCard} onPress={openApiModal} activeOpacity={0.8}>
+          <Text style={styles.apiKeyIcon}>{hasApiKey ? '🔐' : '🔑'}</Text>
+          <View style={styles.apiKeyInfo}>
+            <Text style={styles.apiKeyTitle}>Anthropic APIキー</Text>
+            <Text style={[styles.apiKeyStatus, { color: hasApiKey ? COLORS.success : COLORS.error }]}>
+              {hasApiKey ? '設定済み ✅' : '未設定 — タップして設定'}
+            </Text>
+          </View>
+          <Text style={styles.apiKeyArrow}>›</Text>
+        </TouchableOpacity>
+
+        {/* Plan */}
+        <Text style={styles.sectionTitle}>プラン</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.plansRow}>
+          {PLANS.map((plan) => (
+            <View key={plan.id} style={[styles.planCard, plan.current && styles.planCardCurrent, { borderColor: plan.color + '44' }]}>
+              {plan.current && <View style={[styles.planCurrentBadge, { backgroundColor: plan.color }]}>
+                <Text style={styles.planCurrentBadgeText}>現在のプラン</Text>
+              </View>}
+              <Text style={[styles.planName, { color: plan.color }]}>{plan.name}</Text>
+              <Text style={styles.planPrice}>{plan.price}</Text>
+              {plan.features.map((f) => (
+                <Text key={f} style={styles.planFeature}>✓ {f}</Text>
+              ))}
+              {!plan.current && (
+                <TouchableOpacity
+                  style={[styles.planUpgradeBtn, { backgroundColor: plan.color }]}
+                  onPress={() => Alert.alert('近日公開', `${plan.name}プランは近日公開予定です`)}
+                >
+                  <Text style={styles.planUpgradeBtnText}>アップグレード</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          ))}
+        </ScrollView>
+
+        {/* Help */}
+        <Text style={styles.sectionTitle}>ヘルプ</Text>
         {[
-          { label: 'APIキー設定', emoji: '🔑' },
-          { label: 'ブランドトーン設定', emoji: '🎨' },
-          { label: '通知設定', emoji: '🔔' },
-          { label: 'ヘルプ・サポート', emoji: '❓' },
-        ].map((s) => (
-          <TouchableOpacity
-            key={s.label}
-            style={styles.settingRow}
-            onPress={() => Alert.alert(s.label, '準備中です')}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.settingEmoji}>{s.emoji}</Text>
-            <Text style={styles.settingLabel}>{s.label}</Text>
-            <Text style={styles.settingArrow}>›</Text>
+          { label: 'AIの使い方ガイド', emoji: '📖', action: () => Alert.alert('ガイド', 'AI生成タブで写真を選択するか、テーマを入力してAIに投稿を生成させましょう。業種を設定するとより精度が上がります。') },
+          { label: 'ハッシュタグについて', emoji: '#️⃣', action: () => Alert.alert('ハッシュタグ', '日本のInstagramではハッシュタグ検索がグローバル平均の3倍！15〜20個のタグを使い、人気タグとニッチタグをバランスよく組み合わせましょう。') },
+          { label: '最適な投稿時間', emoji: '⏰', action: () => Alert.alert('投稿時間', '平日: 12〜13時 / 18〜21時\n休日: 11〜13時 / 19〜21時\n\nこの時間帯は日本のInstagramユーザーのアクティブ率が最も高くなります。') },
+          { label: 'お問い合わせ', emoji: '💬', action: () => Alert.alert('お問い合わせ', 'support@instaai.jp までご連絡ください') },
+        ].map((item) => (
+          <TouchableOpacity key={item.label} style={styles.helpRow} onPress={item.action} activeOpacity={0.7}>
+            <Text style={styles.helpEmoji}>{item.emoji}</Text>
+            <Text style={styles.helpLabel}>{item.label}</Text>
+            <Text style={styles.helpArrow}>›</Text>
           </TouchableOpacity>
         ))}
 
-        <Text style={styles.version}>InstaAI v1.0.0</Text>
+        <Text style={styles.version}>InstaAI v1.0.0 — 日本の個人事業主向け</Text>
       </ScrollView>
 
-      {/* Connect Modal */}
-      <Modal visible={modalVisible} animationType="slide" presentationStyle="pageSheet">
+      {/* Instagram Connect Modal */}
+      <Modal visible={igModalVisible} animationType="slide" presentationStyle="pageSheet">
         <ScrollView style={styles.modal} keyboardShouldPersistTaps="handled">
           <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => setModalVisible(false)}>
+            <TouchableOpacity onPress={() => setIgModalVisible(false)}>
               <Text style={styles.modalCancel}>キャンセル</Text>
             </TouchableOpacity>
             <Text style={styles.modalTitle}>Instagram連携</Text>
-            <TouchableOpacity onPress={handleSave} disabled={saving}>
-              {saving ? (
-                <ActivityIndicator color={COLORS.primary} />
-              ) : (
-                <Text style={styles.modalSave}>保存</Text>
-              )}
+            <TouchableOpacity onPress={handleSaveIg} disabled={saving}>
+              {saving ? <ActivityIndicator color={COLORS.primary} /> : <Text style={styles.modalSave}>保存</Text>}
             </TouchableOpacity>
           </View>
 
           <View style={styles.modalBody}>
+            <TouchableOpacity style={styles.oauthBtn} onPress={handleInstagramLogin}>
+              <Text style={styles.oauthBtnText}>📱 Instagramでログイン（自動連携）</Text>
+            </TouchableOpacity>
+
+            <View style={styles.dividerRow}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>または手動で入力</Text>
+              <View style={styles.dividerLine} />
+            </View>
+
             <Text style={styles.fieldLabel}>Instagramユーザー名（任意）</Text>
             <TextInput
               style={styles.input}
@@ -277,11 +411,7 @@ export default function ProfileScreen() {
               secureTextEntry
             />
 
-            {/* Guide toggle */}
-            <TouchableOpacity
-              style={styles.guideToggle}
-              onPress={() => setShowGuide((v) => !v)}
-            >
+            <TouchableOpacity style={styles.guideToggle} onPress={() => setShowGuide((v) => !v)}>
               <Text style={styles.guideToggleText}>
                 {showGuide ? '▲' : '▼'} ユーザーIDとトークンの取得方法
               </Text>
@@ -290,27 +420,133 @@ export default function ProfileScreen() {
             {showGuide && (
               <View style={styles.guideBox}>
                 <Text style={styles.guideTitle}>取得手順</Text>
-                <Text style={styles.guideStep}>
-                  1. {'https://developers.facebook.com'} にアクセスし、Facebookアプリを作成
-                </Text>
-                <Text style={styles.guideStep}>
-                  2. 「Instagram」製品を追加 → Instagram Businessアカウントを連携
-                </Text>
-                <Text style={styles.guideStep}>
-                  3. Graph API Explorer で{' '}
-                  <Text style={styles.guideCode}>GET /me?fields=id,username</Text> を実行
-                </Text>
-                <Text style={styles.guideStep}>
-                  4. 返ってきた <Text style={styles.guideCode}>id</Text> がユーザーID
-                </Text>
-                <Text style={styles.guideStep}>
-                  5. 「Generate Access Token」でアクセストークンを取得
-                </Text>
-                <Text style={styles.guideNote}>
-                  ※ Instagramアカウントは「プロアカウント（ビジネスまたはクリエイター）」が必要です
-                </Text>
+                <Text style={styles.guideStep}>1. https://developers.facebook.com にアクセスし、Facebookアプリを作成</Text>
+                <Text style={styles.guideStep}>2. 「Instagram」製品を追加 → Instagramビジネスアカウントを連携</Text>
+                <Text style={styles.guideStep}>3. Graph API Explorer で GET /me?fields=id,username を実行</Text>
+                <Text style={styles.guideStep}>4. 返ってきた id がユーザーID</Text>
+                <Text style={styles.guideStep}>5. 「Generate Access Token」でアクセストークンを取得</Text>
+                <Text style={styles.guideNote}>※ Instagramアカウントは「プロアカウント（ビジネスまたはクリエイター）」が必要です</Text>
               </View>
             )}
+          </View>
+        </ScrollView>
+      </Modal>
+
+      {/* Brand Settings Modal */}
+      <Modal visible={brandModalVisible} animationType="slide" presentationStyle="pageSheet">
+        <ScrollView style={styles.modal} keyboardShouldPersistTaps="handled">
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => setBrandModalVisible(false)}>
+              <Text style={styles.modalCancel}>キャンセル</Text>
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>ブランド設定</Text>
+            <TouchableOpacity onPress={handleSaveBrand} disabled={saving}>
+              {saving ? <ActivityIndicator color={COLORS.primary} /> : <Text style={styles.modalSave}>保存</Text>}
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.modalBody}>
+            <Text style={styles.fieldLabel}>ブランド名・店舗名</Text>
+            <TextInput
+              style={styles.input}
+              value={draftBrand.brandName}
+              onChangeText={(v) => setDraftBrand((p) => ({ ...p, brandName: v }))}
+              placeholder="例: My Shop、田中ネイルサロン"
+              placeholderTextColor={COLORS.textMuted}
+            />
+
+            <Text style={styles.fieldLabel}>業種・ジャンル</Text>
+            <View style={styles.industryGrid}>
+              {INDUSTRIES.filter((i) => i.key !== '').map((ind) => (
+                <TouchableOpacity
+                  key={ind.key}
+                  style={[styles.industryBtn, draftBrand.industry === ind.key && styles.industryBtnActive]}
+                  onPress={() => setDraftBrand((p) => ({ ...p, industry: ind.key }))}
+                >
+                  <Text style={styles.industryBtnEmoji}>{ind.emoji}</Text>
+                  <Text style={[styles.industryBtnLabel, draftBrand.industry === ind.key && styles.industryBtnLabelActive]}>
+                    {ind.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={styles.fieldLabel}>ターゲット層（任意）</Text>
+            <TextInput
+              style={styles.input}
+              value={draftBrand.targetAudience}
+              onChangeText={(v) => setDraftBrand((p) => ({ ...p, targetAudience: v }))}
+              placeholder="例: 30代女性、子育て中のママ、20代ファッション好き"
+              placeholderTextColor={COLORS.textMuted}
+            />
+
+            <Text style={styles.fieldLabel}>デフォルトトーン</Text>
+            <View style={styles.toneGrid}>
+              {TONES.map((t) => (
+                <TouchableOpacity
+                  key={t}
+                  style={[styles.toneBtn, draftBrand.tone === t && styles.toneBtnActive]}
+                  onPress={() => setDraftBrand((p) => ({ ...p, tone: t }))}
+                >
+                  <Text style={[styles.toneBtnText, draftBrand.tone === t && styles.toneBtnTextActive]}>{t}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <View style={styles.brandTip}>
+              <Text style={styles.brandTipText}>
+                💡 ブランド設定を入力するとAIが自動的に業種やブランドに合わせた投稿を生成します
+              </Text>
+            </View>
+          </View>
+        </ScrollView>
+      </Modal>
+
+      {/* API Key Modal */}
+      <Modal visible={apiModalVisible} animationType="slide" presentationStyle="pageSheet">
+        <ScrollView style={styles.modal} keyboardShouldPersistTaps="handled">
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => setApiModalVisible(false)}>
+              <Text style={styles.modalCancel}>キャンセル</Text>
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>APIキー設定</Text>
+            <TouchableOpacity onPress={handleSaveApiKey} disabled={saving}>
+              {saving ? <ActivityIndicator color={COLORS.primary} /> : <Text style={styles.modalSave}>保存</Text>}
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.modalBody}>
+            <View style={styles.apiInfoBox}>
+              <Text style={styles.apiInfoTitle}>🔑 Anthropic APIキーについて</Text>
+              <Text style={styles.apiInfoText}>
+                AI投稿生成機能を使用するにはAnthropicのAPIキーが必要です。{'\n\n'}
+                取得方法:{'\n'}
+                1. console.anthropic.com にアクセス{'\n'}
+                2. アカウント作成・ログイン{'\n'}
+                3. API Keys › Create Key{'\n'}
+                4. 生成されたキーをコピーして入力{'\n\n'}
+                ※ APIキーは端末に安全に保存されます
+              </Text>
+            </View>
+
+            <Text style={styles.fieldLabel}>Anthropic APIキー *</Text>
+            <View style={styles.apiKeyInputRow}>
+              <TextInput
+                style={[styles.input, styles.apiKeyInput]}
+                value={apiKey}
+                onChangeText={setApiKey}
+                placeholder="sk-ant-..."
+                placeholderTextColor={COLORS.textMuted}
+                autoCapitalize="none"
+                secureTextEntry={!showApiKey}
+              />
+              <TouchableOpacity
+                style={styles.apiKeyToggle}
+                onPress={() => setShowApiKey((v) => !v)}
+              >
+                <Text style={styles.apiKeyToggleText}>{showApiKey ? '隠す' : '表示'}</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </ScrollView>
       </Modal>
@@ -321,7 +557,7 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   wrapper: { flex: 1, backgroundColor: COLORS.background },
   container: { flex: 1, paddingHorizontal: SPACING.md },
-  title: { color: COLORS.text, fontSize: 28, fontWeight: '800', marginBottom: SPACING.xl },
+  title: { color: COLORS.text, fontSize: 28, fontWeight: '800', marginBottom: SPACING.lg },
   accountCard: {
     backgroundColor: COLORS.surface,
     borderRadius: RADIUS.lg,
@@ -335,17 +571,17 @@ const styles = StyleSheet.create({
   },
   accountCardConnected: { borderColor: COLORS.primary + '66' },
   avatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: COLORS.surfaceElevated,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  avatarText: { fontSize: 28 },
+  avatarText: { fontSize: 24 },
   accountInfo: { flex: 1 },
-  accountName: { color: COLORS.text, fontSize: 16, fontWeight: '700' },
-  accountSub: { color: COLORS.textMuted, fontSize: 12, marginTop: 2 },
+  accountName: { color: COLORS.text, fontSize: 15, fontWeight: '700' },
+  accountSub: { color: COLORS.textMuted, fontSize: 11, marginTop: 2 },
   connectedBtns: { flexDirection: 'row', gap: SPACING.sm },
   connectBtn: {
     backgroundColor: COLORS.primary,
@@ -374,39 +610,85 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.md,
     padding: SPACING.sm,
     alignItems: 'center',
-    marginBottom: SPACING.md,
+    marginBottom: SPACING.lg,
   },
   connectedBadgeText: { color: COLORS.success, fontSize: 13, fontWeight: '600' },
-  planCard: {
-    backgroundColor: COLORS.secondary + '22',
+  sectionTitle: {
+    color: COLORS.textMuted,
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: SPACING.sm,
+    marginTop: SPACING.md,
+  },
+  brandCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+    marginBottom: SPACING.sm,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  brandInfo: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
+  brandEmoji: { fontSize: 28 },
+  brandText: { flex: 1 },
+  brandName: { color: COLORS.text, fontSize: 15, fontWeight: '700' },
+  brandSub: { color: COLORS.textMuted, fontSize: 12, marginTop: 2 },
+  brandArrow: { color: COLORS.textMuted, fontSize: 20 },
+  brandTags: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, marginTop: SPACING.sm },
+  brandTag: {
+    backgroundColor: COLORS.primary + '22',
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 3,
+    borderRadius: RADIUS.full,
+  },
+  brandTagText: { color: COLORS.primary, fontSize: 11, fontWeight: '600' },
+  apiKeyCard: {
+    backgroundColor: COLORS.surface,
     borderRadius: RADIUS.lg,
     padding: SPACING.md,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: SPACING.xl,
+    gap: SPACING.sm,
+    marginBottom: SPACING.lg,
     borderWidth: 1,
-    borderColor: COLORS.secondary + '44',
+    borderColor: COLORS.border,
   },
-  planLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '600', textTransform: 'uppercase' },
-  planName: { color: COLORS.text, fontSize: 18, fontWeight: '800' },
-  planDetail: { color: COLORS.textSecondary, fontSize: 12, marginTop: 2 },
-  upgradeBtn: {
-    backgroundColor: COLORS.secondary,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
+  apiKeyIcon: { fontSize: 24 },
+  apiKeyInfo: { flex: 1 },
+  apiKeyTitle: { color: COLORS.text, fontSize: 15, fontWeight: '600' },
+  apiKeyStatus: { fontSize: 12, marginTop: 2 },
+  apiKeyArrow: { color: COLORS.textMuted, fontSize: 20 },
+  plansRow: { marginBottom: SPACING.xl },
+  planCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+    marginRight: SPACING.sm,
+    width: 180,
+    borderWidth: 1.5,
+  },
+  planCardCurrent: { backgroundColor: COLORS.surfaceElevated },
+  planCurrentBadge: {
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 3,
     borderRadius: RADIUS.full,
-  },
-  upgradeBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
-  sectionTitle: {
-    color: COLORS.textMuted,
-    fontSize: 12,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    alignSelf: 'flex-start',
     marginBottom: SPACING.sm,
   },
-  settingRow: {
+  planCurrentBadgeText: { color: '#fff', fontSize: 10, fontWeight: '700' },
+  planName: { fontSize: 18, fontWeight: '800', marginBottom: 4 },
+  planPrice: { color: COLORS.text, fontSize: 15, fontWeight: '700', marginBottom: SPACING.sm },
+  planFeature: { color: COLORS.textSecondary, fontSize: 12, marginBottom: 4 },
+  planUpgradeBtn: {
+    borderRadius: RADIUS.md,
+    padding: SPACING.sm,
+    alignItems: 'center',
+    marginTop: SPACING.sm,
+  },
+  planUpgradeBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  helpRow: {
     backgroundColor: COLORS.surface,
     borderRadius: RADIUS.md,
     padding: SPACING.md,
@@ -415,11 +697,10 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.sm,
     gap: SPACING.md,
   },
-  settingEmoji: { fontSize: 20 },
-  settingLabel: { flex: 1, color: COLORS.text, fontSize: 15 },
-  settingArrow: { color: COLORS.textMuted, fontSize: 20 },
-  version: { color: COLORS.textMuted, fontSize: 12, textAlign: 'center', marginTop: SPACING.xl },
-  // Modal
+  helpEmoji: { fontSize: 20 },
+  helpLabel: { flex: 1, color: COLORS.text, fontSize: 14 },
+  helpArrow: { color: COLORS.textMuted, fontSize: 20 },
+  version: { color: COLORS.textMuted, fontSize: 11, textAlign: 'center', marginTop: SPACING.xl },
   modal: { flex: 1, backgroundColor: COLORS.background },
   modalHeader: {
     flexDirection: 'row',
@@ -433,12 +714,23 @@ const styles = StyleSheet.create({
   modalTitle: { color: COLORS.text, fontSize: 17, fontWeight: '700' },
   modalCancel: { color: COLORS.textMuted, fontSize: 16 },
   modalSave: { color: COLORS.primary, fontSize: 16, fontWeight: '700' },
-  modalBody: { paddingHorizontal: SPACING.md, paddingTop: SPACING.md },
+  modalBody: { paddingHorizontal: SPACING.md, paddingTop: SPACING.md, paddingBottom: SPACING.xxl },
+  oauthBtn: {
+    backgroundColor: COLORS.primary,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+    alignItems: 'center',
+    marginBottom: SPACING.lg,
+  },
+  oauthBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  dividerRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.lg },
+  dividerLine: { flex: 1, height: 1, backgroundColor: COLORS.border },
+  dividerText: { color: COLORS.textMuted, fontSize: 12 },
   fieldLabel: {
     color: COLORS.textSecondary,
     fontSize: 13,
     fontWeight: '600',
-    marginBottom: SPACING.xs,
+    marginBottom: SPACING.sm,
     marginTop: SPACING.md,
   },
   input: {
@@ -451,11 +743,70 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     fontSize: 15,
   },
-  guideToggle: {
-    marginTop: SPACING.xl,
+  industryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+  industryBtn: {
+    backgroundColor: COLORS.surface,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.sm,
     paddingVertical: SPACING.sm,
     alignItems: 'center',
+    gap: 4,
+    minWidth: 70,
   },
+  industryBtnActive: { borderColor: COLORS.primary, backgroundColor: COLORS.primary + '18' },
+  industryBtnEmoji: { fontSize: 22 },
+  industryBtnLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '600', textAlign: 'center' },
+  industryBtnLabelActive: { color: COLORS.primary },
+  toneGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, marginBottom: SPACING.sm },
+  toneBtn: {
+    backgroundColor: COLORS.surface,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.full,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  toneBtnActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  toneBtnText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '500' },
+  toneBtnTextActive: { color: '#fff' },
+  brandTip: {
+    backgroundColor: COLORS.secondary + '18',
+    borderRadius: RADIUS.md,
+    padding: SPACING.md,
+    marginTop: SPACING.lg,
+    borderWidth: 1,
+    borderColor: COLORS.secondary + '33',
+  },
+  brandTipText: { color: COLORS.secondary, fontSize: 13, lineHeight: 20 },
+  apiInfoBox: {
+    backgroundColor: COLORS.surfaceElevated,
+    borderRadius: RADIUS.md,
+    padding: SPACING.md,
+    marginBottom: SPACING.sm,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  apiInfoTitle: { color: COLORS.text, fontSize: 15, fontWeight: '700', marginBottom: SPACING.sm },
+  apiInfoText: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 20 },
+  apiKeyInputRow: { flexDirection: 'row', gap: SPACING.sm, alignItems: 'center' },
+  apiKeyInput: { flex: 1 },
+  apiKeyToggle: {
+    backgroundColor: COLORS.surfaceElevated,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  apiKeyToggleText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },
+  guideToggle: { marginTop: SPACING.xl, paddingVertical: SPACING.sm, alignItems: 'center' },
   guideToggleText: { color: COLORS.primary, fontSize: 14, fontWeight: '600' },
   guideBox: {
     backgroundColor: COLORS.surface,
@@ -469,11 +820,5 @@ const styles = StyleSheet.create({
   },
   guideTitle: { color: COLORS.text, fontSize: 15, fontWeight: '700', marginBottom: 4 },
   guideStep: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 20 },
-  guideCode: { color: COLORS.primary, fontFamily: 'monospace' },
-  guideNote: {
-    color: COLORS.warning,
-    fontSize: 12,
-    marginTop: SPACING.sm,
-    lineHeight: 18,
-  },
+  guideNote: { color: COLORS.warning, fontSize: 12, marginTop: SPACING.sm, lineHeight: 18 },
 });
