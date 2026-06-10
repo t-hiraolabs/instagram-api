@@ -64,15 +64,8 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const { instagramCredentials, setInstagramCredentials, brandSettings, setBrandSettings } = useAppStore();
 
-  const [igModalVisible, setIgModalVisible] = useState(false);
   const [brandModalVisible, setBrandModalVisible] = useState(false);
   const [saving, setSaving] = useState(false);
-
-  // Instagram form
-  const [userId, setUserId] = useState('');
-  const [accessToken, setAccessToken] = useState('');
-  const [username, setUsername] = useState('');
-  const [showGuide, setShowGuide] = useState(false);
 
   // Brand form
   const [draftBrand, setDraftBrand] = useState<BrandSettings>({ ...brandSettings });
@@ -98,34 +91,6 @@ export default function ProfileScreen() {
 
   const handleInstagramLogin = () => {
     connectInstagram();
-  };
-
-  const openIgModal = () => {
-    setUserId(instagramCredentials?.userId ?? '');
-    setAccessToken(instagramCredentials?.accessToken ?? '');
-    setUsername(instagramCredentials?.username ?? '');
-    setShowGuide(false);
-    setIgModalVisible(true);
-  };
-
-  const handleSaveIg = async () => {
-    if (!userId.trim() || !accessToken.trim()) {
-      Alert.alert('エラー', 'ユーザーIDとアクセストークンを入力してください');
-      return;
-    }
-    setSaving(true);
-    try {
-      await save(SK_USER_ID, userId.trim());
-      await save(SK_TOKEN, accessToken.trim());
-      await save(SK_USERNAME, username.trim());
-      setInstagramCredentials({ userId: userId.trim(), accessToken: accessToken.trim(), username: username.trim() || undefined });
-      setIgModalVisible(false);
-      Alert.alert('連携完了 ✅', 'Instagramアカウントを連携しました');
-    } catch {
-      Alert.alert('エラー', '保存に失敗しました');
-    } finally {
-      setSaving(false);
-    }
   };
 
   const doDisconnect = async () => {
@@ -217,14 +182,9 @@ export default function ProfileScreen() {
             )}
           </View>
           {isConnected ? (
-            <View style={styles.connectedBtns}>
-              <TouchableOpacity style={styles.editBtn} onPress={openIgModal}>
-                <Text style={styles.editBtnText}>編集</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.disconnectBtn} onPress={handleDisconnect}>
-                <Text style={styles.disconnectBtnText}>解除</Text>
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity style={styles.disconnectBtn} onPress={handleDisconnect}>
+              <Text style={styles.disconnectBtnText}>解除</Text>
+            </TouchableOpacity>
           ) : (
             <TouchableOpacity style={styles.connectBtn} onPress={handleInstagramLogin}>
               <Text style={styles.connectBtnText}>連携する</Text>
@@ -317,83 +277,6 @@ export default function ProfileScreen() {
 
         <Text style={styles.version}>InstaAI v1.0.0 — 日本の個人事業主向け</Text>
       </ScrollView>
-
-      {/* Instagram Connect Modal */}
-      <Modal visible={igModalVisible} animationType="slide" presentationStyle="pageSheet">
-        <ScrollView style={styles.modal} keyboardShouldPersistTaps="handled">
-          <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => setIgModalVisible(false)}>
-              <Text style={styles.modalCancel}>キャンセル</Text>
-            </TouchableOpacity>
-            <Text style={styles.modalTitle}>Instagram連携</Text>
-            <TouchableOpacity onPress={handleSaveIg} disabled={saving}>
-              {saving ? <ActivityIndicator color={COLORS.primary} /> : <Text style={styles.modalSave}>保存</Text>}
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.modalBody}>
-            <TouchableOpacity style={styles.oauthBtn} onPress={handleInstagramLogin}>
-              <Text style={styles.oauthBtnText}>📱 Instagramでログイン（自動連携）</Text>
-            </TouchableOpacity>
-
-            <View style={styles.dividerRow}>
-              <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>または手動で入力</Text>
-              <View style={styles.dividerLine} />
-            </View>
-
-            <Text style={styles.fieldLabel}>Instagramユーザー名（任意）</Text>
-            <TextInput
-              style={styles.input}
-              value={username}
-              onChangeText={setUsername}
-              placeholder="your_instagram_username"
-              placeholderTextColor={COLORS.textMuted}
-              autoCapitalize="none"
-            />
-
-            <Text style={styles.fieldLabel}>Instagram ユーザーID *</Text>
-            <TextInput
-              style={styles.input}
-              value={userId}
-              onChangeText={setUserId}
-              placeholder="例: 123456789012345"
-              placeholderTextColor={COLORS.textMuted}
-              autoCapitalize="none"
-              keyboardType="number-pad"
-            />
-
-            <Text style={styles.fieldLabel}>アクセストークン *</Text>
-            <TextInput
-              style={styles.input}
-              value={accessToken}
-              onChangeText={setAccessToken}
-              placeholder="Instagram Graph API アクセストークン"
-              placeholderTextColor={COLORS.textMuted}
-              autoCapitalize="none"
-              secureTextEntry
-            />
-
-            <TouchableOpacity style={styles.guideToggle} onPress={() => setShowGuide((v) => !v)}>
-              <Text style={styles.guideToggleText}>
-                {showGuide ? '▲' : '▼'} ユーザーIDとトークンの取得方法
-              </Text>
-            </TouchableOpacity>
-
-            {showGuide && (
-              <View style={styles.guideBox}>
-                <Text style={styles.guideTitle}>取得手順</Text>
-                <Text style={styles.guideStep}>1. https://developers.facebook.com にアクセスし、Facebookアプリを作成</Text>
-                <Text style={styles.guideStep}>2. 「Instagram」製品を追加 → Instagramビジネスアカウントを連携</Text>
-                <Text style={styles.guideStep}>3. Graph API Explorer で GET /me?fields=id,username を実行</Text>
-                <Text style={styles.guideStep}>4. 返ってきた id がユーザーID</Text>
-                <Text style={styles.guideStep}>5. 「Generate Access Token」でアクセストークンを取得</Text>
-                <Text style={styles.guideNote}>※ Instagramアカウントは「プロアカウント（ビジネスまたはクリエイター）」が必要です</Text>
-              </View>
-            )}
-          </View>
-        </ScrollView>
-      </Modal>
 
       {/* Brand Settings Modal */}
       <Modal visible={brandModalVisible} animationType="slide" presentationStyle="pageSheet">
