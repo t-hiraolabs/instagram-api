@@ -88,9 +88,11 @@ export default function HomeScreen() {
             <Text style={styles.username}>{displayName}</Text>
           )}
         </View>
-        <View style={[styles.badge, !instagramCredentials && styles.badgeInactive]}>
-          <Text style={styles.badgeText}>{instagramCredentials ? '✅ 連携中' : 'PRO'}</Text>
-        </View>
+        {!instagramCredentials && (
+          <View style={[styles.badge, styles.badgeInactive]}>
+            <Text style={styles.badgeText}>PRO</Text>
+          </View>
+        )}
       </View>
 
       {/* Best Posting Time Banner */}
