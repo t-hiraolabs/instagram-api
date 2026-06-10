@@ -21,7 +21,8 @@ import { supabase } from '../services/supabaseClient';
 
 const INSTAGRAM_APP_ID = process.env.EXPO_PUBLIC_INSTAGRAM_APP_ID ?? '';
 const REDIRECT_URI = 'https://instagram-api-alpha.vercel.app/';
-const SCOPES = 'instagram_business_basic,instagram_business_content_publish,instagram_business_manage_media';
+const SCOPES =
+  'instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments,instagram_business_content_publish,instagram_business_manage_insights';
 
 const SK_USER_ID = 'instagram_user_id';
 const SK_TOKEN = 'instagram_access_token';
@@ -111,10 +112,11 @@ export default function ProfileScreen() {
   const handleInstagramLogin = () => {
     const url =
       `https://www.instagram.com/oauth/authorize?` +
-      `client_id=${INSTAGRAM_APP_ID}` +
+      `force_reauth=true` +
+      `&client_id=${INSTAGRAM_APP_ID}` +
       `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
-      `&scope=${SCOPES}` +
-      `&response_type=code`;
+      `&response_type=code` +
+      `&scope=${encodeURIComponent(SCOPES)}`;
     if (Platform.OS === 'web') window.location.href = url;
     else Linking.openURL(url);
   };
