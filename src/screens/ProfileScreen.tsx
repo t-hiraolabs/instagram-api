@@ -20,7 +20,7 @@ import { INDUSTRIES } from '../services/aiService';
 import { supabase } from '../services/supabaseClient';
 
 const INSTAGRAM_APP_ID = process.env.EXPO_PUBLIC_INSTAGRAM_APP_ID ?? '';
-const REDIRECT_URI = 'https://instaai-app.vercel.app/';
+const REDIRECT_URI = 'https://instagram-api-alpha.vercel.app/';
 const SCOPES = 'instagram_business_basic,instagram_business_content_publish,instagram_business_manage_media';
 
 const SK_USER_ID = 'instagram_user_id';
