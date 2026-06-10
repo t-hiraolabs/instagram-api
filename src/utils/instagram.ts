@@ -9,6 +9,7 @@ const SCOPES =
 export const SK_USER_ID = 'instagram_user_id';
 export const SK_TOKEN = 'instagram_access_token';
 export const SK_USERNAME = 'instagram_username';
+export const SK_PICTURE = 'instagram_profile_picture';
 
 /** Instagramビジネスログインの認証画面へ遷移する */
 export function connectInstagram() {
@@ -32,4 +33,5 @@ export async function clearInstagramStorage() {
   await remove(SK_USER_ID);
   await remove(SK_TOKEN);
   await remove(SK_USERNAME);
+  await remove(SK_PICTURE);
 }

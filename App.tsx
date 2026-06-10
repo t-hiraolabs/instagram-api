@@ -40,13 +40,19 @@ function OAuthHandler() {
           { code },
           { headers: { apikey: SUPABASE_ANON_KEY, 'Content-Type': 'application/json' } }
         );
-        const { access_token, user_id, username } = res.data;
+        const { access_token, user_id, username, profile_picture_url } = res.data;
 
         saveCredential('instagram_user_id', user_id);
         saveCredential('instagram_access_token', access_token);
         saveCredential('instagram_username', username);
+        if (profile_picture_url) saveCredential('instagram_profile_picture', profile_picture_url);
 
-        setInstagramCredentials({ userId: user_id, accessToken: access_token, username });
+        setInstagramCredentials({
+          userId: user_id,
+          accessToken: access_token,
+          username,
+          profilePictureUrl: profile_picture_url || undefined,
+        });
         Alert.alert('連携完了 ✅', `@${username} でログインしました`);
       } catch {
         Alert.alert('エラー', 'Instagram連携に失敗しました');

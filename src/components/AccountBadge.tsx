@@ -8,6 +8,7 @@ import {
   ScrollView,
   Alert,
   Platform,
+  Image,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Session } from '@supabase/supabase-js';
@@ -141,6 +142,17 @@ export default function AccountBadge() {
   // --- ログイン時：右上にアカウントアイコンを表示 ---
   return (
     <>
+      {/* 連携済みなら、アカウントアイコンの左に隠れてInstagramのプロフィール写真を表示 */}
+      {instagramCredentials?.profilePictureUrl ? (
+        <TouchableOpacity
+          style={[styles.igBadge, { top: insets.top + SPACING.sm + 3, right: SPACING.md + 26 }]}
+          onPress={() => setVisible(true)}
+          activeOpacity={0.8}
+        >
+          <Image source={{ uri: instagramCredentials.profilePictureUrl }} style={styles.igBadgeImg} />
+        </TouchableOpacity>
+      ) : null}
+
       {/* 右上のアカウントアイコン */}
       <TouchableOpacity
         style={[styles.badge, { top: insets.top + SPACING.sm, right: SPACING.md }]}
@@ -264,6 +276,24 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   badgeText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  igBadge: {
+    position: 'absolute',
+    zIndex: 999,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: COLORS.surface,
+    backgroundColor: COLORS.surface,
+    overflow: 'hidden',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as object) : {}),
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
+  },
+  igBadgeImg: { width: '100%', height: '100%' },
   loginPill: {
     position: 'absolute',
     zIndex: 1000,

@@ -17,7 +17,7 @@ import { COLORS, SPACING, RADIUS } from '../utils/theme';
 import { useAppStore, InstagramCredentials, BrandSettings } from '../store/appStore';
 import { INDUSTRIES } from '../services/aiService';
 import { supabase } from '../services/supabaseClient';
-import { connectInstagram, clearInstagramStorage, SK_USER_ID, SK_TOKEN, SK_USERNAME } from '../utils/instagram';
+import { connectInstagram, clearInstagramStorage, SK_USER_ID, SK_TOKEN, SK_USERNAME, SK_PICTURE } from '../utils/instagram';
 
 const SK_BRAND = 'brand_settings_v1';
 
@@ -75,8 +75,14 @@ export default function ProfileScreen() {
       const savedUserId = await load(SK_USER_ID);
       const savedToken = await load(SK_TOKEN);
       const savedUsername = await load(SK_USERNAME);
+      const savedPicture = await load(SK_PICTURE);
       if (savedUserId && savedToken) {
-        setInstagramCredentials({ userId: savedUserId, accessToken: savedToken, username: savedUsername ?? undefined });
+        setInstagramCredentials({
+          userId: savedUserId,
+          accessToken: savedToken,
+          username: savedUsername ?? undefined,
+          profilePictureUrl: savedPicture ?? undefined,
+        });
       }
 
       const savedBrand = await load(SK_BRAND);

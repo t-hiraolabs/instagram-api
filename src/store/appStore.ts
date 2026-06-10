@@ -11,6 +11,7 @@ export interface InstagramCredentials {
   userId: string;
   accessToken: string;
   username?: string;
+  profilePictureUrl?: string;
 }
 
 export interface BrandSettings {

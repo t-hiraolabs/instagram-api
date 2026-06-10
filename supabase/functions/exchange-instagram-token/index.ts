@@ -43,9 +43,9 @@ Deno.serve(async (req) => {
     const longData = await longRes.json();
     const accessToken = longData.access_token || tokenData.access_token;
 
-    // プロフィール取得
+    // プロフィール取得（プロフィール写真URLも含む）
     const profileRes = await fetch(
-      `https://graph.instagram.com/me?fields=id,username&access_token=${accessToken}`
+      `https://graph.instagram.com/me?fields=id,username,profile_picture_url&access_token=${accessToken}`
     );
     const profile = await profileRes.json();
 
@@ -54,6 +54,7 @@ Deno.serve(async (req) => {
         access_token: accessToken,
         user_id: profile.id || String(tokenData.user_id),
         username: profile.username ?? '',
+        profile_picture_url: profile.profile_picture_url ?? '',
       }),
       { headers: { ...CORS, 'Content-Type': 'application/json' } }
     );
