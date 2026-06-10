@@ -17,6 +17,7 @@ import * as SecureStore from 'expo-secure-store';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
 import { useAppStore, InstagramCredentials, BrandSettings } from '../store/appStore';
 import { INDUSTRIES } from '../services/aiService';
+import { supabase } from '../services/supabaseClient';
 
 const INSTAGRAM_APP_ID = process.env.EXPO_PUBLIC_INSTAGRAM_APP_ID ?? '';
 const REDIRECT_URI = 'https://instaai-app.vercel.app/';
@@ -181,6 +182,25 @@ export default function ProfileScreen() {
     }
   };
 
+  const handleLogout = () => {
+    if (Platform.OS === 'web') {
+      if (window.confirm('ログアウトしますか？')) {
+        supabase.auth.signOut();
+      }
+      return;
+    }
+    Alert.alert('ログアウト', 'ログアウトしますか？', [
+      { text: 'キャンセル', style: 'cancel' },
+      {
+        text: 'ログアウト',
+        style: 'destructive',
+        onPress: async () => {
+          await supabase.auth.signOut();
+        },
+      },
+    ]);
+  };
+
   const isConnected = !!instagramCredentials;
   const hasBrandSetup = !!(brandSettings.brandName || brandSettings.industry);
   const industryInfo = INDUSTRIES.find((i) => i.key === brandSettings.industry);
@@ -307,6 +327,10 @@ export default function ProfileScreen() {
             <Text style={styles.helpArrow}>›</Text>
           </TouchableOpacity>
         ))}
+
+        <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.8}>
+          <Text style={styles.logoutBtnText}>ログアウト</Text>
+        </TouchableOpacity>
 
         <Text style={styles.version}>InstaAI v1.0.0 — 日本の個人事業主向け</Text>
       </ScrollView>
@@ -608,7 +632,16 @@ const styles = StyleSheet.create({
   helpEmoji: { fontSize: 20 },
   helpLabel: { flex: 1, color: COLORS.text, fontSize: 14 },
   helpArrow: { color: COLORS.textMuted, fontSize: 20 },
-  version: { color: COLORS.textMuted, fontSize: 11, textAlign: 'center', marginTop: SPACING.xl },
+  logoutBtn: {
+    marginTop: SPACING.xl,
+    paddingVertical: SPACING.md,
+    alignItems: 'center',
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.error + '55',
+  },
+  logoutBtnText: { color: COLORS.error, fontSize: 14, fontWeight: '700' },
+  version: { color: COLORS.textMuted, fontSize: 11, textAlign: 'center', marginTop: SPACING.lg },
   modal: { flex: 1, backgroundColor: COLORS.background },
   modalHeader: {
     flexDirection: 'row',

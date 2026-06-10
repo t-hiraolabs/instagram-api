@@ -1,11 +1,16 @@
 import 'react-native-gesture-handler';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Platform, Alert } from 'react-native';
+import { Platform, Alert, View, ActivityIndicator } from 'react-native';
+import type { Session } from '@supabase/supabase-js';
 import RootNavigator from './src/navigation/RootNavigator';
+import AuthScreen from './src/screens/AuthScreen';
+import AccountBadge from './src/components/AccountBadge';
+import { supabase } from './src/services/supabaseClient';
 import { useAppStore } from './src/store/appStore';
+import { COLORS } from './src/utils/theme';
 import axios from 'axios';
 
 const queryClient = new QueryClient();
@@ -54,13 +59,50 @@ function OAuthHandler() {
   return null;
 }
 
+function AuthGate() {
+  const [session, setSession] = useState<Session | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      setLoading(false);
+    });
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      setSession(newSession);
+    });
+
+    return () => listener.subscription.unsubscribe();
+  }, []);
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, backgroundColor: COLORS.background, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator color={COLORS.primary} size="large" />
+      </View>
+    );
+  }
+
+  if (!session) {
+    return <AuthScreen />;
+  }
+
+  return (
+    <>
+      <OAuthHandler />
+      <RootNavigator />
+      <AccountBadge />
+    </>
+  );
+}
+
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <SafeAreaProvider>
         <StatusBar style="light" />
-        <OAuthHandler />
-        <RootNavigator />
+        <AuthGate />
       </SafeAreaProvider>
     </QueryClientProvider>
   );
