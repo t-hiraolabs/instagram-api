@@ -77,7 +77,6 @@ export default function ProfileScreen() {
 
   const [igModalVisible, setIgModalVisible] = useState(false);
   const [brandModalVisible, setBrandModalVisible] = useState(false);
-  const [apiModalVisible, setApiModalVisible] = useState(false);
   const [saving, setSaving] = useState(false);
 
   // Instagram form
@@ -88,10 +87,6 @@ export default function ProfileScreen() {
 
   // Brand form
   const [draftBrand, setDraftBrand] = useState<BrandSettings>({ ...brandSettings });
-
-  // API key form
-  const [apiKey, setApiKey] = useState('');
-  const [showApiKey, setShowApiKey] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -107,7 +102,6 @@ export default function ProfileScreen() {
         try {
           const parsed = JSON.parse(savedBrand) as BrandSettings;
           setBrandSettings(parsed);
-          setApiKey(parsed.apiKey || '');
         } catch {}
       }
     })();
@@ -187,34 +181,8 @@ export default function ProfileScreen() {
     }
   };
 
-  const openApiModal = () => {
-    setApiKey(brandSettings.apiKey || '');
-    setShowApiKey(false);
-    setApiModalVisible(true);
-  };
-
-  const handleSaveApiKey = async () => {
-    if (!apiKey.trim()) {
-      Alert.alert('エラー', 'APIキーを入力してください');
-      return;
-    }
-    setSaving(true);
-    try {
-      const updated = { ...brandSettings, apiKey: apiKey.trim() };
-      setBrandSettings({ apiKey: apiKey.trim() });
-      await save(SK_BRAND, JSON.stringify(updated));
-      setApiModalVisible(false);
-      Alert.alert('保存しました ✅', 'APIキーを設定しました');
-    } catch {
-      Alert.alert('エラー', '保存に失敗しました');
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const isConnected = !!instagramCredentials;
   const hasBrandSetup = !!(brandSettings.brandName || brandSettings.industry);
-  const hasApiKey = !!(brandSettings.apiKey || process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY);
   const industryInfo = INDUSTRIES.find((i) => i.key === brandSettings.industry);
 
   return (
@@ -298,18 +266,6 @@ export default function ProfileScreen() {
               )}
             </View>
           )}
-        </TouchableOpacity>
-
-        {/* API Key Card */}
-        <TouchableOpacity style={styles.apiKeyCard} onPress={openApiModal} activeOpacity={0.8}>
-          <Text style={styles.apiKeyIcon}>{hasApiKey ? '🔐' : '🔑'}</Text>
-          <View style={styles.apiKeyInfo}>
-            <Text style={styles.apiKeyTitle}>Anthropic APIキー</Text>
-            <Text style={[styles.apiKeyStatus, { color: hasApiKey ? COLORS.success : COLORS.error }]}>
-              {hasApiKey ? '設定済み ✅' : '未設定 — タップして設定'}
-            </Text>
-          </View>
-          <Text style={styles.apiKeyArrow}>›</Text>
         </TouchableOpacity>
 
         {/* Plan */}
@@ -502,54 +458,6 @@ export default function ProfileScreen() {
         </ScrollView>
       </Modal>
 
-      {/* API Key Modal */}
-      <Modal visible={apiModalVisible} animationType="slide" presentationStyle="pageSheet">
-        <ScrollView style={styles.modal} keyboardShouldPersistTaps="handled">
-          <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => setApiModalVisible(false)}>
-              <Text style={styles.modalCancel}>キャンセル</Text>
-            </TouchableOpacity>
-            <Text style={styles.modalTitle}>APIキー設定</Text>
-            <TouchableOpacity onPress={handleSaveApiKey} disabled={saving}>
-              {saving ? <ActivityIndicator color={COLORS.primary} /> : <Text style={styles.modalSave}>保存</Text>}
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.modalBody}>
-            <View style={styles.apiInfoBox}>
-              <Text style={styles.apiInfoTitle}>🔑 Anthropic APIキーについて</Text>
-              <Text style={styles.apiInfoText}>
-                AI投稿生成機能を使用するにはAnthropicのAPIキーが必要です。{'\n\n'}
-                取得方法:{'\n'}
-                1. console.anthropic.com にアクセス{'\n'}
-                2. アカウント作成・ログイン{'\n'}
-                3. API Keys › Create Key{'\n'}
-                4. 生成されたキーをコピーして入力{'\n\n'}
-                ※ APIキーは端末に安全に保存されます
-              </Text>
-            </View>
-
-            <Text style={styles.fieldLabel}>Anthropic APIキー *</Text>
-            <View style={styles.apiKeyInputRow}>
-              <TextInput
-                style={[styles.input, styles.apiKeyInput]}
-                value={apiKey}
-                onChangeText={setApiKey}
-                placeholder="sk-ant-..."
-                placeholderTextColor={COLORS.textMuted}
-                autoCapitalize="none"
-                secureTextEntry={!showApiKey}
-              />
-              <TouchableOpacity
-                style={styles.apiKeyToggle}
-                onPress={() => setShowApiKey((v) => !v)}
-              >
-                <Text style={styles.apiKeyToggleText}>{showApiKey ? '隠す' : '表示'}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </ScrollView>
-      </Modal>
     </View>
   );
 }
