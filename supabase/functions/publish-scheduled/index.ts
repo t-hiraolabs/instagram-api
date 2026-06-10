@@ -35,6 +35,24 @@ async function publishPost(post: {
   const container = await containerRes.json();
   if (!container.id) throw new Error(`コンテナ作成失敗: ${JSON.stringify(container)}`);
 
+  // Step 1.5: コンテナの処理完了を待つ（画像のダウンロード・変換に数秒かかる）
+  let ready = false;
+  for (let i = 0; i < 15; i++) {
+    await new Promise((r) => setTimeout(r, 2000));
+    const statusRes = await fetch(
+      `${INSTAGRAM_API}/${container.id}?fields=status_code&access_token=${post.access_token}`
+    );
+    const status = await statusRes.json();
+    if (status.status_code === 'FINISHED') {
+      ready = true;
+      break;
+    }
+    if (status.status_code === 'ERROR' || status.status_code === 'EXPIRED') {
+      throw new Error(`メディア処理エラー: ${JSON.stringify(status)}`);
+    }
+  }
+  if (!ready) throw new Error('メディアの処理がタイムアウトしました');
+
   // Step 2: 公開
   const publishRes = await fetch(`${INSTAGRAM_API}/${post.instagram_user_id}/media_publish`, {
     method: 'POST',

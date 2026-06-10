@@ -45,6 +45,29 @@ Deno.serve(async (req) => {
       return json({ error: 'コンテナ作成失敗', detail: container }, 400);
     }
 
+    // Step 1.5: コンテナの処理完了を待つ（画像のダウンロード・変換に数秒かかる）
+    let ready = false;
+    for (let i = 0; i < 15; i++) {
+      await new Promise((r) => setTimeout(r, 2000));
+      const statusRes = await fetch(
+        `${INSTAGRAM_API}/${container.id}?fields=status_code,status&access_token=${access_token}`
+      );
+      const status = await statusRes.json();
+      if (status.status_code === 'FINISHED') {
+        ready = true;
+        break;
+      }
+      if (status.status_code === 'ERROR' || status.status_code === 'EXPIRED') {
+        return json({ error: 'メディア処理エラー', detail: status }, 400);
+      }
+    }
+    if (!ready) {
+      return json(
+        { error: 'メディアの処理がタイムアウトしました。もう一度お試しください' },
+        400
+      );
+    }
+
     // Step 2: 公開
     const publishRes = await fetch(`${INSTAGRAM_API}/${instagram_user_id}/media_publish`, {
       method: 'POST',
