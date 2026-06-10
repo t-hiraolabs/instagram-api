@@ -9,6 +9,7 @@ import AccountBadge from './src/components/AccountBadge';
 import { supabase } from './src/services/supabaseClient';
 import { useAppStore } from './src/store/appStore';
 import { COLORS } from './src/utils/theme';
+import { loadInstagramCredentials } from './src/utils/instagram';
 import axios from 'axios';
 
 const queryClient = new QueryClient();
@@ -22,6 +23,13 @@ function saveCredential(key: string, value: string) {
 
 function OAuthHandler() {
   const setInstagramCredentials = useAppStore((s) => s.setInstagramCredentials);
+
+  // アプリ起動時に保存済みのInstagram連携情報をストアへ読み込む（更新しても連携を維持）
+  useEffect(() => {
+    loadInstagramCredentials().then((creds) => {
+      if (creds) setInstagramCredentials(creds);
+    });
+  }, [setInstagramCredentials]);
 
   useEffect(() => {
     if (Platform.OS !== 'web') return;

@@ -1,5 +1,6 @@
 import { Platform, Linking } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
+import type { InstagramCredentials } from '../store/appStore';
 
 const INSTAGRAM_APP_ID = process.env.EXPO_PUBLIC_INSTAGRAM_APP_ID ?? '';
 const REDIRECT_URI = 'https://instagram-api-alpha.vercel.app/';
@@ -22,6 +23,26 @@ export function connectInstagram() {
     `&scope=${encodeURIComponent(SCOPES)}`;
   if (Platform.OS === 'web') window.location.href = url;
   else Linking.openURL(url);
+}
+
+async function getItem(key: string): Promise<string | null> {
+  if (Platform.OS === 'web') return localStorage.getItem(key);
+  return SecureStore.getItemAsync(key);
+}
+
+/** 保存済みのInstagram連携情報を読み込む（アプリ起動時に使う） */
+export async function loadInstagramCredentials(): Promise<InstagramCredentials | null> {
+  const userId = await getItem(SK_USER_ID);
+  const accessToken = await getItem(SK_TOKEN);
+  if (!userId || !accessToken) return null;
+  const username = await getItem(SK_USERNAME);
+  const profilePictureUrl = await getItem(SK_PICTURE);
+  return {
+    userId,
+    accessToken,
+    username: username ?? undefined,
+    profilePictureUrl: profilePictureUrl ?? undefined,
+  };
 }
 
 /** 保存されたInstagram連携情報を消す */
