@@ -146,7 +146,7 @@ export default function ScheduleScreen() {
 
     setPublishing(true);
     try {
-      await publishNow({
+      const result = await publishNow({
         caption: caption.trim(),
         hashtags: buildHashtags(),
         image_url: imageUrl.trim(),
@@ -156,9 +156,10 @@ export default function ScheduleScreen() {
       });
       clearDraft();
       setModalVisible(false);
-      const ok = '投稿しました ✅\nInstagramアプリで確認してください';
+      const kind = result.posted_type === 'story' ? 'ストーリー' : 'フィード';
+      const ok = `投稿しました ✅（${kind}として投稿）\nInstagramアプリで確認してください`;
       if (Platform.OS === 'web') window.alert(ok);
-      else Alert.alert('投稿完了 ✅', 'Instagramアプリで確認してください');
+      else Alert.alert('投稿完了 ✅', `${kind}として投稿しました。Instagramで確認してください`);
     } catch (e) {
       const msg = e instanceof Error ? e.message : '投稿に失敗しました';
       if (Platform.OS === 'web') window.alert('投稿失敗\n' + msg);

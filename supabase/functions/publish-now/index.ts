@@ -82,7 +82,7 @@ Deno.serve(async (req) => {
       return json({ error: '公開失敗', detail: published }, 400);
     }
 
-    return json({ id: published.id });
+    return json({ id: published.id, posted_type: type === 'story' ? 'story' : 'feed' });
   } catch (err) {
     return json({ error: String(err) }, 500);
   }

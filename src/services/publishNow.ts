@@ -11,8 +11,13 @@ export interface PublishNowInput {
   access_token: string;
 }
 
-/** Instagramに今すぐ投稿し、投稿IDを返す。失敗時は分かりやすいエラーをthrow */
-export async function publishNow(input: PublishNowInput): Promise<string> {
+export interface PublishNowResult {
+  id: string;
+  posted_type?: 'feed' | 'story';
+}
+
+/** Instagramに今すぐ投稿し、投稿IDと種別を返す。失敗時は分かりやすいエラーをthrow */
+export async function publishNow(input: PublishNowInput): Promise<PublishNowResult> {
   const res = await fetch(`${SUPABASE_URL}/functions/v1/publish-now`, {
     method: 'POST',
     headers: {
@@ -30,5 +35,5 @@ export async function publishNow(input: PublishNowInput): Promise<string> {
     throw new Error((data.error ?? `投稿に失敗しました (${res.status})`) + detail);
   }
 
-  return data.id as string;
+  return data as PublishNowResult;
 }
