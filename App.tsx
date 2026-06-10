@@ -4,9 +4,7 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Platform, Alert, View, ActivityIndicator } from 'react-native';
-import type { Session } from '@supabase/supabase-js';
 import RootNavigator from './src/navigation/RootNavigator';
-import AuthScreen from './src/screens/AuthScreen';
 import AccountBadge from './src/components/AccountBadge';
 import { supabase } from './src/services/supabaseClient';
 import { useAppStore } from './src/store/appStore';
@@ -60,20 +58,13 @@ function OAuthHandler() {
 }
 
 function AuthGate() {
-  const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
+    // セッションの読み込みが終わるまで待つ（右上の表示がチラつかないように）
+    supabase.auth.getSession().then(() => {
       setLoading(false);
     });
-
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
-      setSession(newSession);
-    });
-
-    return () => listener.subscription.unsubscribe();
   }, []);
 
   if (loading) {
@@ -84,10 +75,7 @@ function AuthGate() {
     );
   }
 
-  if (!session) {
-    return <AuthScreen />;
-  }
-
+  // ログインしていなくてもアプリは開ける。ログインは右上のボタンから任意で行う
   return (
     <>
       <OAuthHandler />

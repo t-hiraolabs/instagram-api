@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
 import { generatePost, generateFromImage, getSeasonalThemes, INDUSTRIES } from '../services/aiService';
+import { ensureLoggedIn } from '../utils/requireLogin';
 import { useAppStore } from '../store/appStore';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
 
@@ -90,6 +91,7 @@ export default function GenerateScreen() {
   };
 
   const handleGenerate = async () => {
+    if (!(await ensureLoggedIn('AI生成を使うにはログインが必要です'))) return;
     setLoading(true);
     setResult(null);
     try {

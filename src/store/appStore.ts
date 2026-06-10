@@ -38,6 +38,9 @@ interface AppState {
   instagramCredentials: InstagramCredentials | null;
   setInstagramCredentials: (creds: InstagramCredentials | null) => void;
 
+  loginPromptVisible: boolean;
+  setLoginPromptVisible: (visible: boolean) => void;
+
   brandSettings: BrandSettings;
   setBrandSettings: (settings: Partial<BrandSettings>) => void;
 
@@ -62,6 +65,9 @@ export const useAppStore = create<AppState>((set) => ({
 
   instagramCredentials: null,
   setInstagramCredentials: (creds) => set({ instagramCredentials: creds }),
+
+  loginPromptVisible: false,
+  setLoginPromptVisible: (visible) => set({ loginPromptVisible: visible }),
 
   brandSettings: {
     brandName: '',

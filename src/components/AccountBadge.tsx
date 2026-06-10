@@ -10,9 +10,11 @@ import {
   Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../services/supabaseClient';
 import { useAppStore } from '../store/appStore';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
+import AuthScreen from '../screens/AuthScreen';
 
 const PLANS = [
   {
@@ -43,16 +45,22 @@ const PLANS = [
 
 export default function AccountBadge() {
   const insets = useSafeAreaInsets();
-  const [email, setEmail] = useState<string>('');
+  const [session, setSession] = useState<Session | null>(null);
   const [visible, setVisible] = useState(false);
   const instagramCredentials = useAppStore((s) => s.instagramCredentials);
+  const authVisible = useAppStore((s) => s.loginPromptVisible);
+  const setAuthVisible = useAppStore((s) => s.setLoginPromptVisible);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      setEmail(data.user?.email ?? '');
+    supabase.auth.getSession().then(({ data }) => setSession(data.session));
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      setSession(newSession);
+      if (newSession) setAuthVisible(false); // ログイン成功したらログイン画面を閉じる
     });
-  }, []);
+    return () => listener.subscription.unsubscribe();
+  }, [setAuthVisible]);
 
+  const email = session?.user?.email ?? '';
   const initial = (email.trim()[0] ?? '?').toUpperCase();
   const currentPlan = PLANS.find((p) => p.current);
 
@@ -76,6 +84,36 @@ export default function AccountBadge() {
     ]);
   };
 
+  // --- 未ログイン時：右上に「ログイン」ボタンを表示 ---
+  if (!session) {
+    return (
+      <>
+        <TouchableOpacity
+          style={[styles.loginPill, { top: insets.top + SPACING.sm, right: SPACING.md }]}
+          onPress={() => setAuthVisible(true)}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.loginPillText}>ログイン</Text>
+        </TouchableOpacity>
+
+        {/* ログイン / 新規登録モーダル */}
+        <Modal visible={authVisible} animationType="slide" onRequestClose={() => setAuthVisible(false)}>
+          <View style={styles.authWrap}>
+            <TouchableOpacity
+              style={[styles.authClose, { top: insets.top + SPACING.sm }]}
+              onPress={() => setAuthVisible(false)}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            >
+              <Text style={styles.authCloseText}>✕ 閉じる</Text>
+            </TouchableOpacity>
+            <AuthScreen />
+          </View>
+        </Modal>
+      </>
+    );
+  }
+
+  // --- ログイン時：右上にアカウントアイコンを表示 ---
   return (
     <>
       {/* 右上のアカウントアイコン */}
@@ -190,6 +228,31 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   badgeText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  loginPill: {
+    position: 'absolute',
+    zIndex: 1000,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 8,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.primary,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as object) : {}),
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 5,
+  },
+  loginPillText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  authWrap: { flex: 1, backgroundColor: COLORS.background },
+  authClose: {
+    position: 'absolute',
+    zIndex: 10,
+    left: SPACING.md,
+    paddingVertical: 6,
+    paddingHorizontal: SPACING.sm,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as object) : {}),
+  },
+  authCloseText: { color: COLORS.textMuted, fontSize: 15, fontWeight: '600' },
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',

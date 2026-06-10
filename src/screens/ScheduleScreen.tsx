@@ -20,6 +20,7 @@ import {
   deleteScheduledPost,
   ScheduledPost,
 } from '../services/scheduleService';
+import { ensureLoggedIn } from '../utils/requireLogin';
 import { useAppStore } from '../store/appStore';
 
 type Filter = 'all' | 'pending' | 'published' | 'failed';
@@ -133,6 +134,7 @@ export default function ScheduleScreen() {
       Alert.alert('エラー', '予約日時は未来の日時を指定してください');
       return;
     }
+    if (!(await ensureLoggedIn('予約投稿を保存するにはログインが必要です'))) return;
 
     setSaving(true);
     try {

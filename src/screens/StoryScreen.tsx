@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { generateStory } from '../services/aiService';
+import { ensureLoggedIn } from '../utils/requireLogin';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
 
 const { width } = Dimensions.get('window');
@@ -47,6 +48,7 @@ export default function StoryScreen() {
       Alert.alert('入力エラー', 'テーマと詳細を入力してください');
       return;
     }
+    if (!(await ensureLoggedIn('ストーリー生成を使うにはログインが必要です'))) return;
     setLoading(true);
     try {
       const generated = await generateStory({
