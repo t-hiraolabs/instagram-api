@@ -1,0 +1,34 @@
+// 「今すぐ投稿」: publish-now エッジ関数を呼んでInstagramへ即時公開する
+const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
+const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
+
+export interface PublishNowInput {
+  caption: string;
+  hashtags: string[];
+  image_url: string;
+  type: 'feed' | 'story';
+  instagram_user_id: string;
+  access_token: string;
+}
+
+/** Instagramに今すぐ投稿し、投稿IDを返す。失敗時は分かりやすいエラーをthrow */
+export async function publishNow(input: PublishNowInput): Promise<string> {
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/publish-now`, {
+    method: 'POST',
+    headers: {
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(input),
+  });
+
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok || data.error) {
+    const detail = data.detail ? `\n${JSON.stringify(data.detail)}` : '';
+    throw new Error((data.error ?? `投稿に失敗しました (${res.status})`) + detail);
+  }
+
+  return data.id as string;
+}

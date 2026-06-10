@@ -22,6 +22,7 @@ import {
 } from '../services/scheduleService';
 import { ensureLoggedIn } from '../utils/requireLogin';
 import { useAppStore } from '../store/appStore';
+import { publishNow } from '../services/publishNow';
 
 type Filter = 'all' | 'pending' | 'published' | 'failed';
 
@@ -77,20 +78,20 @@ export default function ScheduleScreen() {
   const insets = useSafeAreaInsets();
   const draft = useAppStore((s) => s.draft);
   const clearDraft = useAppStore((s) => s.clearDraft);
+  const instagramCredentials = useAppStore((s) => s.instagramCredentials);
 
   const [posts, setPosts] = useState<ScheduledPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<Filter>('all');
   const [modalVisible, setModalVisible] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [publishing, setPublishing] = useState(false);
 
   const [caption, setCaption] = useState('');
   const [hashtagsText, setHashtagsText] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [dateText, setDateText] = useState('');
   const [type, setType] = useState<'feed' | 'story'>('feed');
-  const [instagramUserId, setInstagramUserId] = useState('');
-  const [accessToken, setAccessToken] = useState('');
 
   const quickDates = getQuickDates();
 
@@ -115,9 +116,56 @@ export default function ScheduleScreen() {
     setType(draft.type || 'feed');
     setImageUrl('');
     setDateText('');
-    setInstagramUserId('');
-    setAccessToken('');
     setModalVisible(true);
+  };
+
+  const buildHashtags = () =>
+    hashtagsText
+      .split(/[\s,　]+/)
+      .map((h) => h.trim())
+      .filter(Boolean);
+
+  // 今すぐInstagramに投稿（テスト/手動投稿）
+  const handlePublishNow = async () => {
+    if (!caption.trim()) {
+      Alert.alert('エラー', 'キャプションを入力してください');
+      return;
+    }
+    if (!imageUrl.trim()) {
+      Alert.alert('画像が必要です', 'Instagram投稿には公開された画像URLが必要です');
+      return;
+    }
+    if (!instagramCredentials?.userId || !instagramCredentials?.accessToken) {
+      Alert.alert('未連携', '右上のアイコンからInstagramを連携してください');
+      return;
+    }
+    if (!(await ensureLoggedIn('投稿するにはログインが必要です'))) return;
+
+    const confirmMsg = `@${instagramCredentials.username ?? ''} に今すぐ投稿します。よろしいですか？`;
+    if (Platform.OS === 'web' && !window.confirm(confirmMsg)) return;
+
+    setPublishing(true);
+    try {
+      await publishNow({
+        caption: caption.trim(),
+        hashtags: buildHashtags(),
+        image_url: imageUrl.trim(),
+        type,
+        instagram_user_id: instagramCredentials.userId,
+        access_token: instagramCredentials.accessToken,
+      });
+      clearDraft();
+      setModalVisible(false);
+      const ok = '投稿しました ✅\nInstagramアプリで確認してください';
+      if (Platform.OS === 'web') window.alert(ok);
+      else Alert.alert('投稿完了 ✅', 'Instagramアプリで確認してください');
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : '投稿に失敗しました';
+      if (Platform.OS === 'web') window.alert('投稿失敗\n' + msg);
+      else Alert.alert('投稿失敗', msg);
+    } finally {
+      setPublishing(false);
+    }
   };
 
   const handleSave = async () => {
@@ -140,15 +188,12 @@ export default function ScheduleScreen() {
     try {
       await createScheduledPost({
         caption: caption.trim(),
-        hashtags: hashtagsText
-          .split(/[\s,　]+/)
-          .map((h) => h.trim())
-          .filter(Boolean),
+        hashtags: buildHashtags(),
         image_url: imageUrl.trim() || undefined,
         scheduled_at: scheduledDate,
         type,
-        instagram_user_id: instagramUserId.trim() || undefined,
-        access_token: accessToken.trim() || undefined,
+        instagram_user_id: instagramCredentials?.userId || undefined,
+        access_token: instagramCredentials?.accessToken || undefined,
       });
       clearDraft();
       setModalVisible(false);
@@ -365,28 +410,37 @@ export default function ScheduleScreen() {
               autoCapitalize="none"
             />
 
-            <Text style={styles.sectionDivider}>Instagram連携（任意）</Text>
+            <Text style={styles.sectionDivider}>Instagram</Text>
+            {instagramCredentials ? (
+              <View style={styles.igConnectedBox}>
+                <Text style={styles.igConnectedText}>
+                  ✅ {instagramCredentials.username ? `@${instagramCredentials.username}` : '連携済み'} に投稿します
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.igWarnBox}>
+                <Text style={styles.igWarnText}>
+                  ⚠️ 未連携です。右上のアイコンからInstagramを連携してください
+                </Text>
+              </View>
+            )}
 
-            <Text style={styles.fieldLabel}>Instagram ユーザーID</Text>
-            <TextInput
-              style={styles.input}
-              value={instagramUserId}
-              onChangeText={setInstagramUserId}
-              placeholder="Instagram Business ユーザーID"
-              placeholderTextColor={COLORS.textMuted}
-              autoCapitalize="none"
-            />
-
-            <Text style={styles.fieldLabel}>アクセストークン</Text>
-            <TextInput
-              style={styles.input}
-              value={accessToken}
-              onChangeText={setAccessToken}
-              placeholder="Instagram Graph API アクセストークン"
-              placeholderTextColor={COLORS.textMuted}
-              autoCapitalize="none"
-              secureTextEntry
-            />
+            {/* 今すぐ投稿（テスト/手動） */}
+            <TouchableOpacity
+              style={[styles.publishNowBtn, (publishing || !instagramCredentials) && styles.publishNowBtnDisabled]}
+              onPress={handlePublishNow}
+              disabled={publishing || !instagramCredentials}
+              activeOpacity={0.85}
+            >
+              {publishing ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.publishNowText}>🚀 今すぐ投稿する</Text>
+              )}
+            </TouchableOpacity>
+            <Text style={styles.publishNowHint}>
+              ※ 予約せずにすぐInstagramへ投稿します（画像URLが必須）
+            </Text>
           </ScrollView>
         </KeyboardAvoidingView>
       </Modal>
@@ -575,5 +629,39 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.xs,
     textTransform: 'uppercase',
     letterSpacing: 1,
+  },
+  igConnectedBox: {
+    backgroundColor: COLORS.success + '18',
+    borderWidth: 1,
+    borderColor: COLORS.success + '44',
+    borderRadius: RADIUS.md,
+    padding: SPACING.sm,
+    marginTop: SPACING.xs,
+  },
+  igConnectedText: { color: COLORS.success, fontSize: 13, fontWeight: '700' },
+  igWarnBox: {
+    backgroundColor: COLORS.warning + '18',
+    borderWidth: 1,
+    borderColor: COLORS.warning + '44',
+    borderRadius: RADIUS.md,
+    padding: SPACING.sm,
+    marginTop: SPACING.xs,
+  },
+  igWarnText: { color: COLORS.warning, fontSize: 13, fontWeight: '600' },
+  publishNowBtn: {
+    backgroundColor: COLORS.primary,
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.md,
+    alignItems: 'center',
+    marginTop: SPACING.lg,
+  },
+  publishNowBtnDisabled: { opacity: 0.5 },
+  publishNowText: { color: '#fff', fontSize: 15, fontWeight: '800' },
+  publishNowHint: {
+    color: COLORS.textMuted,
+    fontSize: 11,
+    textAlign: 'center',
+    marginTop: SPACING.sm,
+    marginBottom: SPACING.xl,
   },
 });
