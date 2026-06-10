@@ -197,22 +197,6 @@ export default function HomeScreen() {
         </View>
         <Text style={styles.tipText}>{todayTip.tip}</Text>
       </View>
-
-      {/* API Key Setup Prompt */}
-      {!brandSettings.apiKey && !process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY && (
-        <TouchableOpacity
-          style={styles.apiCard}
-          onPress={() => navigation.navigate('Profile')}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.apiIcon}>🔑</Text>
-          <View style={styles.apiInfo}>
-            <Text style={styles.apiTitle}>Anthropic APIキーを設定してください</Text>
-            <Text style={styles.apiSub}>AI生成機能を使うために必要です</Text>
-          </View>
-          <Text style={styles.apiArrow}>›</Text>
-        </TouchableOpacity>
-      )}
     </ScrollView>
   );
 }

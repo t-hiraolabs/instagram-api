@@ -1,13 +1,10 @@
 import axios from 'axios';
 import { useAppStore } from '../store/appStore';
 
-const CLAUDE_API_URL = 'https://api.anthropic.com/v1/messages';
+const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
+const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
+const CLAUDE_API_URL = `${SUPABASE_URL}/functions/v1/claude`;
 const MODEL = 'claude-sonnet-4-6';
-
-function getApiKey(): string {
-  const storeKey = useAppStore.getState().brandSettings.apiKey;
-  return storeKey || process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY || '';
-}
 
 function getBrandContext(): string {
   const { brandName, industry, targetAudience, tone } = useAppStore.getState().brandSettings;
@@ -62,9 +59,8 @@ async function callClaude(prompt: string, systemPrompt: string): Promise<string>
     {
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': getApiKey(),
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true',
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        apikey: SUPABASE_ANON_KEY,
       },
     }
   );
@@ -201,9 +197,8 @@ ${extraInstructions}
     {
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': getApiKey(),
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true',
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        apikey: SUPABASE_ANON_KEY,
       },
     }
   );
