@@ -11,9 +11,12 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Image,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
+import { uploadPostImage } from '../services/storage';
 import {
   getScheduledPosts,
   createScheduledPost,
@@ -90,6 +93,8 @@ export default function ScheduleScreen() {
   const [caption, setCaption] = useState('');
   const [hashtagsText, setHashtagsText] = useState('');
   const [imageUrl, setImageUrl] = useState('');
+  const [imagePreview, setImagePreview] = useState('');
+  const [imageUploading, setImageUploading] = useState(false);
   const [dateText, setDateText] = useState('');
   const [type, setType] = useState<'feed' | 'story'>('feed');
 
@@ -115,8 +120,43 @@ export default function ScheduleScreen() {
     setHashtagsText(draft.hashtags.join(' ') || '');
     setType(draft.type || 'feed');
     setImageUrl('');
+    setImagePreview('');
     setDateText('');
     setModalVisible(true);
+  };
+
+  // スマホ/PCの写真を選んでSupabase Storageへアップロードし、公開URLを得る
+  const pickAndUploadImage = async () => {
+    if (Platform.OS !== 'web') {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('権限エラー', '写真へのアクセスを許可してください');
+        return;
+      }
+    }
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      // フィードは正方形、ストーリーは縦長(9:16)で切り抜く
+      allowsEditing: true,
+      aspect: type === 'story' ? [9, 16] : [1, 1],
+      quality: 0.9,
+    });
+    if (res.canceled) return;
+
+    const asset = res.assets[0];
+    setImagePreview(asset.uri);
+    setImageUploading(true);
+    try {
+      const publicUrl = await uploadPostImage(asset.uri);
+      setImageUrl(publicUrl);
+    } catch (e) {
+      setImagePreview('');
+      const msg = e instanceof Error ? e.message : '画像アップロードに失敗しました';
+      if (Platform.OS === 'web') window.alert(msg);
+      else Alert.alert('エラー', msg);
+    } finally {
+      setImageUploading(false);
+    }
   };
 
   const buildHashtags = () =>
@@ -372,16 +412,38 @@ export default function ScheduleScreen() {
               placeholderTextColor={COLORS.textMuted}
             />
 
-            <Text style={styles.fieldLabel}>投稿画像のURL</Text>
-            <TextInput
-              style={styles.input}
-              value={imageUrl}
-              onChangeText={setImageUrl}
-              placeholder="https://example.com/image.jpg"
-              placeholderTextColor={COLORS.textMuted}
-              autoCapitalize="none"
-              keyboardType="url"
-            />
+            <Text style={styles.fieldLabel}>投稿画像</Text>
+            <TouchableOpacity
+              style={styles.imagePickerBox}
+              onPress={pickAndUploadImage}
+              activeOpacity={0.85}
+              disabled={imageUploading}
+            >
+              {imagePreview ? (
+                <Image
+                  source={{ uri: imagePreview }}
+                  style={[
+                    styles.imagePreview,
+                    { aspectRatio: type === 'story' ? 9 / 16 : 1 },
+                  ]}
+                  resizeMode="cover"
+                />
+              ) : (
+                <View style={styles.imagePlaceholder}>
+                  <Text style={styles.imagePlaceholderIcon}>🖼</Text>
+                  <Text style={styles.imagePlaceholderText}>タップして写真を選ぶ</Text>
+                </View>
+              )}
+              {imageUploading && (
+                <View style={styles.imageUploadingOverlay}>
+                  <ActivityIndicator color="#fff" />
+                  <Text style={styles.imageUploadingText}>アップロード中...</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+            {imageUrl && !imageUploading ? (
+              <Text style={styles.imageReadyText}>✅ 画像の準備ができました</Text>
+            ) : null}
 
             <Text style={styles.fieldLabel}>予約日時</Text>
 
@@ -457,6 +519,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: SPACING.md,
+    paddingRight: 52, // 右上のアカウントアイコンと重ならないように
   },
   title: { color: COLORS.text, fontSize: 28, fontWeight: '800' },
   addBtn: {
@@ -631,6 +694,29 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
+  imagePickerBox: {
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.md,
+    overflow: 'hidden',
+    minHeight: 160,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imagePreview: { width: '100%', maxHeight: 360, alignSelf: 'center' },
+  imagePlaceholder: { alignItems: 'center', gap: SPACING.sm, paddingVertical: SPACING.xl },
+  imagePlaceholderIcon: { fontSize: 36 },
+  imagePlaceholderText: { color: COLORS.textMuted, fontSize: 14, fontWeight: '600' },
+  imageUploadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  imageUploadingText: { color: '#fff', fontSize: 13, fontWeight: '600' },
+  imageReadyText: { color: COLORS.success, fontSize: 12, fontWeight: '600', marginTop: SPACING.xs },
   igConnectedBox: {
     backgroundColor: COLORS.success + '18',
     borderWidth: 1,
