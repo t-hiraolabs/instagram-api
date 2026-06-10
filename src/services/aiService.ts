@@ -1,10 +1,22 @@
 import axios from 'axios';
 import { useAppStore } from '../store/appStore';
+import { supabase } from './supabaseClient';
 
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
 const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
 const CLAUDE_API_URL = `${SUPABASE_URL}/functions/v1/claude`;
 const MODEL = 'claude-sonnet-4-6';
+
+// ログイン中ユーザーの本人確認トークンを付けたヘッダーを返す
+async function getAuthHeaders() {
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token ?? SUPABASE_ANON_KEY;
+  return {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${token}`,
+    apikey: SUPABASE_ANON_KEY,
+  };
+}
 
 function getBrandContext(): string {
   const { brandName, industry, targetAudience, tone } = useAppStore.getState().brandSettings;
@@ -57,11 +69,7 @@ async function callClaude(prompt: string, systemPrompt: string): Promise<string>
       messages: [{ role: 'user', content: prompt }],
     },
     {
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-        apikey: SUPABASE_ANON_KEY,
-      },
+      headers: await getAuthHeaders(),
     }
   );
   return response.data.content[0].text;
@@ -195,11 +203,7 @@ ${extraInstructions}
       ],
     },
     {
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-        apikey: SUPABASE_ANON_KEY,
-      },
+      headers: await getAuthHeaders(),
     }
   );
 
