@@ -10,7 +10,6 @@ import {
   TextInput,
   ActivityIndicator,
   Platform,
-  Linking,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as SecureStore from 'expo-secure-store';
@@ -18,15 +17,8 @@ import { COLORS, SPACING, RADIUS } from '../utils/theme';
 import { useAppStore, InstagramCredentials, BrandSettings } from '../store/appStore';
 import { INDUSTRIES } from '../services/aiService';
 import { supabase } from '../services/supabaseClient';
+import { connectInstagram, clearInstagramStorage, SK_USER_ID, SK_TOKEN, SK_USERNAME } from '../utils/instagram';
 
-const INSTAGRAM_APP_ID = process.env.EXPO_PUBLIC_INSTAGRAM_APP_ID ?? '';
-const REDIRECT_URI = 'https://instagram-api-alpha.vercel.app/';
-const SCOPES =
-  'instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments,instagram_business_content_publish,instagram_business_manage_insights';
-
-const SK_USER_ID = 'instagram_user_id';
-const SK_TOKEN = 'instagram_access_token';
-const SK_USERNAME = 'instagram_username';
 const SK_BRAND = 'brand_settings_v1';
 
 async function save(key: string, value: string) {
@@ -37,11 +29,6 @@ async function save(key: string, value: string) {
 async function load(key: string): Promise<string | null> {
   if (Platform.OS === 'web') return localStorage.getItem(key);
   return SecureStore.getItemAsync(key);
-}
-
-async function remove(key: string) {
-  if (Platform.OS === 'web') localStorage.removeItem(key);
-  else await SecureStore.deleteItemAsync(key);
 }
 
 const TONES = ['明るい・ポジティブ', 'プロフェッショナル', 'カジュアル', '感情的・共感', 'ユーモラス'];
@@ -110,15 +97,7 @@ export default function ProfileScreen() {
   }, []);
 
   const handleInstagramLogin = () => {
-    const url =
-      `https://www.instagram.com/oauth/authorize?` +
-      `force_reauth=true` +
-      `&client_id=${INSTAGRAM_APP_ID}` +
-      `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
-      `&response_type=code` +
-      `&scope=${encodeURIComponent(SCOPES)}`;
-    if (Platform.OS === 'web') window.location.href = url;
-    else Linking.openURL(url);
+    connectInstagram();
   };
 
   const openIgModal = () => {
@@ -149,19 +128,21 @@ export default function ProfileScreen() {
     }
   };
 
+  const doDisconnect = async () => {
+    await clearInstagramStorage();
+    setInstagramCredentials(null);
+  };
+
   const handleDisconnect = () => {
+    if (Platform.OS === 'web') {
+      if (window.confirm('Instagramアカウントの連携を解除しますか？')) {
+        doDisconnect();
+      }
+      return;
+    }
     Alert.alert('連携解除', 'Instagramアカウントの連携を解除しますか？', [
       { text: 'キャンセル', style: 'cancel' },
-      {
-        text: '解除',
-        style: 'destructive',
-        onPress: async () => {
-          await remove(SK_USER_ID);
-          await remove(SK_TOKEN);
-          await remove(SK_USERNAME);
-          setInstagramCredentials(null);
-        },
-      },
+      { text: '解除', style: 'destructive', onPress: doDisconnect },
     ]);
   };
 

@@ -15,6 +15,7 @@ import { supabase } from '../services/supabaseClient';
 import { useAppStore } from '../store/appStore';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
 import AuthScreen from '../screens/AuthScreen';
+import { connectInstagram, clearInstagramStorage } from '../utils/instagram';
 
 const PLANS = [
   {
@@ -48,6 +49,7 @@ export default function AccountBadge() {
   const [session, setSession] = useState<Session | null>(null);
   const [visible, setVisible] = useState(false);
   const instagramCredentials = useAppStore((s) => s.instagramCredentials);
+  const setInstagramCredentials = useAppStore((s) => s.setInstagramCredentials);
   const authVisible = useAppStore((s) => s.loginPromptVisible);
   const setAuthVisible = useAppStore((s) => s.setLoginPromptVisible);
 
@@ -63,6 +65,29 @@ export default function AccountBadge() {
   const email = session?.user?.email ?? '';
   const initial = (email.trim()[0] ?? '?').toUpperCase();
   const currentPlan = PLANS.find((p) => p.current);
+
+  const handleConnectIg = () => {
+    setVisible(false);
+    connectInstagram();
+  };
+
+  const doDisconnectIg = async () => {
+    await clearInstagramStorage();
+    setInstagramCredentials(null);
+  };
+
+  const handleDisconnectIg = () => {
+    if (Platform.OS === 'web') {
+      if (window.confirm('Instagramアカウントの連携を解除しますか？')) {
+        doDisconnectIg();
+      }
+      return;
+    }
+    Alert.alert('連携解除', 'Instagramアカウントの連携を解除しますか？', [
+      { text: 'キャンセル', style: 'cancel' },
+      { text: '解除', style: 'destructive', onPress: doDisconnectIg },
+    ]);
+  };
 
   const handleLogout = () => {
     setVisible(false);
@@ -155,11 +180,22 @@ export default function AccountBadge() {
               {/* Instagram連携状態 */}
               <View style={styles.igRow}>
                 <Text style={styles.igLabel}>Instagram</Text>
-                <Text style={[styles.igStatus, { color: instagramCredentials ? COLORS.success : COLORS.textMuted }]}>
-                  {instagramCredentials
-                    ? (instagramCredentials.username ? `@${instagramCredentials.username}` : '連携済み')
-                    : '未連携'}
-                </Text>
+                <View style={styles.igRight}>
+                  <Text style={[styles.igStatus, { color: instagramCredentials ? COLORS.success : COLORS.textMuted }]}>
+                    {instagramCredentials
+                      ? (instagramCredentials.username ? `@${instagramCredentials.username}` : '連携済み')
+                      : '未連携'}
+                  </Text>
+                  {instagramCredentials ? (
+                    <TouchableOpacity style={styles.igDisconnectBtn} onPress={handleDisconnectIg} activeOpacity={0.8}>
+                      <Text style={styles.igDisconnectText}>解除</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity style={styles.igConnectBtn} onPress={handleConnectIg} activeOpacity={0.8}>
+                      <Text style={styles.igConnectText}>連携する</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
               </View>
 
               {/* 現在のプラン */}
@@ -309,7 +345,25 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
   },
   igLabel: { color: COLORS.textSecondary, fontSize: 14, fontWeight: '600' },
+  igRight: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
   igStatus: { fontSize: 14, fontWeight: '700' },
+  igConnectBtn: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 6,
+    borderRadius: RADIUS.full,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as object) : {}),
+  },
+  igConnectText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  igDisconnectBtn: {
+    borderWidth: 1,
+    borderColor: COLORS.error,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 6,
+    borderRadius: RADIUS.full,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as object) : {}),
+  },
+  igDisconnectText: { color: COLORS.error, fontSize: 13, fontWeight: '700' },
   sectionTitle: {
     color: COLORS.textMuted,
     fontSize: 12,
