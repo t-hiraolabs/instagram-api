@@ -1,5 +1,5 @@
-// 「本日の出勤」ストーリー作成：その日のグループ写真1枚＋メンバー名 → ストーリー画像を作って投稿/予約
-import React, { useState } from 'react';
+// 「本日の出勤」：メンバーを登録 → 今日いる人をタップ選択 → その写真で自動レイアウトして投稿/予約
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -15,13 +15,14 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
-import { composeRoster, todayLabel } from '../utils/composeRoster';
+import { composeRoster, todayLabel, RosterMember } from '../utils/composeRoster';
 import { getAccountTheme } from '../utils/accountThemes';
 import { useAppStore } from '../store/appStore';
 import { ensureLoggedIn } from '../utils/requireLogin';
 import { uploadBlob } from '../services/storage';
 import { publishNow } from '../services/publishNow';
 import { createScheduledPost } from '../services/scheduleService';
+import { listMembers, addMember, deleteMember, Member } from '../services/memberService';
 
 function parseDate(str: string): Date | null {
   const d = new Date(str.replace(/\//g, '-').replace(' ', 'T'));
@@ -33,9 +34,18 @@ export default function RosterScreen({ onBack }: { onBack?: () => void } = {}) {
   const brandSettings = useAppStore((s) => s.brandSettings);
   const instagramCredentials = useAppStore((s) => s.instagramCredentials);
 
-  const [photoUri, setPhotoUri] = useState('');
+  const [members, setMembers] = useState<Member[]>([]);
+  const [loadingMembers, setLoadingMembers] = useState(true);
+  const [selected, setSelected] = useState<Record<string, boolean>>({});
+  const [editMode, setEditMode] = useState(false);
+
+  // メンバー追加フォーム
+  const [addOpen, setAddOpen] = useState(false);
+  const [addName, setAddName] = useState('');
+  const [addPhoto, setAddPhoto] = useState('');
+  const [adding, setAdding] = useState(false);
+
   const [title, setTitle] = useState('本日の出勤');
-  const [namesText, setNamesText] = useState('');
   const [composing, setComposing] = useState(false);
   const [previewUrl, setPreviewUrl] = useState('');
   const [blob, setBlob] = useState<Blob | null>(null);
@@ -48,10 +58,27 @@ export default function RosterScreen({ onBack }: { onBack?: () => void } = {}) {
     else Alert.alert(t, msg);
   };
 
-  const splitNames = (s: string) =>
-    s.split(/[\n、,，・\s]+/).map((x) => x.trim()).filter(Boolean);
+  const loadMembers = async () => {
+    setLoadingMembers(true);
+    try {
+      setMembers(await listMembers());
+    } catch {
+      alertMsg('メンバーの読み込みに失敗しました（先にmembersテーブルのSQLを実行してください）', 'エラー');
+    } finally {
+      setLoadingMembers(false);
+    }
+  };
 
-  const pickPhoto = async () => {
+  useEffect(() => {
+    loadMembers();
+  }, []);
+
+  const toggle = (id: string) => {
+    setSelected((p) => ({ ...p, [id]: !p[id] }));
+    setPreviewUrl('');
+  };
+
+  const pickAddPhoto = async () => {
     const { status: perm } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (perm !== 'granted') {
       alertMsg('写真へのアクセスを許可してください', '権限エラー');
@@ -59,26 +86,71 @@ export default function RosterScreen({ onBack }: { onBack?: () => void } = {}) {
     }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [3, 4],
       quality: 0.9,
     });
-    if (result.canceled) return;
-    setPhotoUri(result.assets[0].uri);
-    setPreviewUrl('');
-    setBlob(null);
+    if (!result.canceled) setAddPhoto(result.assets[0].uri);
   };
 
+  const submitAdd = async () => {
+    if (!addPhoto) {
+      alertMsg('写真を選んでください');
+      return;
+    }
+    if (!addName.trim()) {
+      alertMsg('名前を入力してください');
+      return;
+    }
+    if (!(await ensureLoggedIn('メンバー登録にはログインが必要です'))) return;
+    setAdding(true);
+    try {
+      await addMember(addName, addPhoto);
+      setAddName('');
+      setAddPhoto('');
+      setAddOpen(false);
+      await loadMembers();
+    } catch (e) {
+      alertMsg((e as { message?: string })?.message || '登録に失敗しました', 'エラー');
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  const removeMember = (m: Member) => {
+    const go = async () => {
+      try {
+        await deleteMember(m.id);
+        setMembers((prev) => prev.filter((x) => x.id !== m.id));
+      } catch {
+        alertMsg('削除に失敗しました');
+      }
+    };
+    if (Platform.OS === 'web') {
+      if (window.confirm(`「${m.name}」を削除しますか？`)) go();
+    } else {
+      Alert.alert('削除', `「${m.name}」を削除しますか？`, [
+        { text: 'キャンセル', style: 'cancel' },
+        { text: '削除', style: 'destructive', onPress: go },
+      ]);
+    }
+  };
+
+  const selectedMembers = members.filter((m) => selected[m.id] && m.photo_url);
+
   const handleCompose = async () => {
-    if (!photoUri) {
-      alertMsg('今日の写真を選んでください');
+    if (selectedMembers.length === 0) {
+      alertMsg('今日の出勤メンバーを1人以上選んでください');
       return;
     }
     setComposing(true);
     try {
       const accent = getAccountTheme(brandSettings.accountType).accent;
-      const { blob: b, previewUrl: url } = await composeRoster(photoUri, splitNames(namesText), {
-        title,
-        accent,
-      });
+      const list: RosterMember[] = selectedMembers.map((m) => ({
+        imageUri: m.photo_url as string,
+        name: m.name,
+      }));
+      const { blob: b, previewUrl: url } = await composeRoster(list, { title, accent });
       setBlob(b);
       setPreviewUrl(url);
     } catch (e) {
@@ -175,8 +247,87 @@ export default function RosterScreen({ onBack }: { onBack?: () => void } = {}) {
         <Text style={styles.title}>本日の出勤</Text>
       </View>
       <Text style={styles.desc}>
-        今日の写真（みんなで写ったものでOK）を1枚選んで、メンバー名を入れると、日付入りの「本日の出勤」ストーリーを作ります（{todayLabel()}）。
+        メンバーを登録して、今日いる人をタップで選ぶだけ。日付入りの出勤ストーリーを自動で作ります（{todayLabel()}）。
       </Text>
+
+      <View style={styles.rowBetween}>
+        <Text style={styles.sectionTitle}>メンバー（タップで今日の出勤を選択）</Text>
+        {members.length > 0 && (
+          <TouchableOpacity onPress={() => setEditMode((v) => !v)}>
+            <Text style={styles.manageText}>{editMode ? '完了' : '編集'}</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {loadingMembers ? (
+        <ActivityIndicator color={COLORS.primary} style={{ marginVertical: SPACING.lg }} />
+      ) : (
+        <View style={styles.grid}>
+          {members.map((m) => {
+            const on = !!selected[m.id];
+            return (
+              <TouchableOpacity
+                key={m.id}
+                style={styles.chip}
+                onPress={() => (editMode ? removeMember(m) : toggle(m.id))}
+                activeOpacity={0.85}
+              >
+                <Image
+                  source={{ uri: m.photo_url ?? undefined }}
+                  style={[styles.avatar, on && !editMode && styles.avatarOn]}
+                />
+                {on && !editMode && <Text style={styles.check}>✓</Text>}
+                {editMode && <Text style={styles.del}>✕</Text>}
+                <Text style={styles.chipName} numberOfLines={1}>
+                  {m.name}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+
+          {/* 追加ボタン */}
+          <TouchableOpacity
+            style={[styles.chip, styles.addChip]}
+            onPress={() => setAddOpen((v) => !v)}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.addPlus}>＋</Text>
+            <Text style={styles.chipName}>追加</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {addOpen && (
+        <View style={styles.addPanel}>
+          <Text style={styles.addPanelTitle}>メンバーを登録</Text>
+          <TouchableOpacity style={styles.addPhotoBox} onPress={pickAddPhoto} activeOpacity={0.85}>
+            {addPhoto ? (
+              <Image source={{ uri: addPhoto }} style={styles.addPhotoPreview} resizeMode="cover" />
+            ) : (
+              <Text style={styles.pickBoxText}>＋ 写真を選ぶ</Text>
+            )}
+          </TouchableOpacity>
+          <TextInput
+            style={styles.input}
+            value={addName}
+            onChangeText={setAddName}
+            placeholder="名前（例: あい）"
+            placeholderTextColor={COLORS.textMuted}
+          />
+          <TouchableOpacity
+            style={[styles.composeBtn, adding && styles.disabled, { marginTop: SPACING.sm }]}
+            onPress={submitAdd}
+            disabled={adding}
+            activeOpacity={0.85}
+          >
+            {adding ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.composeBtnText}>登録する</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      )}
 
       <Text style={styles.label}>見出し</Text>
       <TextInput
@@ -190,28 +341,6 @@ export default function RosterScreen({ onBack }: { onBack?: () => void } = {}) {
         placeholderTextColor={COLORS.textMuted}
       />
 
-      <Text style={styles.label}>今日の写真</Text>
-      <TouchableOpacity style={styles.pickBox} onPress={pickPhoto} activeOpacity={0.85}>
-        {photoUri ? (
-          <Image source={{ uri: photoUri }} style={styles.pickPreview} resizeMode="cover" />
-        ) : (
-          <Text style={styles.pickBoxText}>＋ 写真を選ぶ（みんなで写ったもの）</Text>
-        )}
-      </TouchableOpacity>
-
-      <Text style={styles.label}>メンバー名（改行や「、」で区切る・任意）</Text>
-      <TextInput
-        style={[styles.input, { height: 90, textAlignVertical: 'top' }]}
-        value={namesText}
-        onChangeText={(t) => {
-          setNamesText(t);
-          setPreviewUrl('');
-        }}
-        placeholder={'例:\nあい、ゆな、れな'}
-        placeholderTextColor={COLORS.textMuted}
-        multiline
-      />
-
       <TouchableOpacity
         style={[styles.composeBtn, composing && styles.disabled]}
         onPress={handleCompose}
@@ -221,7 +350,9 @@ export default function RosterScreen({ onBack }: { onBack?: () => void } = {}) {
         {composing ? (
           <ActivityIndicator color="#fff" />
         ) : (
-          <Text style={styles.composeBtnText}>🎨 プレビューを作成</Text>
+          <Text style={styles.composeBtnText}>
+            🎨 プレビューを作成（{selectedMembers.length}人）
+          </Text>
         )}
       </TouchableOpacity>
 
@@ -275,12 +406,91 @@ export default function RosterScreen({ onBack }: { onBack?: () => void } = {}) {
   );
 }
 
+const AV = 92;
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background, paddingHorizontal: SPACING.lg },
   header: { marginBottom: SPACING.sm },
   title: { color: COLORS.text, fontSize: 24, fontWeight: '800' },
   backText: { color: COLORS.primary, fontSize: 14, fontWeight: '700' },
   desc: { color: COLORS.textSecondary, fontSize: 13, marginBottom: SPACING.md },
+  rowBetween: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: SPACING.md,
+  },
+  sectionTitle: { color: COLORS.text, fontSize: 14, fontWeight: '800' },
+  manageText: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.md, marginTop: SPACING.sm },
+  chip: { width: AV, alignItems: 'center' },
+  avatar: {
+    width: AV,
+    height: AV,
+    borderRadius: RADIUS.md,
+    backgroundColor: '#222',
+    borderWidth: 3,
+    borderColor: 'transparent',
+  },
+  avatarOn: { borderColor: COLORS.primary },
+  check: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    color: '#fff',
+    backgroundColor: COLORS.primary,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    textAlign: 'center',
+    lineHeight: 24,
+    fontSize: 14,
+    fontWeight: '800',
+    overflow: 'hidden',
+  },
+  del: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    color: '#fff',
+    backgroundColor: COLORS.error ?? '#E5484D',
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    textAlign: 'center',
+    lineHeight: 24,
+    fontSize: 13,
+    fontWeight: '800',
+    overflow: 'hidden',
+  },
+  chipName: { color: COLORS.text, fontSize: 12, marginTop: 4, maxWidth: AV },
+  addChip: {
+    height: AV,
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: COLORS.primary + '66',
+    borderRadius: RADIUS.md,
+    borderStyle: 'dashed',
+  },
+  addPlus: { color: COLORS.primary, fontSize: 28, fontWeight: '800' },
+  addPanel: {
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.md,
+    padding: SPACING.md,
+    marginTop: SPACING.md,
+  },
+  addPanelTitle: { color: COLORS.text, fontSize: 14, fontWeight: '800', marginBottom: SPACING.sm },
+  addPhotoBox: {
+    backgroundColor: COLORS.surfaceElevated,
+    borderRadius: RADIUS.sm,
+    height: 150,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    marginBottom: SPACING.sm,
+  },
+  addPhotoPreview: { width: '100%', height: 150 },
+  pickBoxText: { color: COLORS.primary, fontSize: 15, fontWeight: '700' },
   label: { color: COLORS.textMuted, fontSize: 13, marginTop: SPACING.md, marginBottom: 4 },
   input: {
     backgroundColor: COLORS.surfaceElevated,
@@ -289,18 +499,6 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     fontSize: 14,
   },
-  pickBox: {
-    backgroundColor: COLORS.surfaceElevated,
-    borderWidth: 1,
-    borderColor: COLORS.primary + '55',
-    borderRadius: RADIUS.md,
-    minHeight: 160,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  pickBoxText: { color: COLORS.primary, fontSize: 15, fontWeight: '700', padding: SPACING.lg },
-  pickPreview: { width: '100%', height: 220 },
   composeBtn: {
     backgroundColor: COLORS.primary,
     borderRadius: RADIUS.md,
