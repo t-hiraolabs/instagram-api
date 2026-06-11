@@ -31,10 +31,14 @@ async function getFFmpeg(onLog?: (msg: string) => void) {
     const { toBlobURL } = (window as any).FFmpegUtil;
     const ffmpeg = new FFmpeg();
     if (onLog) ffmpeg.on('log', ({ message }: any) => onLog(message));
-    const base = `https://unpkg.com/@ffmpeg/core@${CORE_VER}/dist/umd`;
+    const ffBase = `https://unpkg.com/@ffmpeg/ffmpeg@${FF_VER}/dist/umd`;
+    const coreBase = `https://unpkg.com/@ffmpeg/core@${CORE_VER}/dist/umd`;
+    // ワーカーも blob URL（自分のオリジン扱い）にしてからロードする
+    // ※ これをしないと別オリジンの Worker 構築でブラウザにブロックされる
     await ffmpeg.load({
-      coreURL: await toBlobURL(`${base}/ffmpeg-core.js`, 'text/javascript'),
-      wasmURL: await toBlobURL(`${base}/ffmpeg-core.wasm`, 'application/wasm'),
+      classWorkerURL: await toBlobURL(`${ffBase}/814.ffmpeg.js`, 'text/javascript'),
+      coreURL: await toBlobURL(`${coreBase}/ffmpeg-core.js`, 'text/javascript'),
+      wasmURL: await toBlobURL(`${coreBase}/ffmpeg-core.wasm`, 'application/wasm'),
     });
     return ffmpeg;
   })();
