@@ -168,6 +168,16 @@ export default function ReelScreen() {
     return ensureLoggedIn('投稿にはログインが必要です');
   };
 
+  const downloadReel = () => {
+    if (!previewUrl || typeof document === 'undefined') return;
+    const a = document.createElement('a');
+    a.href = previewUrl;
+    a.download = `reel-${Date.now()}.mp4`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
+
   const handlePublishReel = async () => {
     if (!(await ensureReady())) return;
     if (Platform.OS === 'web' && !window.confirm('このリールを今すぐ投稿します。よろしいですか？')) {
@@ -362,6 +372,16 @@ export default function ReelScreen() {
 
       {previewUrl ? (
         <View style={styles.postWrap}>
+          {/* おすすめ：保存してInstagramで音楽をつけて投稿 */}
+          <TouchableOpacity style={styles.saveBtn} onPress={downloadReel} activeOpacity={0.85}>
+            <Text style={styles.saveBtnText}>📥 動画を保存する</Text>
+          </TouchableOpacity>
+          <Text style={styles.saveHint}>
+            おすすめ：保存した動画をInstagramアプリで投稿すると、トレンド音楽を付けられます
+          </Text>
+
+          <Text style={styles.orDivider}>― または アプリから直接投稿（音楽なし） ―</Text>
+
           <Text style={styles.sectionTitle}>キャプション</Text>
           <TextInput
             style={[styles.input, { height: 80, textAlignVertical: 'top' }]}
@@ -500,6 +520,20 @@ const styles = StyleSheet.create({
   createBtnText: { color: '#fff', fontSize: 15, fontWeight: '800' },
   status: { color: COLORS.textMuted, fontSize: 12, marginTop: SPACING.sm, textAlign: 'center' },
   postWrap: { marginTop: SPACING.xl },
+  saveBtn: {
+    backgroundColor: COLORS.success ?? '#4CAF50',
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.md,
+    alignItems: 'center',
+  },
+  saveBtnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  saveHint: { color: COLORS.textMuted, fontSize: 12, marginTop: SPACING.sm, textAlign: 'center' },
+  orDivider: {
+    color: COLORS.textMuted,
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: SPACING.lg,
+  },
   sectionTitle: {
     color: COLORS.text,
     fontSize: 15,
