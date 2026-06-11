@@ -101,22 +101,34 @@ export async function renderSlide(imageUri: string, text?: string): Promise<stri
   ctx.drawImage(img, (W - dw) / 2, (H - dh) / 2, dw, dh);
 
   if (text && text.trim()) {
-    const grad = ctx.createLinearGradient(0, H * 0.55, 0, H);
+    // 下に向かって濃くなるグラデーション（文字を読みやすく）
+    const grad = ctx.createLinearGradient(0, H * 0.45, 0, H);
     grad.addColorStop(0, 'rgba(0,0,0,0)');
-    grad.addColorStop(1, 'rgba(0,0,0,0.8)');
+    grad.addColorStop(1, 'rgba(0,0,0,0.85)');
     ctx.fillStyle = grad;
-    ctx.fillRect(0, H * 0.55, W, H * 0.45);
+    ctx.fillRect(0, H * 0.45, W, H * 0.55);
 
-    ctx.fillStyle = '#FFFFFF';
     ctx.textAlign = 'center';
-    ctx.shadowColor = 'rgba(0,0,0,0.6)';
-    ctx.shadowBlur = 10;
-    ctx.font = 'bold 56px sans-serif';
+    ctx.font = 'bold 64px sans-serif';
     const lines = wrapText(ctx, text.trim(), W - 120);
-    let y = H - 110 - (lines.length - 1) * 70;
+    const lineH = 82;
+    const blockH = lines.length * lineH;
+    const baseY = H - 150 - blockH + lineH; // 下から少し上に配置
+
+    // 見出しの上に Instagram ピンクのアクセントバー
+    ctx.shadowColor = 'transparent';
+    ctx.fillStyle = '#E1306C';
+    const barW = 90;
+    ctx.fillRect((W - barW) / 2, baseY - lineH - 18, barW, 8);
+
+    // 見出し本体（白・太字・影つき）
+    ctx.fillStyle = '#FFFFFF';
+    ctx.shadowColor = 'rgba(0,0,0,0.65)';
+    ctx.shadowBlur = 14;
+    let y = baseY;
     for (const line of lines) {
       ctx.fillText(line, W / 2, y);
-      y += 70;
+      y += lineH;
     }
   }
 
@@ -145,22 +157,43 @@ export async function createReel(
     await ffmpeg.writeFile(`s${i}.jpg`, await fetchFile(dataUrl));
   }
 
-  // 各画像を secondsPer 秒ずつ表示する動画に（無音・30fps・H.264）
-  await ffmpeg.exec([
-    '-framerate',
-    `1/${secondsPer}`,
-    '-i',
-    's%d.jpg',
-    '-r',
-    '30',
-    '-c:v',
-    'libx264',
-    '-pix_fmt',
-    'yuv420p',
-    '-movflags',
-    '+faststart',
-    'out.mp4',
-  ]);
+  const N = slides.length;
+
+  if (N === 1) {
+    // 1枚だけ：その写真を secondsPer 秒表示
+    await ffmpeg.exec([
+      '-framerate', '30', '-loop', '1', '-t', `${secondsPer}`, '-i', 's0.jpg',
+      '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', 'out.mp4',
+    ]);
+  } else {
+    // 複数枚：写真の切り替わりをフェード(クロスフェード)で滑らかに
+    const T = 0.5; // 切り替えにかける秒数
+    const inputs: string[] = [];
+    for (let i = 0; i < N; i++) {
+      inputs.push('-framerate', '30', '-loop', '1', '-t', `${secondsPer}`, '-i', `s${i}.jpg`);
+    }
+    const parts: string[] = [];
+    let prev = '[0]';
+    for (let i = 1; i < N; i++) {
+      const offset = (i * (secondsPer - T)).toFixed(3);
+      const out = i === N - 1 ? '[vchain]' : `[vx${i}]`;
+      parts.push(`${prev}[${i}]xfade=transition=fade:duration=${T}:offset=${offset}${out}`);
+      prev = `[vx${i}]`;
+    }
+    parts.push('[vchain]format=yuv420p[vo]');
+    const filter = parts.join(';');
+
+    await ffmpeg.exec([
+      ...inputs,
+      '-filter_complex', filter,
+      '-map', '[vo]',
+      '-r', '30',
+      '-c:v', 'libx264',
+      '-pix_fmt', 'yuv420p',
+      '-movflags', '+faststart',
+      'out.mp4',
+    ]);
+  }
 
   const data = await ffmpeg.readFile('out.mp4');
   const blob = new Blob([(data as Uint8Array).buffer], { type: 'video/mp4' });
