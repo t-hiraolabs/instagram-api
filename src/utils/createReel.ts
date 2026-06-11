@@ -36,8 +36,13 @@ async function getFFmpeg(onLog?: (msg: string) => void) {
     // （ESMワーカーは相対importを持つため blob 化すると壊れる）。
     const ffEsm = `https://unpkg.com/@ffmpeg/ffmpeg@${FF_VER}/dist/esm`;
     const coreEsm = `https://unpkg.com/@ffmpeg/core@${CORE_VER}/dist/esm`;
+    // ワーカー本体スクリプトは「同一オリジン」でないと new Worker できない。
+    // そこで「別サイトのworker.jsをimportするだけ」の極小ワーカーを同一オリジンのblobで作る。
+    // （中の import はモジュールワーカーなのでCORS許可があれば別オリジンでも通る）
+    const shim = `import "${ffEsm}/worker.js";`;
+    const workerURL = URL.createObjectURL(new Blob([shim], { type: 'text/javascript' }));
     await ffmpeg.load({
-      classWorkerURL: `${ffEsm}/worker.js`,
+      classWorkerURL: workerURL,
       coreURL: `${coreEsm}/ffmpeg-core.js`,
       wasmURL: `${coreEsm}/ffmpeg-core.wasm`,
     });
