@@ -17,6 +17,7 @@ export interface InstagramCredentials {
 export interface BrandSettings {
   brandName: string;
   industry: string;
+  accountType: string;
   targetAudience: string;
   tone: string;
   apiKey: string;
@@ -73,6 +74,7 @@ export const useAppStore = create<AppState>((set) => ({
   brandSettings: {
     brandName: '',
     industry: '',
+    accountType: 'personal',
     targetAudience: '',
     tone: '明るい・ポジティブ',
     apiKey: '',

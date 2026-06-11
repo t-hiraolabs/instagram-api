@@ -83,8 +83,36 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number)
   return lines;
 }
 
+function roundRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number
+) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+export interface SlideTheme {
+  accent: string;
+  captionStyle: 'outline' | 'pill' | 'band';
+}
+
+const DEFAULT_SLIDE_THEME: SlideTheme = { accent: '#E1306C', captionStyle: 'outline' };
+
 /** 1枚の写真を720x1280にcoverで配置し、文字をのせてJPEG(dataURL)を返す */
-export async function renderSlide(imageUri: string, text?: string): Promise<string> {
+export async function renderSlide(
+  imageUri: string,
+  text?: string,
+  theme: SlideTheme = DEFAULT_SLIDE_THEME
+): Promise<string> {
   const canvas = document.createElement('canvas');
   canvas.width = W;
   canvas.height = H;
@@ -100,45 +128,72 @@ export async function renderSlide(imageUri: string, text?: string): Promise<stri
   const dh = img.height * scale;
   ctx.drawImage(img, (W - dw) / 2, (H - dh) / 2, dw, dh);
 
-  if (text && text.trim()) {
-    // 控えめな下グラデーション（保険）
-    const grad = ctx.createLinearGradient(0, H * 0.5, 0, H);
-    grad.addColorStop(0, 'rgba(0,0,0,0)');
-    grad.addColorStop(1, 'rgba(0,0,0,0.55)');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, H * 0.5, W, H * 0.5);
-
+  const t = text?.trim();
+  if (t) {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'alphabetic';
-    ctx.font = '800 78px sans-serif';
-    try {
-      (ctx as any).letterSpacing = '1px';
-    } catch (_e) {
-      // 未対応ブラウザは無視
-    }
-
-    const lines = wrapText(ctx, text.trim(), W - 110);
-    const lineH = 96;
+    ctx.font = '800 76px sans-serif';
+    const lines = wrapText(ctx, t, W - 140);
+    const lineH = 94;
     const blockH = lines.length * lineH;
-    const baseY = H - 170 - blockH + lineH; // 下寄せ（少し上）
+    const cx = W / 2;
+    const bottom = H - 150; // 文字ブロックの下端
+    const topY = bottom - blockH; // ブロック上端
 
-    // CapCut風の縁取り太字キャプション（黒フチ＋白文字）
-    ctx.lineJoin = 'round';
-    ctx.miterLimit = 2;
-    let y = baseY;
-    for (const line of lines) {
-      ctx.lineWidth = 16;
-      ctx.strokeStyle = 'rgba(0,0,0,0.92)';
-      ctx.strokeText(line, W / 2, y);
+    const maxLineW = Math.max(...lines.map((l) => ctx.measureText(l).width));
+
+    if (theme.captionStyle === 'pill') {
+      // アクセント色の角丸パネル＋白文字
+      const padX = 46;
+      const padY = 30;
+      const pw = Math.min(W - 60, maxLineW + padX * 2);
+      const ph = blockH + padY * 2 - (lineH - 76);
+      roundRect(ctx, cx - pw / 2, topY - padY - 56, pw, ph, 28);
+      ctx.fillStyle = theme.accent;
+      ctx.fill();
       ctx.fillStyle = '#FFFFFF';
-      ctx.fillText(line, W / 2, y);
-      y += lineH;
-    }
+      ctx.shadowColor = 'transparent';
+      let y = topY;
+      for (const line of lines) {
+        ctx.fillText(line, cx, y);
+        y += lineH;
+      }
+    } else if (theme.captionStyle === 'band') {
+      // 全幅の半透明バンド＋上にアクセントライン＋白文字
+      const bandTop = topY - 70;
+      const bandH = blockH + 90;
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillRect(0, bandTop, W, bandH);
+      ctx.fillStyle = theme.accent;
+      ctx.fillRect(0, bandTop, W, 8);
+      ctx.fillStyle = '#FFFFFF';
+      ctx.shadowColor = 'transparent';
+      let y = topY;
+      for (const line of lines) {
+        ctx.fillText(line, cx, y);
+        y += lineH;
+      }
+    } else {
+      // outline: 黒フチ＋白文字（＋下にアクセントの短い下線）
+      const grad = ctx.createLinearGradient(0, H * 0.55, 0, H);
+      grad.addColorStop(0, 'rgba(0,0,0,0)');
+      grad.addColorStop(1, 'rgba(0,0,0,0.5)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, H * 0.55, W, H * 0.45);
 
-    try {
-      (ctx as any).letterSpacing = '0px';
-    } catch (_e) {
-      // noop
+      ctx.lineJoin = 'round';
+      ctx.miterLimit = 2;
+      let y = topY;
+      for (const line of lines) {
+        ctx.lineWidth = 16;
+        ctx.strokeStyle = 'rgba(0,0,0,0.92)';
+        ctx.strokeText(line, cx, y);
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillText(line, cx, y);
+        y += lineH;
+      }
+      ctx.fillStyle = theme.accent;
+      ctx.fillRect(cx - 45, bottom + 18, 90, 8);
     }
   }
 
@@ -154,7 +209,8 @@ export interface ReelSlide {
 export async function createReel(
   slides: ReelSlide[],
   secondsPer = 3,
-  onLog?: (msg: string) => void
+  onLog?: (msg: string) => void,
+  theme: SlideTheme = DEFAULT_SLIDE_THEME
 ): Promise<{ blob: Blob; url: string }> {
   if (slides.length === 0) throw new Error('写真を1枚以上選んでください');
 
@@ -163,7 +219,7 @@ export async function createReel(
 
   // 各スライドを描画して書き込み（s0.jpg, s1.jpg, ...）
   for (let i = 0; i < slides.length; i++) {
-    const dataUrl = await renderSlide(slides[i].imageUri, slides[i].text);
+    const dataUrl = await renderSlide(slides[i].imageUri, slides[i].text, theme);
     await ffmpeg.writeFile(`s${i}.jpg`, await fetchFile(dataUrl));
   }
 

@@ -19,6 +19,7 @@ import { createReel } from '../utils/createReel';
 import { generateReelCaptions } from '../services/aiService';
 import { ensureLoggedIn } from '../utils/requireLogin';
 import { useAppStore } from '../store/appStore';
+import { getAccountTheme } from '../utils/accountThemes';
 
 interface Slide {
   uri: string;
@@ -86,6 +87,7 @@ export default function ReelScreen() {
         theme: theme.trim(),
         count: slides.length,
         industry: brandSettings.industry,
+        toneHint: getAccountTheme(brandSettings.accountType).toneHint,
       });
       setSlides((prev) => prev.map((s, i) => ({ ...s, text: captions[i] ?? s.text })));
       setPreviewUrl('');
@@ -106,10 +108,12 @@ export default function ReelScreen() {
     setStatus('動画エンジンを準備中...（初回は少し時間がかかります）');
     const start = Date.now();
     try {
+      const at = getAccountTheme(brandSettings.accountType);
       const { url } = await createReel(
         slides.map((s) => ({ imageUri: s.uri, text: s.text })),
         SECONDS_PER,
-        (msg) => setStatus(msg)
+        (msg) => setStatus(msg),
+        { accent: at.accent, captionStyle: at.captionStyle }
       );
       setPreviewUrl(url);
       setElapsed(Math.round((Date.now() - start) / 1000));

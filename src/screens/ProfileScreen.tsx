@@ -16,6 +16,7 @@ import * as SecureStore from 'expo-secure-store';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
 import { useAppStore, InstagramCredentials, BrandSettings } from '../store/appStore';
 import { INDUSTRIES } from '../services/aiService';
+import { ACCOUNT_THEMES } from '../utils/accountThemes';
 import { supabase } from '../services/supabaseClient';
 import { getMyPlan } from '../services/scheduleService';
 import { connectInstagram, clearInstagramStorage, SK_USER_ID, SK_TOKEN, SK_USERNAME, SK_PICTURE } from '../utils/instagram';
@@ -322,6 +323,22 @@ export default function ProfileScreen() {
                   <Text style={styles.industryBtnEmoji}>{ind.emoji}</Text>
                   <Text style={[styles.industryBtnLabel, draftBrand.industry === ind.key && styles.industryBtnLabelActive]}>
                     {ind.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={styles.fieldLabel}>アカウントタイプ（文字・デザインに反映）</Text>
+            <View style={styles.industryGrid}>
+              {ACCOUNT_THEMES.map((at) => (
+                <TouchableOpacity
+                  key={at.key}
+                  style={[styles.industryBtn, draftBrand.accountType === at.key && styles.industryBtnActive]}
+                  onPress={() => setDraftBrand((p) => ({ ...p, accountType: at.key }))}
+                >
+                  <Text style={styles.industryBtnEmoji}>{at.emoji}</Text>
+                  <Text style={[styles.industryBtnLabel, draftBrand.accountType === at.key && styles.industryBtnLabelActive]}>
+                    {at.label}
                   </Text>
                 </TouchableOpacity>
               ))}

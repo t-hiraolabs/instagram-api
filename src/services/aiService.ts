@@ -157,6 +157,7 @@ export async function generateReelCaptions(input: {
   theme: string;
   count: number;
   industry?: string;
+  toneHint?: string;
 }): Promise<string[]> {
   const brandCtx = getBrandContext();
   const systemPrompt = `あなたはInstagramリールの構成作家です。
@@ -165,6 +166,7 @@ export async function generateReelCaptions(input: {
 
   const prompt = `テーマ「${input.theme}」のInstagramリール用に、スライド${input.count}枚分の短いキャプションを作ってください。${brandCtx}
 ${input.industry ? `業種: ${input.industry}` : ''}
+${input.toneHint ? `トーン: ${input.toneHint}` : ''}
 
 条件:
 - 各スライドに1つずつ、合計${input.count}個
