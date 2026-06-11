@@ -17,7 +17,12 @@ import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
 import { uploadPostImage, uploadBlob } from '../services/storage';
-import { composeStoryImage } from '../utils/composeStory';
+import {
+  composeStoryImage,
+  StoryTransform,
+  DEFAULT_TRANSFORM,
+} from '../utils/composeStory';
+import StoryEditor from '../components/StoryEditor';
 import { generateStory } from '../services/aiService';
 import {
   getScheduledPosts,
@@ -108,6 +113,9 @@ export default function ScheduleScreen() {
   const [storyBody, setStoryBody] = useState('');
   const [storyCta, setStoryCta] = useState('');
   const [storyTextColor, setStoryTextColor] = useState('#FFFFFF');
+  const [storyTransform, setStoryTransform] = useState<StoryTransform>({
+    ...DEFAULT_TRANSFORM,
+  });
   const [aiLoading, setAiLoading] = useState(false);
   const [composing, setComposing] = useState(false);
 
@@ -142,6 +150,7 @@ export default function ScheduleScreen() {
     setStoryBody('');
     setStoryCta('');
     setStoryTextColor('#FFFFFF');
+    setStoryTransform({ ...DEFAULT_TRANSFORM });
     setModalVisible(true);
   };
 
@@ -229,12 +238,16 @@ export default function ScheduleScreen() {
     }
     setComposing(true);
     try {
-      const { blob, previewUrl } = await composeStoryImage(storyRawUri, {
-        title: storyTitle.trim(),
-        bodyText: storyBody.trim(),
-        cta: storyCta.trim(),
-        textColor: storyTextColor,
-      });
+      const { blob, previewUrl } = await composeStoryImage(
+        storyRawUri,
+        {
+          title: storyTitle.trim(),
+          bodyText: storyBody.trim(),
+          cta: storyCta.trim(),
+          textColor: storyTextColor,
+        },
+        storyTransform
+      );
       setImagePreview(previewUrl);
       const publicUrl = await uploadBlob(blob);
       setImageUrl(publicUrl);
@@ -622,21 +635,47 @@ export default function ScheduleScreen() {
                   placeholderTextColor={COLORS.textMuted}
                 />
 
-                <TouchableOpacity
-                  style={[styles.composeBtn, composing && styles.publishNowBtnDisabled]}
-                  onPress={handleComposeStory}
-                  disabled={composing}
-                  activeOpacity={0.85}
-                >
-                  {composing ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <Text style={styles.composeBtnText}>🎨 プレビューを作成</Text>
-                  )}
-                </TouchableOpacity>
-                {imageUrl && !composing ? (
-                  <Text style={styles.imageReadyText}>✅ ストーリー画像の準備ができました</Text>
-                ) : null}
+                {storyRawUri &&
+                (storyTitle.trim() || storyBody.trim() || storyCta.trim()) ? (
+                  <>
+                    <Text style={styles.sectionDivider}>レイアウト調整</Text>
+                    <StoryEditor
+                      imageUri={storyRawUri}
+                      overlay={{
+                        title: storyTitle.trim(),
+                        bodyText: storyBody.trim(),
+                        cta: storyCta.trim(),
+                        textColor: storyTextColor,
+                      }}
+                      onChange={(t) => {
+                        setStoryTransform(t);
+                        setImageUrl('');
+                      }}
+                    />
+
+                    <TouchableOpacity
+                      style={[styles.composeBtn, composing && styles.publishNowBtnDisabled]}
+                      onPress={handleComposeStory}
+                      disabled={composing}
+                      activeOpacity={0.85}
+                    >
+                      {composing ? (
+                        <ActivityIndicator color="#fff" />
+                      ) : (
+                        <Text style={styles.composeBtnText}>✅ この画像で確定する</Text>
+                      )}
+                    </TouchableOpacity>
+                    {imageUrl && !composing ? (
+                      <Text style={styles.imageReadyText}>
+                        ✅ ストーリー画像の準備ができました
+                      </Text>
+                    ) : null}
+                  </>
+                ) : (
+                  <Text style={styles.publishNowHint}>
+                    写真を選び、文字を入力すると編集プレビューが表示されます
+                  </Text>
+                )}
               </>
             )}
 
