@@ -267,20 +267,20 @@ export default function ScheduleScreen() {
   // 今すぐInstagramに投稿（テスト/手動投稿）
   const handlePublishNow = async () => {
     if (type === 'feed' && !caption.trim()) {
-      Alert.alert('エラー', 'キャプションを入力してください');
+      alertMsg('キャプションを入力してください', '入力に不備があります');
       return;
     }
     if (!imageUrl.trim()) {
-      Alert.alert(
-        '画像が必要です',
+      alertMsg(
         type === 'story'
-          ? '写真を選び「プレビューを作成」を押してください'
-          : '写真を選んでください'
+          ? '写真を選び「✅ この画像で確定する」を押してください'
+          : '写真を選んでください',
+        '画像が必要です'
       );
       return;
     }
     if (!instagramCredentials?.userId || !instagramCredentials?.accessToken) {
-      Alert.alert('未連携', '右上のアイコンからInstagramを連携してください');
+      alertMsg('右上のアイコンからInstagramを連携してください', '未連携です');
       return;
     }
     if (!(await ensureLoggedIn('投稿するにはログインが必要です'))) return;
@@ -315,25 +315,29 @@ export default function ScheduleScreen() {
 
   const handleSave = async () => {
     if (type === 'feed' && !caption.trim()) {
-      Alert.alert('エラー', 'キャプションを入力してください');
+      alertMsg('キャプションを入力してください', '入力に不備があります');
       return;
     }
     if (!imageUrl.trim()) {
-      Alert.alert(
-        '画像が必要です',
+      alertMsg(
         type === 'story'
-          ? '写真を選び「プレビューを作成」を押してください'
-          : '写真を選んでください'
+          ? '写真を選び「✅ この画像で確定する」を押してください'
+          : '写真を選んでください',
+        '画像が必要です'
       );
+      return;
+    }
+    if (!dateText.trim()) {
+      alertMsg('予約日時を選んでください（おすすめ時間帯から選べます）', '日時が未入力です');
       return;
     }
     const scheduledDate = parseDate(dateText);
     if (!scheduledDate) {
-      Alert.alert('エラー', '日時の形式が正しくありません\n例: 2026-06-15T18:00');
+      alertMsg('日時の形式が正しくありません\n例: 2026-06-15T18:00', '入力に不備があります');
       return;
     }
     if (scheduledDate <= new Date()) {
-      Alert.alert('エラー', '予約日時は未来の日時を指定してください');
+      alertMsg('予約日時は未来の日時を指定してください', '入力に不備があります');
       return;
     }
     if (!(await ensureLoggedIn('予約投稿を保存するにはログインが必要です'))) return;
