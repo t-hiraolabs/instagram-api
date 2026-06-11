@@ -17,31 +17,27 @@ import { useAppStore } from '../store/appStore';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
 import AuthScreen from '../screens/AuthScreen';
 import { connectInstagram, clearInstagramStorage } from '../utils/instagram';
+import { getMyPlan } from '../services/scheduleService';
 
 const PLANS = [
   {
     id: 'free',
     name: 'フリー',
     price: '無料',
-    features: ['AI生成 月10回', '予約投稿 5件', '基本テンプレート'],
+    features: ['AI生成 月10回', '予約投稿 2件まで', '今すぐ投稿 無制限', '写真に文字を合成'],
     color: COLORS.textMuted,
-    current: true,
-  },
-  {
-    id: 'standard',
-    name: 'スタンダード',
-    price: '¥980/月',
-    features: ['AI生成 月100回', '予約投稿 無制限', '業種別テンプレート', 'ハッシュタグ分析'],
-    color: COLORS.primary,
-    current: false,
   },
   {
     id: 'pro',
-    name: 'プロ',
-    price: '¥2,980/月',
-    features: ['AI生成 無制限', '予約投稿 無制限', '画像AI生成', '分析ダッシュボード', '優先サポート'],
+    name: 'Pro',
+    price: '¥980/月',
+    features: [
+      'AI生成 月300回',
+      '予約投稿 無制限',
+      'くりかえし投稿（毎日/毎週/毎月/平日）',
+      '複数アカウント連携',
+    ],
     color: COLORS.secondary,
-    current: false,
   },
 ];
 
@@ -49,6 +45,7 @@ export default function AccountBadge() {
   const insets = useSafeAreaInsets();
   const [session, setSession] = useState<Session | null>(null);
   const [visible, setVisible] = useState(false);
+  const [plan, setPlan] = useState<'free' | 'pro'>('free');
   const instagramCredentials = useAppStore((s) => s.instagramCredentials);
   const setInstagramCredentials = useAppStore((s) => s.setInstagramCredentials);
   const authVisible = useAppStore((s) => s.loginPromptVisible);
@@ -63,9 +60,15 @@ export default function AccountBadge() {
     return () => listener.subscription.unsubscribe();
   }, [setAuthVisible]);
 
+  // 実際のプラン（free/pro）を読み込む。ログイン状態が変わったら取り直す
+  useEffect(() => {
+    if (session) getMyPlan().then(setPlan).catch(() => {});
+    else setPlan('free');
+  }, [session]);
+
   const email = session?.user?.email ?? '';
   const initial = (email.trim()[0] ?? '?').toUpperCase();
-  const currentPlan = PLANS.find((p) => p.current);
+  const currentPlan = PLANS.find((p) => p.id === plan) ?? PLANS[0];
 
   const handleConnectIg = () => {
     setVisible(false);
@@ -225,20 +228,22 @@ export default function AccountBadge() {
                 <Text key={f} style={styles.feature}>✓ {f}</Text>
               ))}
 
-              {/* アップグレード候補 */}
-              <Text style={styles.sectionTitle}>アップグレード</Text>
-              {PLANS.filter((p) => !p.current).map((plan) => (
-                <View key={plan.id} style={[styles.upgradeCard, { borderColor: plan.color + '44' }]}>
+              {/* アップグレード候補（無料のときだけProを表示） */}
+              {PLANS.filter((p) => p.id !== plan && p.id !== 'free').length > 0 && (
+                <Text style={styles.sectionTitle}>アップグレード</Text>
+              )}
+              {PLANS.filter((p) => p.id !== plan && p.id !== 'free').map((pl) => (
+                <View key={pl.id} style={[styles.upgradeCard, { borderColor: pl.color + '44' }]}>
                   <View style={styles.upgradeHeader}>
-                    <Text style={[styles.upgradeName, { color: plan.color }]}>{plan.name}</Text>
-                    <Text style={styles.upgradePrice}>{plan.price}</Text>
+                    <Text style={[styles.upgradeName, { color: pl.color }]}>{pl.name}</Text>
+                    <Text style={styles.upgradePrice}>{pl.price}</Text>
                   </View>
-                  {plan.features.map((f) => (
+                  {pl.features.map((f) => (
                     <Text key={f} style={styles.feature}>✓ {f}</Text>
                   ))}
                   <TouchableOpacity
-                    style={[styles.upgradeBtn, { backgroundColor: plan.color }]}
-                    onPress={() => Alert.alert('近日公開', `${plan.name}プランは近日公開予定です`)}
+                    style={[styles.upgradeBtn, { backgroundColor: pl.color }]}
+                    onPress={() => Alert.alert('近日公開', `${pl.name}プランは近日公開予定です`)}
                   >
                     <Text style={styles.upgradeBtnText}>アップグレード</Text>
                   </TouchableOpacity>
