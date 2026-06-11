@@ -28,18 +28,18 @@ async function getFFmpeg(onLog?: (msg: string) => void) {
     await loadScript(`https://unpkg.com/@ffmpeg/ffmpeg@${FF_VER}/dist/umd/ffmpeg.js`);
     await loadScript(`https://unpkg.com/@ffmpeg/util@${UTIL_VER}/dist/umd/index.js`);
     const { FFmpeg } = (window as any).FFmpegWASM;
-    const { toBlobURL } = (window as any).FFmpegUtil;
     const ffmpeg = new FFmpeg();
     if (onLog) ffmpeg.on('log', ({ message }: any) => onLog(message));
-    const ffBase = `https://unpkg.com/@ffmpeg/ffmpeg@${FF_VER}/dist/umd`;
-    const coreBase = `https://unpkg.com/@ffmpeg/core@${CORE_VER}/dist/umd`;
-    // Worker本体だけ blob 化（new Worker は同一オリジンが必要なため）。
-    // core/wasm は importScripts/fetch で読まれCORS許可済みなので本物URLをそのまま渡す。
-    // （core を blob 化すると importScripts が失敗し "failed to import ffmpeg-core.js" になる）
+    // classWorkerURL を渡すと ffmpeg は「モジュール方式」のワーカーを作る。
+    // → ESM版のワーカーとコアを渡す必要がある。
+    // モジュールワーカーは別オリジンでもCORS許可があれば直接読めるので blob 化は不要
+    // （ESMワーカーは相対importを持つため blob 化すると壊れる）。
+    const ffEsm = `https://unpkg.com/@ffmpeg/ffmpeg@${FF_VER}/dist/esm`;
+    const coreEsm = `https://unpkg.com/@ffmpeg/core@${CORE_VER}/dist/esm`;
     await ffmpeg.load({
-      classWorkerURL: await toBlobURL(`${ffBase}/814.ffmpeg.js`, 'text/javascript'),
-      coreURL: `${coreBase}/ffmpeg-core.js`,
-      wasmURL: `${coreBase}/ffmpeg-core.wasm`,
+      classWorkerURL: `${ffEsm}/worker.js`,
+      coreURL: `${coreEsm}/ffmpeg-core.js`,
+      wasmURL: `${coreEsm}/ffmpeg-core.wasm`,
     });
     return ffmpeg;
   })();
