@@ -69,7 +69,8 @@ async function publishPost(post: {
   return published.id;
 }
 
-Deno.serve(async () => {
+// 時間が来た予約を投稿する（重い処理。裏で実行する）
+async function processDuePosts() {
   const now = new Date().toISOString();
 
   const { data: posts, error } = await supabase
@@ -78,41 +79,32 @@ Deno.serve(async () => {
     .eq('status', 'pending')
     .lte('scheduled_at', now);
 
-  if (error) {
-    return new Response(JSON.stringify({ error: error.message }), { status: 500 });
-  }
+  if (error || !posts) return;
 
-  const results = [];
-
-  for (const post of posts ?? []) {
+  for (const post of posts) {
     // Instagram未連携の投稿はスキップ
     if (!post.instagram_user_id || !post.access_token) {
-      await supabase
-        .from('scheduled_posts')
-        .update({ status: 'failed' })
-        .eq('id', post.id);
-      results.push({ id: post.id, status: 'failed', reason: 'Instagram未連携' });
+      await supabase.from('scheduled_posts').update({ status: 'failed' }).eq('id', post.id);
       continue;
     }
 
     try {
-      const postId = await publishPost(post);
-      await supabase
-        .from('scheduled_posts')
-        .update({ status: 'published' })
-        .eq('id', post.id);
-      results.push({ id: post.id, status: 'published', instagram_post_id: postId });
-    } catch (err) {
-      await supabase
-        .from('scheduled_posts')
-        .update({ status: 'failed' })
-        .eq('id', post.id);
-      results.push({ id: post.id, status: 'failed', error: String(err) });
+      await publishPost(post);
+      await supabase.from('scheduled_posts').update({ status: 'published' }).eq('id', post.id);
+    } catch (_err) {
+      await supabase.from('scheduled_posts').update({ status: 'failed' }).eq('id', post.id);
     }
   }
+}
 
-  return new Response(
-    JSON.stringify({ processed: results.length, results }),
-    { headers: { 'Content-Type': 'application/json' } }
-  );
+Deno.serve(() => {
+  // 投稿処理は時間がかかる（画像変換待ちで最大30秒）。
+  // cronのタイムアウト(5秒)に間に合うよう、すぐ応答を返し、処理は裏で継続する。
+  const job = processDuePosts();
+  // @ts-ignore Supabase Edge Runtime のバックグラウンド実行
+  if (typeof EdgeRuntime !== 'undefined') EdgeRuntime.waitUntil(job);
+
+  return new Response(JSON.stringify({ started: true }), {
+    headers: { 'Content-Type': 'application/json' },
+  });
 });
