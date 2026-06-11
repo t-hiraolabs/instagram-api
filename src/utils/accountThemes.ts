@@ -33,7 +33,8 @@ export const ACCOUNT_THEMES: AccountTheme[] = [
     emoji: '🍸',
     accent: '#D4AF37',
     captionStyle: 'band',
-    toneHint: '大人っぽく上質。夜の特別感・落ち着いた雰囲気を演出する言葉。',
+    toneHint:
+      '大人向けでシンプル・自然体。気取らず、日常の延長で誘うトーン。キザ・大げさ・ポエムっぽい言い回しは避ける。',
   },
   {
     key: 'restaurant',

@@ -97,6 +97,29 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number)
   return lines;
 }
 
+// 文字サイズを自動調整：短い文は大きく1行、長い文は縮めて1行、
+// 最小でも収まらない時だけ改行する。ctx.font に最終サイズをセットして返す。
+function fitText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number,
+  baseSize = 82,
+  minSize = 46
+): { lines: string[]; fontSize: number; lineH: number } {
+  for (let size = baseSize; size >= minSize; size -= 3) {
+    ctx.font = `800 ${size}px sans-serif`;
+    if (ctx.measureText(text).width <= maxWidth) {
+      return { lines: [text], fontSize: size, lineH: Math.round(size * 1.25) };
+    }
+  }
+  ctx.font = `800 ${minSize}px sans-serif`;
+  return {
+    lines: wrapText(ctx, text, maxWidth),
+    fontSize: minSize,
+    lineH: Math.round(minSize * 1.25),
+  };
+}
+
 function roundRect(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -146,9 +169,8 @@ export async function renderSlide(
   if (t) {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'alphabetic';
-    ctx.font = '800 76px sans-serif';
-    const lines = wrapText(ctx, t, W - 140);
-    const lineH = 94;
+    // 文字数に応じてサイズ自動調整（短ければ1行・大きく）
+    const { lines, lineH } = fitText(ctx, t, W - 90);
     const blockH = lines.length * lineH;
     const cx = W / 2;
     const bottom = H - 150; // 文字ブロックの下端
