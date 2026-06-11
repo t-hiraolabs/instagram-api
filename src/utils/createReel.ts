@@ -33,12 +33,13 @@ async function getFFmpeg(onLog?: (msg: string) => void) {
     if (onLog) ffmpeg.on('log', ({ message }: any) => onLog(message));
     const ffBase = `https://unpkg.com/@ffmpeg/ffmpeg@${FF_VER}/dist/umd`;
     const coreBase = `https://unpkg.com/@ffmpeg/core@${CORE_VER}/dist/umd`;
-    // ワーカーも blob URL（自分のオリジン扱い）にしてからロードする
-    // ※ これをしないと別オリジンの Worker 構築でブラウザにブロックされる
+    // Worker本体だけ blob 化（new Worker は同一オリジンが必要なため）。
+    // core/wasm は importScripts/fetch で読まれCORS許可済みなので本物URLをそのまま渡す。
+    // （core を blob 化すると importScripts が失敗し "failed to import ffmpeg-core.js" になる）
     await ffmpeg.load({
       classWorkerURL: await toBlobURL(`${ffBase}/814.ffmpeg.js`, 'text/javascript'),
-      coreURL: await toBlobURL(`${coreBase}/ffmpeg-core.js`, 'text/javascript'),
-      wasmURL: await toBlobURL(`${coreBase}/ffmpeg-core.wasm`, 'application/wasm'),
+      coreURL: `${coreBase}/ffmpeg-core.js`,
+      wasmURL: `${coreBase}/ffmpeg-core.wasm`,
     });
     return ffmpeg;
   })();
