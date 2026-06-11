@@ -28,7 +28,9 @@ import {
   getScheduledPosts,
   createScheduledPost,
   deleteScheduledPost,
+  getMyPlan,
   ScheduledPost,
+  RepeatOption,
 } from '../services/scheduleService';
 import { ensureLoggedIn } from '../utils/requireLogin';
 import { useAppStore } from '../store/appStore';
@@ -84,6 +86,22 @@ function getQuickDates(): { label: string; value: string; isOptimal: boolean }[]
   ];
 }
 
+const REPEAT_OPTIONS: { key: RepeatOption; label: string }[] = [
+  { key: 'none', label: 'なし' },
+  { key: 'daily', label: '毎日' },
+  { key: 'weekly', label: '毎週' },
+  { key: 'monthly', label: '毎月' },
+  { key: 'weekdays', label: '平日のみ' },
+];
+
+const REPEAT_SHORT: Record<RepeatOption, string> = {
+  none: '',
+  daily: '毎日',
+  weekly: '毎週',
+  monthly: '毎月',
+  weekdays: '平日',
+};
+
 export default function ScheduleScreen({ route }: any) {
   // mode='now' は「投稿」タブ（今すぐ投稿のみ）／ 'schedule' は「予約投稿」タブ（予約のみ）
   const mode: 'now' | 'schedule' = route?.params?.mode === 'now' ? 'now' : 'schedule';
@@ -106,6 +124,8 @@ export default function ScheduleScreen({ route }: any) {
   const [imageUploading, setImageUploading] = useState(false);
   const [dateText, setDateText] = useState('');
   const [type, setType] = useState<'feed' | 'story'>('feed');
+  const [repeat, setRepeat] = useState<RepeatOption>('none');
+  const [plan, setPlan] = useState<'free' | 'pro'>('free');
 
   // ストーリー用：合成前の元写真と、画像に載せる文字
   const [storyRawUri, setStoryRawUri] = useState('');
@@ -136,6 +156,7 @@ export default function ScheduleScreen({ route }: any) {
 
   useEffect(() => {
     fetchPosts();
+    getMyPlan().then(setPlan).catch(() => {});
   }, [fetchPosts]);
 
   const openModal = () => {
@@ -153,12 +174,25 @@ export default function ScheduleScreen({ route }: any) {
     setStoryCta('');
     setStoryTextColor('#FFFFFF');
     setStoryTransform({ ...DEFAULT_TRANSFORM });
+    setRepeat('none');
     setModalVisible(true);
   };
 
   const alertMsg = (msg: string, title = 'エラー') => {
     if (Platform.OS === 'web') window.alert(msg);
     else Alert.alert(title, msg);
+  };
+
+  // くりかえしの選択（Pro限定。無料が選んだら案内を出す）
+  const selectRepeat = (r: RepeatOption) => {
+    if (r !== 'none' && plan !== 'pro') {
+      alertMsg(
+        'くりかえし投稿はProプラン限定です。Proにアップグレードすると、毎日・毎週・毎月・平日の自動くりかえし投稿が使えます。',
+        '⭐ Pro限定の機能です'
+      );
+      return;
+    }
+    setRepeat(r);
   };
 
   // 写真を選ぶ。フィードはそのままアップロード、ストーリーは合成用に元写真として保持
@@ -352,6 +386,7 @@ export default function ScheduleScreen({ route }: any) {
         image_url: imageUrl.trim() || undefined,
         scheduled_at: scheduledDate,
         type,
+        repeat,
         instagram_user_id: instagramCredentials?.userId || undefined,
         access_token: instagramCredentials?.accessToken || undefined,
       });
@@ -472,6 +507,11 @@ export default function ScheduleScreen({ route }: any) {
                       {post.status === 'pending' ? '⏳ 予約中' : post.status === 'published' ? '✅ 投稿済' : '❌ 失敗'}
                     </Text>
                   </View>
+                  {post.repeat && post.repeat !== 'none' && (
+                    <View style={styles.repeatBadge}>
+                      <Text style={styles.repeatBadgeText}>🔁 {REPEAT_SHORT[post.repeat]}</Text>
+                    </View>
+                  )}
                 </View>
                 {post.status === 'pending' && (
                   <TouchableOpacity onPress={() => handleDelete(post.id)}>
@@ -743,6 +783,36 @@ export default function ScheduleScreen({ route }: any) {
                   placeholderTextColor={COLORS.textMuted}
                   autoCapitalize="none"
                 />
+
+                <Text style={styles.fieldLabel}>
+                  くりかえし {plan !== 'pro' && '⭐Pro'}
+                </Text>
+                <View style={styles.repeatRow}>
+                  {REPEAT_OPTIONS.map((opt) => {
+                    const active = repeat === opt.key;
+                    const locked = opt.key !== 'none' && plan !== 'pro';
+                    return (
+                      <TouchableOpacity
+                        key={opt.key}
+                        style={[styles.repeatBtn, active && styles.repeatBtnActive]}
+                        onPress={() => selectRepeat(opt.key)}
+                        activeOpacity={0.85}
+                      >
+                        <Text
+                          style={[styles.repeatBtnText, active && styles.repeatBtnTextActive]}
+                        >
+                          {opt.label}
+                          {locked ? ' 🔒' : ''}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                {repeat !== 'none' && (
+                  <Text style={styles.repeatHint}>
+                    🔁 上の日時を1回目として、{REPEAT_SHORT[repeat]}くりかえし自動投稿します
+                  </Text>
+                )}
               </>
             )}
 
@@ -1056,6 +1126,36 @@ const styles = StyleSheet.create({
     marginTop: SPACING.md,
   },
   composeBtnText: { color: '#fff', fontSize: 15, fontWeight: '800' },
+  repeatRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+    marginTop: SPACING.xs,
+  },
+  repeatBtn: {
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.surfaceElevated,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  repeatBtnActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  repeatBtnText: { color: COLORS.textMuted, fontSize: 13, fontWeight: '700' },
+  repeatBtnTextActive: { color: '#fff' },
+  repeatHint: {
+    color: COLORS.primary,
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: SPACING.sm,
+  },
+  repeatBadge: {
+    backgroundColor: COLORS.secondary + '33',
+    borderRadius: RADIUS.sm,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 2,
+  },
+  repeatBadgeText: { color: COLORS.secondary, fontSize: 12, fontWeight: '700' },
   publishNowHint: {
     color: COLORS.textMuted,
     fontSize: 11,

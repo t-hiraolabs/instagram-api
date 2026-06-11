@@ -69,6 +69,32 @@ async function publishPost(post: {
   return published.id;
 }
 
+// くりかえし投稿の「次回の投稿日時」を計算する（日本時間ベース）
+function nextOccurrence(current: Date, repeat: string): Date | null {
+  const JST = 9 * 60 * 60 * 1000; // 日本は UTC+9（夏時間なし）
+  const d = new Date(current);
+  if (repeat === 'daily') {
+    d.setUTCDate(d.getUTCDate() + 1);
+    return d;
+  }
+  if (repeat === 'weekly') {
+    d.setUTCDate(d.getUTCDate() + 7);
+    return d;
+  }
+  if (repeat === 'monthly') {
+    d.setUTCMonth(d.getUTCMonth() + 1);
+    return d;
+  }
+  if (repeat === 'weekdays') {
+    // 翌日以降で、最初の平日（月〜金・日本時間）まで進める
+    do {
+      d.setUTCDate(d.getUTCDate() + 1);
+    } while ([0, 6].includes(new Date(d.getTime() + JST).getUTCDay()));
+    return d;
+  }
+  return null;
+}
+
 // 時間が来た予約を投稿する（重い処理。裏で実行する）
 async function processDuePosts() {
   const now = new Date().toISOString();
@@ -82,17 +108,46 @@ async function processDuePosts() {
   if (error || !posts) return;
 
   for (const post of posts) {
-    // Instagram未連携の投稿はスキップ
+    const isRecurring = post.repeat && post.repeat !== 'none';
+
+    // Instagram未連携の投稿
     if (!post.instagram_user_id || !post.access_token) {
-      await supabase.from('scheduled_posts').update({ status: 'failed' }).eq('id', post.id);
+      if (isRecurring) {
+        const next = nextOccurrence(new Date(post.scheduled_at), post.repeat);
+        if (next) {
+          await supabase
+            .from('scheduled_posts')
+            .update({ scheduled_at: next.toISOString() })
+            .eq('id', post.id);
+        }
+      } else {
+        await supabase.from('scheduled_posts').update({ status: 'failed' }).eq('id', post.id);
+      }
       continue;
     }
 
-    try {
-      await publishPost(post);
-      await supabase.from('scheduled_posts').update({ status: 'published' }).eq('id', post.id);
-    } catch (_err) {
-      await supabase.from('scheduled_posts').update({ status: 'failed' }).eq('id', post.id);
+    if (isRecurring) {
+      // くりかえしは、先に次回の日時へ進めてから投稿（二重投稿を防ぐ・pendingのまま残す）
+      const next = nextOccurrence(new Date(post.scheduled_at), post.repeat);
+      if (next) {
+        await supabase
+          .from('scheduled_posts')
+          .update({ scheduled_at: next.toISOString() })
+          .eq('id', post.id);
+      }
+      try {
+        await publishPost(post);
+      } catch (_err) {
+        // 1回失敗しても次回に続ける
+      }
+    } else {
+      // 1回きりの予約
+      try {
+        await publishPost(post);
+        await supabase.from('scheduled_posts').update({ status: 'published' }).eq('id', post.id);
+      } catch (_err) {
+        await supabase.from('scheduled_posts').update({ status: 'failed' }).eq('id', post.id);
+      }
     }
   }
 }
