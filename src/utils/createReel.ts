@@ -101,34 +101,44 @@ export async function renderSlide(imageUri: string, text?: string): Promise<stri
   ctx.drawImage(img, (W - dw) / 2, (H - dh) / 2, dw, dh);
 
   if (text && text.trim()) {
-    // 下に向かって濃くなるグラデーション（文字を読みやすく）
-    const grad = ctx.createLinearGradient(0, H * 0.45, 0, H);
+    // 控えめな下グラデーション（保険）
+    const grad = ctx.createLinearGradient(0, H * 0.5, 0, H);
     grad.addColorStop(0, 'rgba(0,0,0,0)');
-    grad.addColorStop(1, 'rgba(0,0,0,0.85)');
+    grad.addColorStop(1, 'rgba(0,0,0,0.55)');
     ctx.fillStyle = grad;
-    ctx.fillRect(0, H * 0.45, W, H * 0.55);
+    ctx.fillRect(0, H * 0.5, W, H * 0.5);
 
     ctx.textAlign = 'center';
-    ctx.font = 'bold 64px sans-serif';
-    const lines = wrapText(ctx, text.trim(), W - 120);
-    const lineH = 82;
+    ctx.textBaseline = 'alphabetic';
+    ctx.font = '800 78px sans-serif';
+    try {
+      (ctx as any).letterSpacing = '1px';
+    } catch (_e) {
+      // 未対応ブラウザは無視
+    }
+
+    const lines = wrapText(ctx, text.trim(), W - 110);
+    const lineH = 96;
     const blockH = lines.length * lineH;
-    const baseY = H - 150 - blockH + lineH; // 下から少し上に配置
+    const baseY = H - 170 - blockH + lineH; // 下寄せ（少し上）
 
-    // 見出しの上に Instagram ピンクのアクセントバー
-    ctx.shadowColor = 'transparent';
-    ctx.fillStyle = '#E1306C';
-    const barW = 90;
-    ctx.fillRect((W - barW) / 2, baseY - lineH - 18, barW, 8);
-
-    // 見出し本体（白・太字・影つき）
-    ctx.fillStyle = '#FFFFFF';
-    ctx.shadowColor = 'rgba(0,0,0,0.65)';
-    ctx.shadowBlur = 14;
+    // CapCut風の縁取り太字キャプション（黒フチ＋白文字）
+    ctx.lineJoin = 'round';
+    ctx.miterLimit = 2;
     let y = baseY;
     for (const line of lines) {
+      ctx.lineWidth = 16;
+      ctx.strokeStyle = 'rgba(0,0,0,0.92)';
+      ctx.strokeText(line, W / 2, y);
+      ctx.fillStyle = '#FFFFFF';
       ctx.fillText(line, W / 2, y);
       y += lineH;
+    }
+
+    try {
+      (ctx as any).letterSpacing = '0px';
+    } catch (_e) {
+      // noop
     }
   }
 
