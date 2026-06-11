@@ -84,7 +84,9 @@ function getQuickDates(): { label: string; value: string; isOptimal: boolean }[]
   ];
 }
 
-export default function ScheduleScreen() {
+export default function ScheduleScreen({ route }: any) {
+  // mode='now' は「投稿」タブ（今すぐ投稿のみ）／ 'schedule' は「予約投稿」タブ（予約のみ）
+  const mode: 'now' | 'schedule' = route?.params?.mode === 'now' ? 'now' : 'schedule';
   const insets = useSafeAreaInsets();
   const draft = useAppStore((s) => s.draft);
   const clearDraft = useAppStore((s) => s.clearDraft);
@@ -395,12 +397,28 @@ export default function ScheduleScreen() {
         contentContainerStyle={{ paddingTop: insets.top + SPACING.md, paddingBottom: 100 }}
       >
         <View style={styles.header}>
-          <Text style={styles.title}>予約投稿</Text>
+          <Text style={styles.title}>{mode === 'now' ? '投稿' : '予約投稿'}</Text>
           <TouchableOpacity style={styles.addBtn} onPress={openModal}>
-            <Text style={styles.addBtnText}>＋ 追加</Text>
+            <Text style={styles.addBtnText}>
+              {mode === 'now' ? '＋ 投稿を作成' : '＋ 追加'}
+            </Text>
           </TouchableOpacity>
         </View>
 
+        {mode === 'now' ? (
+          /* 「投稿」タブ: 今すぐ投稿するための入口 */
+          <View style={styles.empty}>
+            <Text style={styles.emptyEmoji}>📸</Text>
+            <Text style={styles.emptyTitle}>今すぐ投稿しましょう</Text>
+            <Text style={styles.emptyDesc}>
+              フィードやストーリーを作成して、すぐにInstagramへ投稿できます
+            </Text>
+            <TouchableOpacity style={styles.emptyAddBtn} onPress={openModal}>
+              <Text style={styles.emptyAddBtnText}>＋ 投稿を作成する</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <>
         {/* Japan best time hint */}
         <View style={styles.hintCard}>
           <Text style={styles.hintText}>
@@ -477,6 +495,8 @@ export default function ScheduleScreen() {
             </View>
           ))
         )}
+          </>
+        )}
       </ScrollView>
 
       <Modal visible={modalVisible} animationType="slide" presentationStyle="pageSheet">
@@ -488,14 +508,20 @@ export default function ScheduleScreen() {
             <TouchableOpacity onPress={() => setModalVisible(false)}>
               <Text style={styles.modalCancel}>キャンセル</Text>
             </TouchableOpacity>
-            <Text style={styles.modalTitle}>予約投稿を追加</Text>
-            <TouchableOpacity onPress={handleSave} disabled={saving}>
-              {saving ? (
-                <ActivityIndicator color={COLORS.primary} />
-              ) : (
-                <Text style={styles.modalSave}>保存</Text>
-              )}
-            </TouchableOpacity>
+            <Text style={styles.modalTitle}>
+              {mode === 'now' ? '投稿を作成' : '予約投稿を追加'}
+            </Text>
+            {mode === 'schedule' ? (
+              <TouchableOpacity onPress={handleSave} disabled={saving}>
+                {saving ? (
+                  <ActivityIndicator color={COLORS.primary} />
+                ) : (
+                  <Text style={styles.modalSave}>保存</Text>
+                )}
+              </TouchableOpacity>
+            ) : (
+              <View style={{ width: 48 }} />
+            )}
           </View>
 
           <ScrollView style={styles.modalBody} keyboardShouldPersistTaps="handled">
@@ -688,33 +714,37 @@ export default function ScheduleScreen() {
               </>
             )}
 
-            <Text style={styles.fieldLabel}>予約日時</Text>
+            {mode === 'schedule' && (
+              <>
+                <Text style={styles.fieldLabel}>予約日時</Text>
 
-            {/* Quick date buttons */}
-            <Text style={styles.quickLabel}>おすすめ時間帯</Text>
-            <View style={styles.quickDatesGrid}>
-              {quickDates.map((qd) => (
-                <TouchableOpacity
-                  key={qd.value}
-                  style={[styles.quickDateBtn, dateText === qd.value && styles.quickDateBtnActive, qd.isOptimal && styles.quickDateBtnOptimal]}
-                  onPress={() => setDateText(qd.value)}
-                >
-                  {qd.isOptimal && <Text style={styles.quickDateOptimalDot}>●</Text>}
-                  <Text style={[styles.quickDateText, dateText === qd.value && styles.quickDateTextActive]}>
-                    {qd.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+                {/* Quick date buttons */}
+                <Text style={styles.quickLabel}>おすすめ時間帯</Text>
+                <View style={styles.quickDatesGrid}>
+                  {quickDates.map((qd) => (
+                    <TouchableOpacity
+                      key={qd.value}
+                      style={[styles.quickDateBtn, dateText === qd.value && styles.quickDateBtnActive, qd.isOptimal && styles.quickDateBtnOptimal]}
+                      onPress={() => setDateText(qd.value)}
+                    >
+                      {qd.isOptimal && <Text style={styles.quickDateOptimalDot}>●</Text>}
+                      <Text style={[styles.quickDateText, dateText === qd.value && styles.quickDateTextActive]}>
+                        {qd.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
 
-            <TextInput
-              style={[styles.input, { marginTop: SPACING.sm }]}
-              value={dateText}
-              onChangeText={setDateText}
-              placeholder="例: 2026-06-15T18:00"
-              placeholderTextColor={COLORS.textMuted}
-              autoCapitalize="none"
-            />
+                <TextInput
+                  style={[styles.input, { marginTop: SPACING.sm }]}
+                  value={dateText}
+                  onChangeText={setDateText}
+                  placeholder="例: 2026-06-15T18:00"
+                  placeholderTextColor={COLORS.textMuted}
+                  autoCapitalize="none"
+                />
+              </>
+            )}
 
             <Text style={styles.sectionDivider}>Instagram</Text>
             {instagramCredentials ? (
@@ -731,22 +761,45 @@ export default function ScheduleScreen() {
               </View>
             )}
 
-            {/* 今すぐ投稿（テスト/手動） */}
-            <TouchableOpacity
-              style={[styles.publishNowBtn, (publishing || !instagramCredentials) && styles.publishNowBtnDisabled]}
-              onPress={handlePublishNow}
-              disabled={publishing || !instagramCredentials}
-              activeOpacity={0.85}
-            >
-              {publishing ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.publishNowText}>🚀 今すぐ投稿する</Text>
-              )}
-            </TouchableOpacity>
-            <Text style={styles.publishNowHint}>
-              ※ 予約せずにすぐInstagramへ投稿します（画像URLが必須）
-            </Text>
+            {mode === 'now' ? (
+              <>
+                {/* 今すぐ投稿 */}
+                <TouchableOpacity
+                  style={[styles.publishNowBtn, (publishing || !instagramCredentials) && styles.publishNowBtnDisabled]}
+                  onPress={handlePublishNow}
+                  disabled={publishing || !instagramCredentials}
+                  activeOpacity={0.85}
+                >
+                  {publishing ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={styles.publishNowText}>🚀 今すぐ投稿する</Text>
+                  )}
+                </TouchableOpacity>
+                <Text style={styles.publishNowHint}>
+                  ※ すぐにInstagramへ投稿します
+                </Text>
+              </>
+            ) : (
+              <>
+                {/* 予約を保存 */}
+                <TouchableOpacity
+                  style={[styles.publishNowBtn, saving && styles.publishNowBtnDisabled]}
+                  onPress={handleSave}
+                  disabled={saving}
+                  activeOpacity={0.85}
+                >
+                  {saving ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={styles.publishNowText}>📅 この内容で予約する</Text>
+                  )}
+                </TouchableOpacity>
+                <Text style={styles.publishNowHint}>
+                  ※ 指定した日時に自動で投稿されます
+                </Text>
+              </>
+            )}
           </ScrollView>
         </KeyboardAvoidingView>
       </Modal>

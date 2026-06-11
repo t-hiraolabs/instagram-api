@@ -14,7 +14,7 @@ import { getSeasonalThemes } from '../services/aiService';
 
 const QUICK_ACTIONS = [
   { label: 'AI投稿生成', emoji: '✨', tab: 'Generate', color: COLORS.primary },
-  { label: 'ストーリー', emoji: '📖', tab: 'Story', color: COLORS.secondary },
+  { label: '投稿する', emoji: '📸', tab: 'Post', color: COLORS.secondary },
   { label: '予約投稿', emoji: '📅', tab: 'Schedule', color: '#F77737' },
   { label: '設定', emoji: '⚙️', tab: 'Profile', color: '#4FC3F7' },
 ];

@@ -5,7 +5,6 @@ import { View, Text, StyleSheet } from 'react-native';
 
 import HomeScreen from '../screens/HomeScreen';
 import GenerateScreen from '../screens/GenerateScreen';
-import StoryScreen from '../screens/StoryScreen';
 import ScheduleScreen from '../screens/ScheduleScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import { COLORS } from '../utils/theme';
@@ -17,7 +16,7 @@ function TabIcon({ name, focused }: { name: string; focused: boolean }) {
   const icons: Record<string, string> = {
     Home: '🏠',
     Generate: '✨',
-    Story: '📖',
+    Post: '📸',
     Schedule: '📅',
     Profile: '👤',
   };
@@ -58,18 +57,20 @@ function TabNavigator() {
         }}
       />
       <Tab.Screen
-        name="Story"
-        component={StoryScreen}
+        name="Post"
+        component={ScheduleScreen}
+        initialParams={{ mode: 'now' }}
         options={{
-          tabBarLabel: 'ストーリー',
-          tabBarIcon: ({ focused }) => <TabIcon name="Story" focused={focused} />,
+          tabBarLabel: '投稿',
+          tabBarIcon: ({ focused }) => <TabIcon name="Post" focused={focused} />,
         }}
       />
       <Tab.Screen
         name="Schedule"
         component={ScheduleScreen}
+        initialParams={{ mode: 'schedule' }}
         options={{
-          tabBarLabel: 'スケジュール',
+          tabBarLabel: '予約投稿',
           tabBarIcon: ({ focused }) => <TabIcon name="Schedule" focused={focused} />,
         }}
       />
