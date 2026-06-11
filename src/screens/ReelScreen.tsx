@@ -83,8 +83,10 @@ export default function ReelScreen() {
       setElapsed(Math.round((Date.now() - start) / 1000));
       setStatus('完成しました');
     } catch (e) {
-      alertMsg(e instanceof Error ? e.message : 'リールの作成に失敗しました', 'エラー');
-      setStatus('');
+      const detail =
+        (e as { message?: string })?.message || String(e) || 'リールの作成に失敗しました';
+      alertMsg(detail, 'エラー');
+      setStatus(detail);
     } finally {
       setWorking(false);
     }
