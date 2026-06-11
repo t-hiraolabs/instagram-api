@@ -27,10 +27,12 @@ function extractError(err: unknown): string {
 }
 
 function getBrandContext(): string {
-  const { brandName, industry, targetAudience, tone } = useAppStore.getState().brandSettings;
+  const { brandName, industry, atmosphere, targetAudience, tone } =
+    useAppStore.getState().brandSettings;
   const parts: string[] = [];
   if (brandName) parts.push(`ブランド名: ${brandName}`);
   if (industry) parts.push(`業種: ${industry}`);
+  if (atmosphere) parts.push(`お店の雰囲気・こだわり: ${atmosphere}`);
   if (targetAudience) parts.push(`ターゲット層: ${targetAudience}`);
   if (tone) parts.push(`希望トーン: ${tone}`);
   return parts.length > 0 ? `\n\n【ブランド情報】\n${parts.join('\n')}` : '';

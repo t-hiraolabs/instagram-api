@@ -18,6 +18,7 @@ export interface BrandSettings {
   brandName: string;
   industry: string;
   accountType: string;
+  atmosphere: string;
   targetAudience: string;
   tone: string;
   apiKey: string;
@@ -75,6 +76,7 @@ export const useAppStore = create<AppState>((set) => ({
     brandName: '',
     industry: '',
     accountType: 'personal',
+    atmosphere: '',
     targetAudience: '',
     tone: '明るい・ポジティブ',
     apiKey: '',

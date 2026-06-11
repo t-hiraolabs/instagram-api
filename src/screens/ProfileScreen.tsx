@@ -344,6 +344,16 @@ export default function ProfileScreen() {
               ))}
             </View>
 
+            <Text style={styles.fieldLabel}>お店の雰囲気・こだわり（任意）</Text>
+            <TextInput
+              style={[styles.input, { height: 72, textAlignVertical: 'top' }]}
+              value={draftBrand.atmosphere}
+              onChangeText={(v) => setDraftBrand((p) => ({ ...p, atmosphere: v }))}
+              placeholder="例: ジャズが流れる落ち着いた大人の隠れ家バー／賑やかでカジュアルな立ち飲み"
+              placeholderTextColor={COLORS.textMuted}
+              multiline
+            />
+
             <Text style={styles.fieldLabel}>ターゲット層（任意）</Text>
             <TextInput
               style={styles.input}

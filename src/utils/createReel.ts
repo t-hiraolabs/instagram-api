@@ -66,15 +66,29 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
+// 行頭に来てはいけない文字（禁則処理）
+const NO_LINE_START =
+  '、。，．・：；！？)）」』】〕》〉ーぁぃぅぇぉっゃゅょゎァィゥェォッャュョ々…〜';
+
 function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
   const chars = Array.from(text);
   const lines: string[] = [];
   let line = '';
   for (const ch of chars) {
+    if (ch === '\n') {
+      lines.push(line);
+      line = '';
+      continue;
+    }
     const test = line + ch;
     if (ctx.measureText(test).width > maxWidth && line) {
-      lines.push(line);
-      line = ch;
+      // 改行で次行が禁則文字始まりになる場合は、その文字を今の行に残す（軽いはみ出し許容）
+      if (NO_LINE_START.includes(ch)) {
+        line = test;
+      } else {
+        lines.push(line);
+        line = ch;
+      }
     } else {
       line = test;
     }
@@ -162,14 +176,20 @@ export async function renderSlide(
       // 全幅の半透明バンド＋上にアクセントライン＋白文字
       const bandTop = topY - 70;
       const bandH = blockH + 90;
-      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillStyle = 'rgba(0,0,0,0.68)';
       ctx.fillRect(0, bandTop, W, bandH);
       ctx.fillStyle = theme.accent;
       ctx.fillRect(0, bandTop, W, 8);
-      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, bandTop + bandH - 8, W, 8);
+      // 文字はアクセント色（＋薄い黒フチで可読性確保）でタイプの色を出す
+      ctx.lineJoin = 'round';
       ctx.shadowColor = 'transparent';
       let y = topY;
       for (const line of lines) {
+        ctx.lineWidth = 8;
+        ctx.strokeStyle = 'rgba(0,0,0,0.75)';
+        ctx.strokeText(line, cx, y);
+        ctx.fillStyle = theme.accent;
         ctx.fillText(line, cx, y);
         y += lineH;
       }
