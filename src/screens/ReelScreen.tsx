@@ -38,7 +38,7 @@ interface Slide {
 const SECONDS_PER = 3;
 const SECONDS_OPTIONS = [2, 3, 4];
 
-export default function ReelScreen() {
+export default function ReelScreen({ onBack }: { onBack?: () => void } = {}) {
   const insets = useSafeAreaInsets();
   const [slides, setSlides] = useState<Slide[]>([]);
   const [working, setWorking] = useState(false);
@@ -271,10 +271,15 @@ export default function ReelScreen() {
       contentContainerStyle={{ paddingTop: insets.top + SPACING.md, paddingBottom: 100 }}
     >
       <View style={styles.header}>
-        <Text style={styles.title}>リール作成（テスト）</Text>
+        {onBack && (
+          <TouchableOpacity onPress={onBack} hitSlop={8} style={{ marginBottom: SPACING.xs }}>
+            <Text style={styles.backText}>← 投稿の選択に戻る</Text>
+          </TouchableOpacity>
+        )}
+        <Text style={styles.title}>リール作成</Text>
       </View>
       <Text style={styles.desc}>
-        写真を数枚選び、文字をのせると、1枚{SECONDS_PER}秒のスライド動画(MP4)を作ります。
+        写真を数枚選び、文字をのせると、スライド動画(MP4)を作ります。
       </Text>
 
       <TouchableOpacity style={styles.pickBtn} onPress={pickPhotos} activeOpacity={0.85}>
@@ -449,6 +454,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background, paddingHorizontal: SPACING.lg },
   header: { marginBottom: SPACING.sm },
   title: { color: COLORS.text, fontSize: 24, fontWeight: '800' },
+  backText: { color: COLORS.primary, fontSize: 14, fontWeight: '700' },
   desc: { color: COLORS.textSecondary, fontSize: 13, marginBottom: SPACING.md },
   pickBtn: {
     backgroundColor: COLORS.surfaceElevated,

@@ -23,6 +23,7 @@ import {
   DEFAULT_TRANSFORM,
 } from '../utils/composeStory';
 import StoryEditor from '../components/StoryEditor';
+import ReelScreen from './ReelScreen';
 import { generateStory } from '../services/aiService';
 import {
   getScheduledPosts,
@@ -134,6 +135,7 @@ export default function ScheduleScreen({ route }: any) {
   const [type, setType] = useState<'feed' | 'story'>('feed');
   const [repeat, setRepeat] = useState<RepeatOption>('none');
   const [plan, setPlan] = useState<'free' | 'pro'>('free');
+  const [showReel, setShowReel] = useState(false); // 投稿タブ内でリール作成を表示
 
   // 編集モーダル用
   const [editVisible, setEditVisible] = useState(false);
@@ -491,6 +493,11 @@ export default function ScheduleScreen({ route }: any) {
 
   const filtered = posts.filter((p) => filter === 'all' || p.status === filter);
 
+  // 投稿タブで「リールを作成」を選んだら、リール作成画面を表示
+  if (mode === 'now' && showReel) {
+    return <ReelScreen onBack={() => setShowReel(false)} />;
+  }
+
   return (
     <View style={styles.wrapper}>
       <ScrollView
@@ -507,15 +514,21 @@ export default function ScheduleScreen({ route }: any) {
         </View>
 
         {mode === 'now' ? (
-          /* 「投稿」タブ: 今すぐ投稿するための入口 */
+          /* 「投稿」タブ: 何を作るか選ぶ */
           <View style={styles.empty}>
             <Text style={styles.emptyEmoji}>📸</Text>
-            <Text style={styles.emptyTitle}>今すぐ投稿しましょう</Text>
+            <Text style={styles.emptyTitle}>何を投稿しますか？</Text>
             <Text style={styles.emptyDesc}>
-              フィードやストーリーを作成して、すぐにInstagramへ投稿できます
+              作成して、すぐにInstagramへ投稿できます
             </Text>
             <TouchableOpacity style={styles.emptyAddBtn} onPress={openModal}>
-              <Text style={styles.emptyAddBtnText}>＋ 投稿を作成する</Text>
+              <Text style={styles.emptyAddBtnText}>📷 フィード・ストーリーを作成</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.emptyAddBtn, styles.reelChoiceBtn]}
+              onPress={() => setShowReel(true)}
+            >
+              <Text style={styles.emptyAddBtnText}>🎬 リールを作成</Text>
             </TouchableOpacity>
           </View>
         ) : (
@@ -1153,6 +1166,7 @@ const styles = StyleSheet.create({
     marginTop: SPACING.md,
   },
   emptyAddBtnText: { color: '#fff', fontWeight: '700' },
+  reelChoiceBtn: { backgroundColor: COLORS.secondary, marginTop: SPACING.sm },
   modal: { flex: 1, backgroundColor: COLORS.background },
   modalHeader: {
     flexDirection: 'row',
