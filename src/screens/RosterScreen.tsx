@@ -1,4 +1,4 @@
-// 「本日の出勤」ストーリー作成：写真を選ぶ→名前を入れる→1枚のストーリー画像を作って投稿/予約
+// 「本日の出勤」ストーリー作成：その日のグループ写真1枚＋メンバー名 → ストーリー画像を作って投稿/予約
 import React, { useState } from 'react';
 import {
   View,
@@ -15,18 +15,13 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
-import { composeRoster, todayLabel, RosterMember } from '../utils/composeRoster';
+import { composeRoster, todayLabel } from '../utils/composeRoster';
 import { getAccountTheme } from '../utils/accountThemes';
 import { useAppStore } from '../store/appStore';
 import { ensureLoggedIn } from '../utils/requireLogin';
 import { uploadBlob } from '../services/storage';
 import { publishNow } from '../services/publishNow';
 import { createScheduledPost } from '../services/scheduleService';
-
-interface Member {
-  uri: string;
-  name: string;
-}
 
 function parseDate(str: string): Date | null {
   const d = new Date(str.replace(/\//g, '-').replace(' ', 'T'));
@@ -38,8 +33,9 @@ export default function RosterScreen({ onBack }: { onBack?: () => void } = {}) {
   const brandSettings = useAppStore((s) => s.brandSettings);
   const instagramCredentials = useAppStore((s) => s.instagramCredentials);
 
-  const [members, setMembers] = useState<Member[]>([]);
+  const [photoUri, setPhotoUri] = useState('');
   const [title, setTitle] = useState('本日の出勤');
+  const [namesText, setNamesText] = useState('');
   const [composing, setComposing] = useState(false);
   const [previewUrl, setPreviewUrl] = useState('');
   const [blob, setBlob] = useState<Blob | null>(null);
@@ -52,7 +48,10 @@ export default function RosterScreen({ onBack }: { onBack?: () => void } = {}) {
     else Alert.alert(t, msg);
   };
 
-  const pickPhotos = async () => {
+  const splitNames = (s: string) =>
+    s.split(/[\n、,，・\s]+/).map((x) => x.trim()).filter(Boolean);
+
+  const pickPhoto = async () => {
     const { status: perm } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (perm !== 'granted') {
       alertMsg('写真へのアクセスを許可してください', '権限エラー');
@@ -60,33 +59,26 @@ export default function RosterScreen({ onBack }: { onBack?: () => void } = {}) {
     }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsMultipleSelection: true,
       quality: 0.9,
     });
     if (result.canceled) return;
-    setMembers((prev) => [...prev, ...result.assets.map((a) => ({ uri: a.uri, name: '' }))]);
-    setPreviewUrl('');
-    setBlob(null);
-  };
-
-  const setName = (i: number, name: string) =>
-    setMembers((prev) => prev.map((m, idx) => (idx === i ? { ...m, name } : m)));
-  const removeMember = (i: number) => {
-    setMembers((prev) => prev.filter((_, idx) => idx !== i));
+    setPhotoUri(result.assets[0].uri);
     setPreviewUrl('');
     setBlob(null);
   };
 
   const handleCompose = async () => {
-    if (members.length === 0) {
-      alertMsg('写真を1枚以上選んでください');
+    if (!photoUri) {
+      alertMsg('今日の写真を選んでください');
       return;
     }
     setComposing(true);
     try {
       const accent = getAccountTheme(brandSettings.accountType).accent;
-      const list: RosterMember[] = members.map((m) => ({ imageUri: m.uri, name: m.name }));
-      const { blob: b, previewUrl: url } = await composeRoster(list, { title, accent });
+      const { blob: b, previewUrl: url } = await composeRoster(photoUri, splitNames(namesText), {
+        title,
+        accent,
+      });
       setBlob(b);
       setPreviewUrl(url);
     } catch (e) {
@@ -183,7 +175,7 @@ export default function RosterScreen({ onBack }: { onBack?: () => void } = {}) {
         <Text style={styles.title}>本日の出勤</Text>
       </View>
       <Text style={styles.desc}>
-        今日のメンバーの写真を選ぶと、日付入りの「本日の出勤」ストーリーを作ります（{todayLabel()}）。
+        今日の写真（みんなで写ったものでOK）を1枚選んで、メンバー名を入れると、日付入りの「本日の出勤」ストーリーを作ります（{todayLabel()}）。
       </Text>
 
       <Text style={styles.label}>見出し</Text>
@@ -198,28 +190,27 @@ export default function RosterScreen({ onBack }: { onBack?: () => void } = {}) {
         placeholderTextColor={COLORS.textMuted}
       />
 
-      <TouchableOpacity style={styles.pickBtn} onPress={pickPhotos} activeOpacity={0.85}>
-        <Text style={styles.pickBtnText}>＋ 今日の写真を選ぶ（複数OK）</Text>
+      <Text style={styles.label}>今日の写真</Text>
+      <TouchableOpacity style={styles.pickBox} onPress={pickPhoto} activeOpacity={0.85}>
+        {photoUri ? (
+          <Image source={{ uri: photoUri }} style={styles.pickPreview} resizeMode="cover" />
+        ) : (
+          <Text style={styles.pickBoxText}>＋ 写真を選ぶ（みんなで写ったもの）</Text>
+        )}
       </TouchableOpacity>
 
-      {members.map((m, i) => (
-        <View key={i} style={styles.row}>
-          <Image source={{ uri: m.uri }} style={styles.thumb} resizeMode="cover" />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.rowLabel}>名前（任意）</Text>
-            <TextInput
-              style={styles.input}
-              value={m.name}
-              onChangeText={(t) => setName(i, t)}
-              placeholder="例: あい"
-              placeholderTextColor={COLORS.textMuted}
-            />
-            <TouchableOpacity onPress={() => removeMember(i)}>
-              <Text style={styles.removeText}>🗑 削除</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      ))}
+      <Text style={styles.label}>メンバー名（改行や「、」で区切る・任意）</Text>
+      <TextInput
+        style={[styles.input, { height: 90, textAlignVertical: 'top' }]}
+        value={namesText}
+        onChangeText={(t) => {
+          setNamesText(t);
+          setPreviewUrl('');
+        }}
+        placeholder={'例:\nあい、ゆな、れな'}
+        placeholderTextColor={COLORS.textMuted}
+        multiline
+      />
 
       <TouchableOpacity
         style={[styles.composeBtn, composing && styles.disabled]}
@@ -236,11 +227,7 @@ export default function RosterScreen({ onBack }: { onBack?: () => void } = {}) {
 
       {previewUrl ? (
         <View style={styles.previewWrap}>
-          <Image
-            source={{ uri: previewUrl }}
-            style={styles.preview}
-            resizeMode="cover"
-          />
+          <Image source={{ uri: previewUrl }} style={styles.preview} resizeMode="cover" />
 
           {instagramCredentials ? (
             <Text style={styles.igOk}>
@@ -302,27 +289,18 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     fontSize: 14,
   },
-  pickBtn: {
+  pickBox: {
     backgroundColor: COLORS.surfaceElevated,
     borderWidth: 1,
     borderColor: COLORS.primary + '55',
     borderRadius: RADIUS.md,
-    paddingVertical: SPACING.md,
+    minHeight: 160,
     alignItems: 'center',
-    marginTop: SPACING.md,
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
-  pickBtnText: { color: COLORS.primary, fontSize: 15, fontWeight: '700' },
-  row: {
-    flexDirection: 'row',
-    gap: SPACING.md,
-    marginTop: SPACING.md,
-    backgroundColor: COLORS.surface,
-    borderRadius: RADIUS.md,
-    padding: SPACING.sm,
-  },
-  thumb: { width: 72, height: 96, borderRadius: RADIUS.sm, backgroundColor: '#000' },
-  rowLabel: { color: COLORS.textMuted, fontSize: 12, marginBottom: 4 },
-  removeText: { color: COLORS.error ?? '#E5484D', fontSize: 13, marginTop: SPACING.sm },
+  pickBoxText: { color: COLORS.primary, fontSize: 15, fontWeight: '700', padding: SPACING.lg },
+  pickPreview: { width: '100%', height: 220 },
   composeBtn: {
     backgroundColor: COLORS.primary,
     borderRadius: RADIUS.md,
@@ -333,12 +311,7 @@ const styles = StyleSheet.create({
   composeBtnText: { color: '#fff', fontSize: 15, fontWeight: '800' },
   disabled: { opacity: 0.5 },
   previewWrap: { marginTop: SPACING.xl, alignItems: 'center' },
-  preview: {
-    width: 240,
-    height: 427,
-    borderRadius: 14,
-    backgroundColor: '#000',
-  },
+  preview: { width: 240, height: 427, borderRadius: 14, backgroundColor: '#000' },
   igOk: { color: COLORS.success ?? '#4CAF50', fontSize: 13, fontWeight: '600', marginTop: SPACING.md },
   igWarn: { color: COLORS.warning ?? '#FF9800', fontSize: 13, fontWeight: '600', marginTop: SPACING.md },
   postBtn: {

@@ -1,5 +1,5 @@
 // 「本日の出勤」ストーリー画像を作る（web/Canvas専用）
-// 選んだ写真を1枚の9:16ストーリーにグリッド配置し、見出し＋日付＋名前をのせる
+// その日のグループ写真1枚に、見出し＋日付＋メンバー名を重ねる
 
 const W = 1080;
 const H = 1920;
@@ -23,7 +23,7 @@ async function loadFontFor(text: string) {
   if (typeof document === 'undefined') return;
   ensureFontLink();
   try {
-    await (document as any).fonts.load(`900 90px "${FONT_NAME}"`, text);
+    await (document as any).fonts.load(`900 100px "${FONT_NAME}"`, text);
     await (document as any).fonts.load(`700 48px "${FONT_NAME}"`, text);
     await (document as any).fonts.ready;
   } catch (_e) {
@@ -41,7 +41,7 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
-function roundRectPath(
+function roundRect(
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
@@ -63,29 +63,24 @@ export function todayLabel(d = new Date()): string {
   return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日（${wd}）`;
 }
 
-export interface RosterMember {
-  imageUri: string;
-  name?: string;
-}
-
 export interface RosterOptions {
   title?: string;
   dateText?: string;
   accent?: string;
 }
 
-/** 本日の出勤ストーリー画像を生成。Blobとプレビューを返す */
+/** グループ写真1枚＋メンバー名から「本日の出勤」ストーリー画像を生成 */
 export async function composeRoster(
-  members: RosterMember[],
+  photoUri: string,
+  names: string[],
   opts: RosterOptions = {}
 ): Promise<{ blob: Blob; previewUrl: string }> {
-  if (members.length === 0) throw new Error('メンバーの写真を1枚以上選んでください');
-
   const title = opts.title?.trim() || '本日の出勤';
   const date = opts.dateText || todayLabel();
   const accent = opts.accent || '#E1306C';
+  const memberNames = names.map((n) => n.trim()).filter(Boolean);
 
-  await loadFontFor(title + date + members.map((m) => m.name ?? '').join(''));
+  await loadFontFor(title + date + memberNames.join(''));
 
   const canvas = document.createElement('canvas');
   canvas.width = W;
@@ -93,74 +88,94 @@ export async function composeRoster(
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Canvasを利用できません');
 
-  // 背景（暗め＋上部にアクセントのグロー）
-  ctx.fillStyle = '#0E0E10';
+  ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, W, H);
-  const glow = ctx.createRadialGradient(W / 2, 120, 50, W / 2, 120, 700);
-  glow.addColorStop(0, accent + '55');
-  glow.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = glow;
-  ctx.fillRect(0, 0, W, 600);
 
-  // ヘッダー
+  const img = await loadImage(photoUri);
+
+  // 背景：写真をcover＋ぼかして敷く（黒帯防止）
+  const coverScale = Math.max(W / img.width, H / img.height);
+  ctx.filter = 'blur(28px)';
+  ctx.drawImage(img, (W - img.width * coverScale) / 2, (H - img.height * coverScale) / 2, img.width * coverScale, img.height * coverScale);
+  ctx.filter = 'none';
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.fillRect(0, 0, W, H);
+
+  // 前景：写真全体が入るようcontainで中央配置
+  const fitScale = Math.min(W / img.width, H / img.height);
+  const fw = img.width * fitScale;
+  const fh = img.height * fitScale;
+  ctx.drawImage(img, (W - fw) / 2, (H - fh) / 2, fw, fh);
+
+  // 上部：見出し＋日付（読みやすいよう上に暗いグラデーション）
+  const topGrad = ctx.createLinearGradient(0, 0, 0, 420);
+  topGrad.addColorStop(0, 'rgba(0,0,0,0.72)');
+  topGrad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = topGrad;
+  ctx.fillRect(0, 0, W, 420);
+
   ctx.textAlign = 'center';
   ctx.fillStyle = accent;
   ctx.fillRect(W / 2 - 60, 120, 120, 10);
   ctx.fillStyle = '#FFFFFF';
+  ctx.shadowColor = 'rgba(0,0,0,0.5)';
+  ctx.shadowBlur = 12;
   ctx.font = `900 104px ${FONT_FAMILY}`;
   ctx.fillText(title, W / 2, 250);
-  ctx.fillStyle = '#CFCFD4';
-  ctx.font = `700 46px ${FONT_FAMILY}`;
-  ctx.fillText(date, W / 2, 320);
+  ctx.fillStyle = '#EDEDED';
+  ctx.font = `700 48px ${FONT_FAMILY}`;
+  ctx.fillText(date, W / 2, 322);
+  ctx.shadowColor = 'transparent';
+  ctx.shadowBlur = 0;
 
-  // グリッド領域
-  const bodyTop = 380;
-  const bodyBottom = H - 70;
-  const bodyH = bodyBottom - bodyTop;
-  const margin = 44;
-  const gap = 24;
+  // 下部：メンバー名をピル（バッジ）で並べる
+  if (memberNames.length > 0) {
+    const botGrad = ctx.createLinearGradient(0, H - 560, 0, H);
+    botGrad.addColorStop(0, 'rgba(0,0,0,0)');
+    botGrad.addColorStop(1, 'rgba(0,0,0,0.8)');
+    ctx.fillStyle = botGrad;
+    ctx.fillRect(0, H - 560, W, 560);
 
-  const n = members.length;
-  const cols = n <= 1 ? 1 : n <= 4 ? 2 : 3;
-  const rows = Math.ceil(n / cols);
-  const cellW = (W - margin * 2 - gap * (cols - 1)) / cols;
-  const cellH = (bodyH - gap * (rows - 1)) / rows;
+    ctx.font = `900 52px ${FONT_FAMILY}`;
+    const padX = 40;
+    const pillH = 92;
+    const gap = 24;
+    const maxRowW = W - 80;
 
-  for (let i = 0; i < n; i++) {
-    const r = Math.floor(i / cols);
-    const c = i % cols;
-    const x = margin + c * (cellW + gap);
-    const y = bodyTop + r * (cellH + gap);
-
-    const img = await loadImage(members[i].imageUri);
-
-    ctx.save();
-    roundRectPath(ctx, x, y, cellW, cellH, 28);
-    ctx.clip();
-
-    // cover配置
-    const scale = Math.max(cellW / img.width, cellH / img.height);
-    const dw = img.width * scale;
-    const dh = img.height * scale;
-    ctx.drawImage(img, x + (cellW - dw) / 2, y + (cellH - dh) / 2, dw, dh);
-
-    // 名前ラベル（下部）
-    const name = members[i].name?.trim();
-    if (name) {
-      const barH = Math.min(110, cellH * 0.22);
-      const grad = ctx.createLinearGradient(0, y + cellH - barH, 0, y + cellH);
-      grad.addColorStop(0, 'rgba(0,0,0,0)');
-      grad.addColorStop(1, 'rgba(0,0,0,0.82)');
-      ctx.fillStyle = grad;
-      ctx.fillRect(x, y + cellH - barH, cellW, barH);
-
-      ctx.fillStyle = '#FFFFFF';
-      const fs = Math.max(34, Math.min(56, cellW / 7));
-      ctx.font = `900 ${fs}px ${FONT_FAMILY}`;
-      ctx.textBaseline = 'alphabetic';
-      ctx.fillText(name, x + cellW / 2, y + cellH - barH / 2 + fs / 3, cellW - 24);
+    // 行ごとに詰める
+    const rows: { name: string; w: number }[][] = [];
+    let row: { name: string; w: number }[] = [];
+    let rowW = 0;
+    for (const name of memberNames) {
+      const w = ctx.measureText(name).width + padX * 2;
+      if (rowW + w + (row.length ? gap : 0) > maxRowW && row.length) {
+        rows.push(row);
+        row = [];
+        rowW = 0;
+      }
+      row.push({ name, w });
+      rowW += w + (row.length > 1 ? gap : 0);
     }
-    ctx.restore();
+    if (row.length) rows.push(row);
+
+    const totalH = rows.length * pillH + (rows.length - 1) * gap;
+    let y = H - 120 - totalH; // 下から少し上
+
+    for (const r of rows) {
+      const rw = r.reduce((s, p) => s + p.w, 0) + gap * (r.length - 1);
+      let x = (W - rw) / 2;
+      for (const p of r) {
+        roundRect(ctx, x, y, p.w, pillH, pillH / 2);
+        ctx.fillStyle = accent;
+        ctx.fill();
+        ctx.fillStyle = '#FFFFFF';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(p.name, x + p.w / 2, y + pillH / 2 + 2);
+        ctx.textBaseline = 'alphabetic';
+        x += p.w + gap;
+      }
+      y += pillH + gap;
+    }
   }
 
   const blob = await new Promise<Blob>((resolve, reject) =>
