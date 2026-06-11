@@ -22,13 +22,6 @@ import { useAppStore } from '../store/appStore';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
 
 type Mode = 'photo' | 'text';
-type ContentType = 'feed' | 'story' | 'reel';
-
-const CONTENT_TYPES: { key: ContentType; label: string; emoji: string; desc: string }[] = [
-  { key: 'feed', label: 'フィード', emoji: '📷', desc: '通常投稿' },
-  { key: 'story', label: 'ストーリー', emoji: '📖', desc: '24時間' },
-  { key: 'reel', label: 'リール', emoji: '🎬', desc: '短尺動画' },
-];
 
 const TONES = ['明るい・ポジティブ', 'プロフェッショナル', 'カジュアル', '感情的・共感', 'ユーモラス'];
 
@@ -39,7 +32,6 @@ export default function GenerateScreen() {
   const { setDraft, brandSettings, setBrandSettings } = useAppStore();
 
   const [mode, setMode] = useState<Mode>('photo');
-  const [contentType, setContentType] = useState<ContentType>('feed');
   const [tone, setTone] = useState(brandSettings.tone || '明るい・ポジティブ');
   const [selectedIndustry, setSelectedIndustry] = useState(brandSettings.industry || '');
   const [loading, setLoading] = useState(false);
@@ -118,7 +110,7 @@ export default function GenerateScreen() {
         generated = await generateFromImage({
           imageBase64: selectedImage.base64,
           mimeType: selectedImage.mimeType as any,
-          contentType,
+          contentType: 'feed',
           tone,
           industry: selectedIndustry,
         });
@@ -143,7 +135,7 @@ export default function GenerateScreen() {
       setDraft({
         caption: generated.caption,
         hashtags: generated.hashtags,
-        type: contentType === 'reel' ? 'feed' : contentType,
+        type: 'feed',
       });
     } catch (e) {
       // サーバーからのメッセージ（回数上限など）をそのまま表示
@@ -206,24 +198,6 @@ export default function GenerateScreen() {
             <Text style={[styles.modeBtnText, mode === m && styles.modeBtnTextActive]}>
               {m === 'photo' ? '📷 写真から生成' : '✏️ テキストで生成'}
             </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {/* Content type */}
-      <Text style={styles.label}>コンテンツタイプ</Text>
-      <View style={styles.contentTypeRow}>
-        {CONTENT_TYPES.map((ct) => (
-          <TouchableOpacity
-            key={ct.key}
-            style={[styles.contentTypeCard, contentType === ct.key && styles.contentTypeCardActive]}
-            onPress={() => setContentType(ct.key)}
-          >
-            <Text style={styles.contentTypeEmoji}>{ct.emoji}</Text>
-            <Text style={[styles.contentTypeLabel, contentType === ct.key && styles.contentTypeLabelActive]}>
-              {ct.label}
-            </Text>
-            <Text style={styles.contentTypeDesc}>{ct.desc}</Text>
           </TouchableOpacity>
         ))}
       </View>
