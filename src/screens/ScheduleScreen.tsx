@@ -352,8 +352,12 @@ export default function ScheduleScreen() {
       clearDraft();
       setModalVisible(false);
       await fetchPosts();
-    } catch {
-      Alert.alert('エラー', '保存に失敗しました');
+    } catch (e) {
+      // DB側の制限（無料は2件まで等）のメッセージをそのまま表示
+      Alert.alert(
+        '保存できませんでした',
+        e instanceof Error && e.message ? e.message : '保存に失敗しました'
+      );
     } finally {
       setSaving(false);
     }
