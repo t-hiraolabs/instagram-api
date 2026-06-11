@@ -1,0 +1,153 @@
+// 写真を数枚つないで、無音のスライドショー動画(MP4)を作る（web専用）
+// ffmpeg は Metro でバンドルせず、実行時にCDNから読み込む（ビルドを壊さないため）
+
+const W = 720;
+const H = 1280;
+
+const FF_VER = '0.12.10';
+const UTIL_VER = '0.12.1';
+const CORE_VER = '0.12.6';
+
+function loadScript(src: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector(`script[src="${src}"]`)) return resolve();
+    const s = document.createElement('script');
+    s.src = src;
+    s.crossOrigin = 'anonymous';
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error(`スクリプト読み込み失敗: ${src}`));
+    document.head.appendChild(s);
+  });
+}
+
+let ffmpegPromise: Promise<any> | null = null;
+
+async function getFFmpeg(onLog?: (msg: string) => void) {
+  if (ffmpegPromise) return ffmpegPromise;
+  ffmpegPromise = (async () => {
+    await loadScript(`https://unpkg.com/@ffmpeg/ffmpeg@${FF_VER}/dist/umd/ffmpeg.js`);
+    await loadScript(`https://unpkg.com/@ffmpeg/util@${UTIL_VER}/dist/umd/index.js`);
+    const { FFmpeg } = (window as any).FFmpegWASM;
+    const { toBlobURL } = (window as any).FFmpegUtil;
+    const ffmpeg = new FFmpeg();
+    if (onLog) ffmpeg.on('log', ({ message }: any) => onLog(message));
+    const base = `https://unpkg.com/@ffmpeg/core@${CORE_VER}/dist/umd`;
+    await ffmpeg.load({
+      coreURL: await toBlobURL(`${base}/ffmpeg-core.js`, 'text/javascript'),
+      wasmURL: await toBlobURL(`${base}/ffmpeg-core.wasm`, 'application/wasm'),
+    });
+    return ffmpeg;
+  })();
+  return ffmpegPromise;
+}
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new window.Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('画像の読み込みに失敗しました'));
+    img.src = src;
+  });
+}
+
+function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
+  const chars = Array.from(text);
+  const lines: string[] = [];
+  let line = '';
+  for (const ch of chars) {
+    const test = line + ch;
+    if (ctx.measureText(test).width > maxWidth && line) {
+      lines.push(line);
+      line = ch;
+    } else {
+      line = test;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+/** 1枚の写真を720x1280にcoverで配置し、文字をのせてJPEG(dataURL)を返す */
+export async function renderSlide(imageUri: string, text?: string): Promise<string> {
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Canvasを利用できません');
+
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+
+  const img = await loadImage(imageUri);
+  const scale = Math.max(W / img.width, H / img.height);
+  const dw = img.width * scale;
+  const dh = img.height * scale;
+  ctx.drawImage(img, (W - dw) / 2, (H - dh) / 2, dw, dh);
+
+  if (text && text.trim()) {
+    const grad = ctx.createLinearGradient(0, H * 0.55, 0, H);
+    grad.addColorStop(0, 'rgba(0,0,0,0)');
+    grad.addColorStop(1, 'rgba(0,0,0,0.8)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, H * 0.55, W, H * 0.45);
+
+    ctx.fillStyle = '#FFFFFF';
+    ctx.textAlign = 'center';
+    ctx.shadowColor = 'rgba(0,0,0,0.6)';
+    ctx.shadowBlur = 10;
+    ctx.font = 'bold 56px sans-serif';
+    const lines = wrapText(ctx, text.trim(), W - 120);
+    let y = H - 110 - (lines.length - 1) * 70;
+    for (const line of lines) {
+      ctx.fillText(line, W / 2, y);
+      y += 70;
+    }
+  }
+
+  return canvas.toDataURL('image/jpeg', 0.9);
+}
+
+export interface ReelSlide {
+  imageUri: string;
+  text?: string;
+}
+
+/** スライド配列からMP4を生成。Blobと再生用URLを返す */
+export async function createReel(
+  slides: ReelSlide[],
+  secondsPer = 3,
+  onLog?: (msg: string) => void
+): Promise<{ blob: Blob; url: string }> {
+  if (slides.length === 0) throw new Error('写真を1枚以上選んでください');
+
+  const ffmpeg = await getFFmpeg(onLog);
+  const { fetchFile } = (window as any).FFmpegUtil;
+
+  // 各スライドを描画して書き込み（s0.jpg, s1.jpg, ...）
+  for (let i = 0; i < slides.length; i++) {
+    const dataUrl = await renderSlide(slides[i].imageUri, slides[i].text);
+    await ffmpeg.writeFile(`s${i}.jpg`, await fetchFile(dataUrl));
+  }
+
+  // 各画像を secondsPer 秒ずつ表示する動画に（無音・30fps・H.264）
+  await ffmpeg.exec([
+    '-framerate',
+    `1/${secondsPer}`,
+    '-i',
+    's%d.jpg',
+    '-r',
+    '30',
+    '-c:v',
+    'libx264',
+    '-pix_fmt',
+    'yuv420p',
+    '-movflags',
+    '+faststart',
+    'out.mp4',
+  ]);
+
+  const data = await ffmpeg.readFile('out.mp4');
+  const blob = new Blob([(data as Uint8Array).buffer], { type: 'video/mp4' });
+  return { blob, url: URL.createObjectURL(blob) };
+}
