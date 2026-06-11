@@ -354,10 +354,11 @@ export default function ScheduleScreen() {
       await fetchPosts();
     } catch (e) {
       // DB側の制限（無料は2件まで等）のメッセージをそのまま表示
-      Alert.alert(
-        '保存できませんでした',
-        e instanceof Error && e.message ? e.message : '保存に失敗しました'
-      );
+      // ※ Supabaseのエラーは Error 型ではなく { message } 形式なので message を直接取り出す
+      const msg =
+        (e as { message?: string })?.message ||
+        (typeof e === 'string' ? e : '保存に失敗しました');
+      alertMsg(msg, '保存できませんでした');
     } finally {
       setSaving(false);
     }
