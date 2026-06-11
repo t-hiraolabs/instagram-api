@@ -18,6 +18,14 @@ async function getAuthHeaders() {
   };
 }
 
+// サーバーから返ってきたエラーメッセージ（回数上限など）を分かりやすく取り出す
+function extractError(err: unknown): string {
+  if (axios.isAxiosError(err)) {
+    return err.response?.data?.error ?? err.message;
+  }
+  return err instanceof Error ? err.message : 'AIの呼び出しに失敗しました';
+}
+
 function getBrandContext(): string {
   const { brandName, industry, targetAudience, tone } = useAppStore.getState().brandSettings;
   const parts: string[] = [];
@@ -60,19 +68,23 @@ interface GeneratedStory {
 }
 
 async function callClaude(prompt: string, systemPrompt: string): Promise<string> {
-  const response = await axios.post(
-    CLAUDE_API_URL,
-    {
-      model: MODEL,
-      max_tokens: 1024,
-      system: systemPrompt,
-      messages: [{ role: 'user', content: prompt }],
-    },
-    {
-      headers: await getAuthHeaders(),
-    }
-  );
-  return response.data.content[0].text;
+  try {
+    const response = await axios.post(
+      CLAUDE_API_URL,
+      {
+        model: MODEL,
+        max_tokens: 1024,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: prompt }],
+      },
+      {
+        headers: await getAuthHeaders(),
+      }
+    );
+    return response.data.content[0].text;
+  } catch (err) {
+    throw new Error(extractError(err));
+  }
 }
 
 export async function generatePost(input: GeneratePostInput): Promise<GeneratedPost> {
@@ -173,23 +185,25 @@ export async function generateFromImage(input: {
       ? '24時間で消えるストーリーらしく、短くインパクト重視。アンケートや質問スタンプを促す一言を含める。'
       : '写真の世界観を伝える情感豊かな文章で。';
 
-  const response = await axios.post(
-    CLAUDE_API_URL,
-    {
-      model: MODEL,
-      max_tokens: 1024,
-      system: systemPrompt,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'image',
-              source: { type: 'base64', media_type: input.mimeType, data: input.imageBase64 },
-            },
-            {
-              type: 'text',
-              text: `この画像からInstagram${labels[input.contentType]}のコンテンツを生成してください。${brandCtx}
+  let response;
+  try {
+    response = await axios.post(
+      CLAUDE_API_URL,
+      {
+        model: MODEL,
+        max_tokens: 1024,
+        system: systemPrompt,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'image',
+                source: { type: 'base64', media_type: input.mimeType, data: input.imageBase64 },
+              },
+              {
+                type: 'text',
+                text: `この画像からInstagram${labels[input.contentType]}のコンテンツを生成してください。${brandCtx}
 トーン: ${input.tone}
 ${input.industry ? `業種: ${input.industry}` : ''}
 ${extraInstructions}
@@ -197,15 +211,18 @@ ${extraInstructions}
 ハッシュタグは15〜20個、日英混合で。
 
 {"caption":"投稿文（絵文字含む、200〜400文字）","hashtags":["#タグ1",...],"suggestions":["アドバイス1","アドバイス2","アドバイス3"]}`,
-            },
-          ],
-        },
-      ],
-    },
-    {
-      headers: await getAuthHeaders(),
-    }
-  );
+              },
+            ],
+          },
+        ],
+      },
+      {
+        headers: await getAuthHeaders(),
+      }
+    );
+  } catch (err) {
+    throw new Error(extractError(err));
+  }
 
   const raw = response.data.content[0].text;
   const clean = raw.replace(/```json|```/g, '').trim();
