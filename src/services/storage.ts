@@ -10,7 +10,11 @@ export async function uploadPostImage(uri: string): Promise<string> {
   // web/ブラウザでは uri を fetch して Blob 化できる
   const response = await fetch(uri);
   const blob = await response.blob();
+  return uploadBlob(blob);
+}
 
+/** Blob（Canvasで合成した画像など）を直接アップロードして公開URLを返す */
+export async function uploadBlob(blob: Blob): Promise<string> {
   const mime = blob.type || 'image/jpeg';
   const ext = (mime.split('/')[1] || 'jpg').replace('jpeg', 'jpg');
   const path = `posts/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;

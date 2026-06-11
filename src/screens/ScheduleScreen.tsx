@@ -16,7 +16,9 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
-import { uploadPostImage } from '../services/storage';
+import { uploadPostImage, uploadBlob } from '../services/storage';
+import { composeStoryImage } from '../utils/composeStory';
+import { generateStory } from '../services/aiService';
 import {
   getScheduledPosts,
   createScheduledPost,
@@ -98,6 +100,17 @@ export default function ScheduleScreen() {
   const [dateText, setDateText] = useState('');
   const [type, setType] = useState<'feed' | 'story'>('feed');
 
+  // ストーリー用：合成前の元写真と、画像に載せる文字
+  const [storyRawUri, setStoryRawUri] = useState('');
+  const [storyTheme, setStoryTheme] = useState('');
+  const [storyDetails, setStoryDetails] = useState('');
+  const [storyTitle, setStoryTitle] = useState('');
+  const [storyBody, setStoryBody] = useState('');
+  const [storyCta, setStoryCta] = useState('');
+  const [storyTextColor, setStoryTextColor] = useState('#FFFFFF');
+  const [aiLoading, setAiLoading] = useState(false);
+  const [composing, setComposing] = useState(false);
+
   const quickDates = getQuickDates();
 
   const fetchPosts = useCallback(async () => {
@@ -122,10 +135,22 @@ export default function ScheduleScreen() {
     setImageUrl('');
     setImagePreview('');
     setDateText('');
+    setStoryRawUri('');
+    setStoryTheme('');
+    setStoryDetails('');
+    setStoryTitle('');
+    setStoryBody('');
+    setStoryCta('');
+    setStoryTextColor('#FFFFFF');
     setModalVisible(true);
   };
 
-  // スマホ/PCの写真を選んでSupabase Storageへアップロードし、公開URLを得る
+  const alertMsg = (msg: string, title = 'エラー') => {
+    if (Platform.OS === 'web') window.alert(msg);
+    else Alert.alert(title, msg);
+  };
+
+  // 写真を選ぶ。フィードはそのままアップロード、ストーリーは合成用に元写真として保持
   const pickAndUploadImage = async () => {
     if (Platform.OS !== 'web') {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -142,8 +167,16 @@ export default function ScheduleScreen() {
       quality: 0.9,
     });
     if (res.canceled) return;
-
     const asset = res.assets[0];
+
+    if (type === 'story') {
+      // ストーリーは文字を合成してから投稿するので、ここではアップロードしない
+      setStoryRawUri(asset.uri);
+      setImagePreview(asset.uri);
+      setImageUrl('');
+      return;
+    }
+
     setImagePreview(asset.uri);
     setImageUploading(true);
     try {
@@ -151,11 +184,64 @@ export default function ScheduleScreen() {
       setImageUrl(publicUrl);
     } catch (e) {
       setImagePreview('');
-      const msg = e instanceof Error ? e.message : '画像アップロードに失敗しました';
-      if (Platform.OS === 'web') window.alert(msg);
-      else Alert.alert('エラー', msg);
+      alertMsg(e instanceof Error ? e.message : '画像アップロードに失敗しました');
     } finally {
       setImageUploading(false);
+    }
+  };
+
+  // AIでストーリーの文言（タイトル・本文・CTA）を生成
+  const handleGenerateStoryText = async () => {
+    if (!storyTheme.trim() && !storyDetails.trim()) {
+      alertMsg('テーマか内容を入力してください');
+      return;
+    }
+    if (!(await ensureLoggedIn('AI生成を使うにはログインが必要です'))) return;
+    setAiLoading(true);
+    try {
+      const g = await generateStory({
+        theme: storyTheme.trim() || storyDetails.trim().slice(0, 20),
+        type: 'announcement',
+        details: storyDetails.trim() || storyTheme.trim(),
+      });
+      setStoryTitle(g.title);
+      setStoryBody(g.bodyText);
+      setStoryCta(g.cta);
+      if (g.textColor) setStoryTextColor(g.textColor);
+      // 文字が変わったので合成済み画像は作り直しが必要
+      setImageUrl('');
+    } catch {
+      alertMsg('AI生成に失敗しました。プロフィール画面でAPIキーを設定してください。');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  // 元写真＋文字を合成してプレビューを作り、アップロードまで行う
+  const handleComposeStory = async () => {
+    if (!storyRawUri) {
+      alertMsg('先に写真を選んでください');
+      return;
+    }
+    if (!storyTitle.trim() && !storyBody.trim() && !storyCta.trim()) {
+      alertMsg('画像に載せる文字（タイトル・本文・CTAのいずれか）を入力してください');
+      return;
+    }
+    setComposing(true);
+    try {
+      const { blob, previewUrl } = await composeStoryImage(storyRawUri, {
+        title: storyTitle.trim(),
+        bodyText: storyBody.trim(),
+        cta: storyCta.trim(),
+        textColor: storyTextColor,
+      });
+      setImagePreview(previewUrl);
+      const publicUrl = await uploadBlob(blob);
+      setImageUrl(publicUrl);
+    } catch (e) {
+      alertMsg(e instanceof Error ? e.message : '合成に失敗しました');
+    } finally {
+      setComposing(false);
     }
   };
 
@@ -167,12 +253,17 @@ export default function ScheduleScreen() {
 
   // 今すぐInstagramに投稿（テスト/手動投稿）
   const handlePublishNow = async () => {
-    if (!caption.trim()) {
+    if (type === 'feed' && !caption.trim()) {
       Alert.alert('エラー', 'キャプションを入力してください');
       return;
     }
     if (!imageUrl.trim()) {
-      Alert.alert('画像が必要です', 'Instagram投稿には公開された画像URLが必要です');
+      Alert.alert(
+        '画像が必要です',
+        type === 'story'
+          ? '写真を選び「プレビューを作成」を押してください'
+          : '写真を選んでください'
+      );
       return;
     }
     if (!instagramCredentials?.userId || !instagramCredentials?.accessToken) {
@@ -210,8 +301,17 @@ export default function ScheduleScreen() {
   };
 
   const handleSave = async () => {
-    if (!caption.trim()) {
+    if (type === 'feed' && !caption.trim()) {
       Alert.alert('エラー', 'キャプションを入力してください');
+      return;
+    }
+    if (!imageUrl.trim()) {
+      Alert.alert(
+        '画像が必要です',
+        type === 'story'
+          ? '写真を選び「プレビューを作成」を押してください'
+          : '写真を選んでください'
+      );
       return;
     }
     const scheduledDate = parseDate(dateText);
@@ -392,32 +492,15 @@ export default function ScheduleScreen() {
               ))}
             </View>
 
-            <Text style={styles.fieldLabel}>キャプション</Text>
-            <TextInput
-              style={[styles.input, styles.textArea]}
-              value={caption}
-              onChangeText={setCaption}
-              placeholder="投稿のキャプションを入力"
-              placeholderTextColor={COLORS.textMuted}
-              multiline
-              numberOfLines={4}
-            />
-
-            <Text style={styles.fieldLabel}>ハッシュタグ（スペース区切り）</Text>
-            <TextInput
-              style={styles.input}
-              value={hashtagsText}
-              onChangeText={setHashtagsText}
-              placeholder="#春コーデ #新作 #ファッション"
-              placeholderTextColor={COLORS.textMuted}
-            />
-
-            <Text style={styles.fieldLabel}>投稿画像</Text>
+            {/* 写真（フィード=正方形 / ストーリー=縦長） */}
+            <Text style={styles.fieldLabel}>
+              {type === 'story' ? '背景写真（縦長 9:16）' : '投稿画像（正方形）'}
+            </Text>
             <TouchableOpacity
               style={styles.imagePickerBox}
               onPress={pickAndUploadImage}
               activeOpacity={0.85}
-              disabled={imageUploading}
+              disabled={imageUploading || composing}
             >
               {imagePreview ? (
                 <Image
@@ -434,16 +517,128 @@ export default function ScheduleScreen() {
                   <Text style={styles.imagePlaceholderText}>タップして写真を選ぶ</Text>
                 </View>
               )}
-              {imageUploading && (
+              {(imageUploading || composing) && (
                 <View style={styles.imageUploadingOverlay}>
                   <ActivityIndicator color="#fff" />
-                  <Text style={styles.imageUploadingText}>アップロード中...</Text>
+                  <Text style={styles.imageUploadingText}>
+                    {composing ? '合成中...' : 'アップロード中...'}
+                  </Text>
                 </View>
               )}
             </TouchableOpacity>
-            {imageUrl && !imageUploading ? (
-              <Text style={styles.imageReadyText}>✅ 画像の準備ができました</Text>
-            ) : null}
+
+            {type === 'feed' ? (
+              <>
+                <Text style={styles.fieldLabel}>キャプション</Text>
+                <TextInput
+                  style={[styles.input, styles.textArea]}
+                  value={caption}
+                  onChangeText={setCaption}
+                  placeholder="投稿のキャプションを入力"
+                  placeholderTextColor={COLORS.textMuted}
+                  multiline
+                  numberOfLines={4}
+                />
+                <Text style={styles.fieldLabel}>ハッシュタグ（スペース区切り）</Text>
+                <TextInput
+                  style={styles.input}
+                  value={hashtagsText}
+                  onChangeText={setHashtagsText}
+                  placeholder="#春コーデ #新作 #ファッション"
+                  placeholderTextColor={COLORS.textMuted}
+                />
+                {imageUrl && !imageUploading ? (
+                  <Text style={styles.imageReadyText}>✅ 画像の準備ができました</Text>
+                ) : null}
+              </>
+            ) : (
+              <>
+                <Text style={styles.sectionDivider}>画像に載せる文字</Text>
+
+                <Text style={styles.fieldLabel}>テーマ</Text>
+                <TextInput
+                  style={styles.input}
+                  value={storyTheme}
+                  onChangeText={setStoryTheme}
+                  placeholder="例: 夏セールのお知らせ"
+                  placeholderTextColor={COLORS.textMuted}
+                />
+                <Text style={styles.fieldLabel}>内容・詳細</Text>
+                <TextInput
+                  style={[styles.input, styles.textArea]}
+                  value={storyDetails}
+                  onChangeText={setStoryDetails}
+                  placeholder="例: 7/20〜31限定で全品20%OFF"
+                  placeholderTextColor={COLORS.textMuted}
+                  multiline
+                  numberOfLines={2}
+                />
+                <TouchableOpacity
+                  style={[styles.aiBtn, aiLoading && styles.publishNowBtnDisabled]}
+                  onPress={handleGenerateStoryText}
+                  disabled={aiLoading}
+                  activeOpacity={0.85}
+                >
+                  {aiLoading ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={styles.aiBtnText}>✨ AIで文章を作る</Text>
+                  )}
+                </TouchableOpacity>
+
+                <Text style={styles.fieldLabel}>タイトル（大きく表示）</Text>
+                <TextInput
+                  style={styles.input}
+                  value={storyTitle}
+                  onChangeText={(t) => {
+                    setStoryTitle(t);
+                    setImageUrl('');
+                  }}
+                  placeholder="見出し"
+                  placeholderTextColor={COLORS.textMuted}
+                />
+                <Text style={styles.fieldLabel}>本文</Text>
+                <TextInput
+                  style={[styles.input, styles.textArea]}
+                  value={storyBody}
+                  onChangeText={(t) => {
+                    setStoryBody(t);
+                    setImageUrl('');
+                  }}
+                  placeholder="補足の文章"
+                  placeholderTextColor={COLORS.textMuted}
+                  multiline
+                  numberOfLines={2}
+                />
+                <Text style={styles.fieldLabel}>ボタン文言（CTA）</Text>
+                <TextInput
+                  style={styles.input}
+                  value={storyCta}
+                  onChangeText={(t) => {
+                    setStoryCta(t);
+                    setImageUrl('');
+                  }}
+                  placeholder="例: 今すぐチェック"
+                  placeholderTextColor={COLORS.textMuted}
+                />
+
+                <TouchableOpacity
+                  style={[styles.composeBtn, composing && styles.publishNowBtnDisabled]}
+                  onPress={handleComposeStory}
+                  disabled={composing}
+                  activeOpacity={0.85}
+                >
+                  {composing ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={styles.composeBtnText}>🎨 プレビューを作成</Text>
+                  )}
+                </TouchableOpacity>
+                {imageUrl && !composing ? (
+                  <Text style={styles.imageReadyText}>✅ ストーリー画像の準備ができました</Text>
+                ) : null}
+              </>
+            )}
 
             <Text style={styles.fieldLabel}>予約日時</Text>
 
@@ -744,6 +939,22 @@ const styles = StyleSheet.create({
   },
   publishNowBtnDisabled: { opacity: 0.5 },
   publishNowText: { color: '#fff', fontSize: 15, fontWeight: '800' },
+  aiBtn: {
+    backgroundColor: COLORS.secondary,
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.sm,
+    alignItems: 'center',
+    marginTop: SPACING.sm,
+  },
+  aiBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  composeBtn: {
+    backgroundColor: COLORS.primary,
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.md,
+    alignItems: 'center',
+    marginTop: SPACING.md,
+  },
+  composeBtnText: { color: '#fff', fontSize: 15, fontWeight: '800' },
   publishNowHint: {
     color: COLORS.textMuted,
     fontSize: 11,
