@@ -56,6 +56,28 @@ export async function deleteScheduledPost(id: string): Promise<void> {
   if (error) throw error;
 }
 
+export interface UpdateScheduledPostInput {
+  caption?: string;
+  hashtags?: string[];
+  scheduled_at?: Date;
+  repeat?: RepeatOption;
+}
+
+/** 予約投稿の内容を更新する（キャプション・ハッシュタグ・日時・くりかえし） */
+export async function updateScheduledPost(
+  id: string,
+  fields: UpdateScheduledPostInput
+): Promise<void> {
+  const payload: Record<string, unknown> = {};
+  if (fields.caption !== undefined) payload.caption = fields.caption;
+  if (fields.hashtags !== undefined) payload.hashtags = fields.hashtags;
+  if (fields.repeat !== undefined) payload.repeat = fields.repeat;
+  if (fields.scheduled_at) payload.scheduled_at = fields.scheduled_at.toISOString();
+
+  const { error } = await supabase.from('scheduled_posts').update(payload).eq('id', id);
+  if (error) throw error;
+}
+
 /** ログイン中ユーザーのプラン（free / pro）を取得 */
 export async function getMyPlan(): Promise<'free' | 'pro'> {
   const {

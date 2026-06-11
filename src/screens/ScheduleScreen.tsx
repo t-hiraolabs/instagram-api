@@ -28,6 +28,7 @@ import {
   getScheduledPosts,
   createScheduledPost,
   deleteScheduledPost,
+  updateScheduledPost,
   getMyPlan,
   ScheduledPost,
   RepeatOption,
@@ -53,6 +54,13 @@ function parseDate(str: string): Date | null {
   const normalized = str.replace(/\//g, '-').replace(' ', 'T');
   const d = new Date(normalized);
   return isNaN(d.getTime()) ? null : d;
+}
+
+// ISO日時を編集欄用のローカル文字列(YYYY-MM-DDTHH:mm)に変換
+function toLocalInput(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 function getQuickDates(): { label: string; value: string; isOptimal: boolean }[] {
@@ -126,6 +134,15 @@ export default function ScheduleScreen({ route }: any) {
   const [type, setType] = useState<'feed' | 'story'>('feed');
   const [repeat, setRepeat] = useState<RepeatOption>('none');
   const [plan, setPlan] = useState<'free' | 'pro'>('free');
+
+  // 編集モーダル用
+  const [editVisible, setEditVisible] = useState(false);
+  const [editingPost, setEditingPost] = useState<ScheduledPost | null>(null);
+  const [editCaption, setEditCaption] = useState('');
+  const [editHashtags, setEditHashtags] = useState('');
+  const [editDate, setEditDate] = useState('');
+  const [editRepeat, setEditRepeat] = useState<RepeatOption>('none');
+  const [editSaving, setEditSaving] = useState(false);
 
   // ストーリー用：合成前の元写真と、画像に載せる文字
   const [storyRawUri, setStoryRawUri] = useState('');
@@ -405,22 +422,71 @@ export default function ScheduleScreen({ route }: any) {
     }
   };
 
+  const doDelete = async (id: string) => {
+    try {
+      await deleteScheduledPost(id);
+      setPosts((prev) => prev.filter((p) => p.id !== id));
+    } catch {
+      alertMsg('削除に失敗しました');
+    }
+  };
+
   const handleDelete = (id: string) => {
-    Alert.alert('削除', '予約を削除しますか？', [
-      { text: 'キャンセル', style: 'cancel' },
-      {
-        text: '削除',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await deleteScheduledPost(id);
-            setPosts((prev) => prev.filter((p) => p.id !== id));
-          } catch {
-            Alert.alert('エラー', '削除に失敗しました');
-          }
-        },
-      },
-    ]);
+    if (Platform.OS === 'web') {
+      if (window.confirm('この予約を削除しますか？')) doDelete(id);
+    } else {
+      Alert.alert('削除', '予約を削除しますか？', [
+        { text: 'キャンセル', style: 'cancel' },
+        { text: '削除', style: 'destructive', onPress: () => doDelete(id) },
+      ]);
+    }
+  };
+
+  // 編集
+  const openEdit = (post: ScheduledPost) => {
+    setEditingPost(post);
+    setEditCaption(post.caption ?? '');
+    setEditHashtags((post.hashtags ?? []).join(' '));
+    setEditDate(toLocalInput(post.scheduled_at));
+    setEditRepeat(post.repeat ?? 'none');
+    setEditVisible(true);
+  };
+
+  const saveEdit = async () => {
+    if (!editingPost) return;
+    const date = parseDate(editDate);
+    if (!date) {
+      alertMsg('日時の形式が正しくありません\n例: 2026-06-15T18:00', '入力に不備があります');
+      return;
+    }
+    if (date <= new Date()) {
+      alertMsg('予約日時は未来の日時を指定してください', '入力に不備があります');
+      return;
+    }
+    setEditSaving(true);
+    try {
+      await updateScheduledPost(editingPost.id, {
+        caption: editCaption.trim(),
+        hashtags: editHashtags.split(/[\s,　]+/).map((h) => h.trim()).filter(Boolean),
+        scheduled_at: date,
+        repeat: editRepeat,
+      });
+      setEditVisible(false);
+      setEditingPost(null);
+      await fetchPosts();
+    } catch (e) {
+      alertMsg((e as { message?: string })?.message || '更新に失敗しました', '保存できませんでした');
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
+  const editSelectRepeat = (r: RepeatOption) => {
+    if (r !== 'none' && plan !== 'pro') {
+      alertMsg('くりかえし投稿はProプラン限定です', '⭐ Pro限定の機能です');
+      return;
+    }
+    setEditRepeat(r);
   };
 
   const filtered = posts.filter((p) => filter === 'all' || p.status === filter);
@@ -514,9 +580,14 @@ export default function ScheduleScreen({ route }: any) {
                   )}
                 </View>
                 {post.status === 'pending' && (
-                  <TouchableOpacity onPress={() => handleDelete(post.id)}>
-                    <Text style={styles.deleteBtn}>🗑</Text>
-                  </TouchableOpacity>
+                  <View style={styles.cardActions}>
+                    <TouchableOpacity onPress={() => openEdit(post)} hitSlop={8}>
+                      <Text style={styles.editBtn}>✏️</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => handleDelete(post.id)} hitSlop={8}>
+                      <Text style={styles.deleteBtn}>🗑</Text>
+                    </TouchableOpacity>
+                  </View>
                 )}
               </View>
 
@@ -873,6 +944,107 @@ export default function ScheduleScreen({ route }: any) {
           </ScrollView>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* 編集モーダル（キャプション・ハッシュタグ・日時・くりかえし） */}
+      <Modal visible={editVisible} animationType="slide" presentationStyle="pageSheet">
+        <KeyboardAvoidingView
+          style={styles.modal}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => setEditVisible(false)}>
+              <Text style={styles.modalCancel}>キャンセル</Text>
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>予約を編集</Text>
+            <TouchableOpacity onPress={saveEdit} disabled={editSaving}>
+              {editSaving ? (
+                <ActivityIndicator color={COLORS.primary} />
+              ) : (
+                <Text style={styles.modalSave}>保存</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.modalBody} keyboardShouldPersistTaps="handled">
+            {editingPost && (
+              <Text style={styles.editKind}>
+                {editingPost.type === 'feed'
+                  ? '📷 フィード投稿'
+                  : editingPost.type === 'reel'
+                  ? '🎬 リール'
+                  : '📖 ストーリー'}
+                ／ 画像・動画は変更できません
+              </Text>
+            )}
+
+            {editingPost?.type !== 'story' && (
+              <>
+                <Text style={styles.fieldLabel}>キャプション</Text>
+                <TextInput
+                  style={[styles.input, styles.textArea]}
+                  value={editCaption}
+                  onChangeText={setEditCaption}
+                  placeholder="投稿のキャプション"
+                  placeholderTextColor={COLORS.textMuted}
+                  multiline
+                  numberOfLines={4}
+                />
+                <Text style={styles.fieldLabel}>ハッシュタグ（スペース区切り）</Text>
+                <TextInput
+                  style={styles.input}
+                  value={editHashtags}
+                  onChangeText={setEditHashtags}
+                  placeholder="#春コーデ #新作"
+                  placeholderTextColor={COLORS.textMuted}
+                />
+              </>
+            )}
+
+            <Text style={styles.fieldLabel}>予約日時</Text>
+            <TextInput
+              style={styles.input}
+              value={editDate}
+              onChangeText={setEditDate}
+              placeholder="例: 2026-06-15T18:00"
+              placeholderTextColor={COLORS.textMuted}
+              autoCapitalize="none"
+            />
+
+            <Text style={styles.fieldLabel}>くりかえし {plan !== 'pro' && '⭐Pro'}</Text>
+            <View style={styles.repeatRow}>
+              {REPEAT_OPTIONS.map((opt) => {
+                const active = editRepeat === opt.key;
+                const locked = opt.key !== 'none' && plan !== 'pro';
+                return (
+                  <TouchableOpacity
+                    key={opt.key}
+                    style={[styles.repeatBtn, active && styles.repeatBtnActive]}
+                    onPress={() => editSelectRepeat(opt.key)}
+                  >
+                    <Text style={[styles.repeatBtnText, active && styles.repeatBtnTextActive]}>
+                      {opt.label}
+                      {locked ? ' 🔒' : ''}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <TouchableOpacity
+              style={[styles.publishNowBtn, editSaving && styles.publishNowBtnDisabled]}
+              onPress={saveEdit}
+              disabled={editSaving}
+              activeOpacity={0.85}
+            >
+              {editSaving ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.publishNowText}>💾 変更を保存する</Text>
+              )}
+            </TouchableOpacity>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -953,6 +1125,13 @@ const styles = StyleSheet.create({
   statusFailed: { backgroundColor: COLORS.error + '33' },
   statusText: { color: COLORS.text, fontSize: 11, fontWeight: '600' },
   deleteBtn: { fontSize: 18 },
+  cardActions: { flexDirection: 'row', gap: SPACING.md, alignItems: 'center' },
+  editBtn: { fontSize: 17 },
+  editKind: {
+    color: COLORS.textMuted,
+    fontSize: 12,
+    marginBottom: SPACING.sm,
+  },
   postCaption: { color: COLORS.text, fontSize: 14, lineHeight: 20, marginBottom: 4 },
   postHashtags: { color: '#4FC3F7', fontSize: 12, marginBottom: SPACING.sm },
   postFooter: {
