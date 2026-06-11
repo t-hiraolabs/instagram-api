@@ -152,6 +152,34 @@ export async function generateStory(input: GenerateStoryInput): Promise<Generate
   return JSON.parse(clean) as GeneratedStory;
 }
 
+/** リール用：テーマから、各スライドにのせる短いキャプションを生成 */
+export async function generateReelCaptions(input: {
+  theme: string;
+  count: number;
+  industry?: string;
+}): Promise<string[]> {
+  const brandCtx = getBrandContext();
+  const systemPrompt = `あなたはInstagramリールの構成作家です。
+日本の個人事業主・中小企業向けに、写真スライドにのせる短いキャプションを作ります。
+必ずJSONフォーマットだけで返答してください。`;
+
+  const prompt = `テーマ「${input.theme}」のInstagramリール用に、スライド${input.count}枚分の短いキャプションを作ってください。${brandCtx}
+${input.industry ? `業種: ${input.industry}` : ''}
+
+条件:
+- 各スライドに1つずつ、合計${input.count}個
+- 1つ10〜20文字程度、短くインパクト重視（写真の上にのせる前提）
+- 1枚目は引きつけるフック、最後の1枚は行動を促す一言（来店・予約・チェックなど）
+
+以下のJSONで返してください:
+{"captions": ["1枚目の文字", "2枚目の文字", ...]}`;
+
+  const raw = await callClaude(prompt, systemPrompt);
+  const clean = raw.replace(/```json|```/g, '').trim();
+  const parsed = JSON.parse(clean);
+  return (parsed.captions as string[]).slice(0, input.count);
+}
+
 export async function improveCaption(originalCaption: string): Promise<string[]> {
   const systemPrompt = `あなたはInstagramのエキスパートです。
 日本のユーザー向けにキャプションを分析して改善案を3つ提案します。JSONで返してください。`;

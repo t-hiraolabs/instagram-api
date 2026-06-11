@@ -16,6 +16,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
 import { createReel } from '../utils/createReel';
+import { generateReelCaptions } from '../services/aiService';
+import { ensureLoggedIn } from '../utils/requireLogin';
+import { useAppStore } from '../store/appStore';
 
 interface Slide {
   uri: string;
@@ -31,6 +34,9 @@ export default function ReelScreen() {
   const [status, setStatus] = useState('');
   const [previewUrl, setPreviewUrl] = useState('');
   const [elapsed, setElapsed] = useState<number | null>(null);
+  const [theme, setTheme] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
+  const brandSettings = useAppStore((s) => s.brandSettings);
 
   const videoHostRef = useRef<any>(null);
 
@@ -62,6 +68,32 @@ export default function ReelScreen() {
   const removeSlide = (i: number) => {
     setSlides((prev) => prev.filter((_, idx) => idx !== i));
     setPreviewUrl('');
+  };
+
+  const handleGenerateTexts = async () => {
+    if (slides.length === 0) {
+      alertMsg('先に写真を選んでください');
+      return;
+    }
+    if (!theme.trim()) {
+      alertMsg('テーマを入力してください（例：夏の新メニュー紹介）');
+      return;
+    }
+    if (!(await ensureLoggedIn('AIで文字を作るにはログインが必要です'))) return;
+    setAiLoading(true);
+    try {
+      const captions = await generateReelCaptions({
+        theme: theme.trim(),
+        count: slides.length,
+        industry: brandSettings.industry,
+      });
+      setSlides((prev) => prev.map((s, i) => ({ ...s, text: captions[i] ?? s.text })));
+      setPreviewUrl('');
+    } catch (e) {
+      alertMsg(e instanceof Error ? e.message : 'AI生成に失敗しました', 'エラー');
+    } finally {
+      setAiLoading(false);
+    }
   };
 
   const handleCreate = async () => {
@@ -140,6 +172,32 @@ export default function ReelScreen() {
         </Text>
       )}
 
+      {slides.length > 0 && (
+        <View style={styles.aiBox}>
+          <Text style={styles.aiBoxLabel}>✨ AIで文字を作る</Text>
+          <TextInput
+            style={styles.input}
+            value={theme}
+            onChangeText={setTheme}
+            placeholder="テーマ（例：夏の新メニュー紹介）"
+            placeholderTextColor={COLORS.textMuted}
+          />
+          <TouchableOpacity
+            style={[styles.aiBtn, aiLoading && styles.createBtnDisabled]}
+            onPress={handleGenerateTexts}
+            disabled={aiLoading}
+            activeOpacity={0.85}
+          >
+            {aiLoading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.aiBtnText}>✨ {slides.length}枚分の文字をAIで作る</Text>
+            )}
+          </TouchableOpacity>
+          <Text style={styles.aiHint}>各写真の文字に自動で入ります（あとで手直しもできます）</Text>
+        </View>
+      )}
+
       {slides.map((s, i) => (
         <View key={i} style={styles.slideRow}>
           <Image source={{ uri: s.uri }} style={styles.thumb} resizeMode="cover" />
@@ -204,6 +262,24 @@ const styles = StyleSheet.create({
   },
   pickBtnText: { color: COLORS.primary, fontSize: 15, fontWeight: '700' },
   countText: { color: COLORS.textSecondary, fontSize: 13, marginTop: SPACING.sm },
+  aiBox: {
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.md,
+    padding: SPACING.md,
+    marginTop: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.secondary + '44',
+  },
+  aiBoxLabel: { color: COLORS.text, fontSize: 14, fontWeight: '700', marginBottom: SPACING.sm },
+  aiBtn: {
+    backgroundColor: COLORS.secondary,
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.sm,
+    alignItems: 'center',
+    marginTop: SPACING.sm,
+  },
+  aiBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  aiHint: { color: COLORS.textMuted, fontSize: 11, marginTop: SPACING.sm },
   slideRow: {
     flexDirection: 'row',
     gap: SPACING.md,
