@@ -274,6 +274,7 @@ export async function renderSlide(
 export interface ReelSlide {
   imageUri: string;
   text?: string;
+  seconds?: number; // この写真の表示秒数（未指定なら secondsPer）
 }
 
 /** スライド配列からMP4を生成。Blobと再生用URLを返す */
@@ -288,6 +289,9 @@ export async function createReel(
   const ffmpeg = await getFFmpeg(onLog);
   const { fetchFile } = (window as any).FFmpegUtil;
 
+  // 写真ごとの表示秒数
+  const durations = slides.map((s) => s.seconds ?? secondsPer);
+
   // 各スライドを描画して書き込み（s0.jpg, s1.jpg, ...）
   for (let i = 0; i < slides.length; i++) {
     const dataUrl = await renderSlide(slides[i].imageUri, slides[i].text, theme);
@@ -297,9 +301,9 @@ export async function createReel(
   const N = slides.length;
 
   if (N === 1) {
-    // 1枚だけ：その写真を secondsPer 秒表示
+    // 1枚だけ：その写真を指定秒数表示
     await ffmpeg.exec([
-      '-framerate', '30', '-loop', '1', '-t', `${secondsPer}`, '-i', 's0.jpg',
+      '-framerate', '30', '-loop', '1', '-t', `${durations[0]}`, '-i', 's0.jpg',
       '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', 'out.mp4',
     ]);
   } else {
@@ -307,12 +311,14 @@ export async function createReel(
     const T = 0.5; // 切り替えにかける秒数
     const inputs: string[] = [];
     for (let i = 0; i < N; i++) {
-      inputs.push('-framerate', '30', '-loop', '1', '-t', `${secondsPer}`, '-i', `s${i}.jpg`);
+      inputs.push('-framerate', '30', '-loop', '1', '-t', `${durations[i]}`, '-i', `s${i}.jpg`);
     }
     const parts: string[] = [];
     let prev = '[0]';
+    let cumul = 0;
     for (let i = 1; i < N; i++) {
-      const offset = (i * (secondsPer - T)).toFixed(3);
+      cumul += durations[i - 1];
+      const offset = (cumul - i * T).toFixed(3);
       const out = i === N - 1 ? '[vchain]' : `[vx${i}]`;
       parts.push(`${prev}[${i}]xfade=transition=fade:duration=${T}:offset=${offset}${out}`);
       prev = `[vx${i}]`;

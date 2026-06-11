@@ -24,9 +24,11 @@ import { getAccountTheme } from '../utils/accountThemes';
 interface Slide {
   uri: string;
   text: string;
+  seconds: number;
 }
 
 const SECONDS_PER = 3;
+const SECONDS_OPTIONS = [2, 3, 4];
 
 export default function ReelScreen() {
   const insets = useSafeAreaInsets();
@@ -58,13 +60,18 @@ export default function ReelScreen() {
       quality: 0.9,
     });
     if (result.canceled) return;
-    const added = result.assets.map((a) => ({ uri: a.uri, text: '' }));
+    const added = result.assets.map((a) => ({ uri: a.uri, text: '', seconds: SECONDS_PER }));
     setSlides((prev) => [...prev, ...added]);
     setPreviewUrl('');
   };
 
   const setText = (i: number, t: string) =>
     setSlides((prev) => prev.map((s, idx) => (idx === i ? { ...s, text: t } : s)));
+
+  const setSeconds = (i: number, sec: number) => {
+    setSlides((prev) => prev.map((s, idx) => (idx === i ? { ...s, seconds: sec } : s)));
+    setPreviewUrl('');
+  };
 
   const removeSlide = (i: number) => {
     setSlides((prev) => prev.filter((_, idx) => idx !== i));
@@ -110,7 +117,7 @@ export default function ReelScreen() {
     try {
       const at = getAccountTheme(brandSettings.accountType);
       const { url } = await createReel(
-        slides.map((s) => ({ imageUri: s.uri, text: s.text })),
+        slides.map((s) => ({ imageUri: s.uri, text: s.text, seconds: s.seconds })),
         SECONDS_PER,
         (msg) => setStatus(msg),
         { accent: at.accent, captionStyle: at.captionStyle }
@@ -152,7 +159,7 @@ export default function ReelScreen() {
     host.appendChild(video);
   }, [previewUrl]);
 
-  const totalSec = slides.length * SECONDS_PER;
+  const totalSec = slides.reduce((sum, s) => sum + s.seconds, 0);
 
   return (
     <ScrollView
@@ -214,9 +221,23 @@ export default function ReelScreen() {
               placeholder="この写真にのせる文字（任意）"
               placeholderTextColor={COLORS.textMuted}
             />
-            <TouchableOpacity onPress={() => removeSlide(i)}>
-              <Text style={styles.removeText}>🗑 削除</Text>
-            </TouchableOpacity>
+            <View style={styles.secRow}>
+              <Text style={styles.secLabel}>表示時間</Text>
+              {SECONDS_OPTIONS.map((sec) => (
+                <TouchableOpacity
+                  key={sec}
+                  style={[styles.secBtn, s.seconds === sec && styles.secBtnActive]}
+                  onPress={() => setSeconds(i, sec)}
+                >
+                  <Text style={[styles.secBtnText, s.seconds === sec && styles.secBtnTextActive]}>
+                    {sec}秒
+                  </Text>
+                </TouchableOpacity>
+              ))}
+              <TouchableOpacity onPress={() => removeSlide(i)} style={{ marginLeft: 'auto' }}>
+                <Text style={styles.removeText}>🗑 削除</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       ))}
@@ -301,7 +322,20 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     fontSize: 14,
   },
-  removeText: { color: COLORS.error ?? '#E5484D', fontSize: 13, marginTop: SPACING.sm },
+  removeText: { color: COLORS.error ?? '#E5484D', fontSize: 13 },
+  secRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.xs, marginTop: SPACING.sm },
+  secLabel: { color: COLORS.textMuted, fontSize: 12, marginRight: 4 },
+  secBtn: {
+    paddingVertical: 4,
+    paddingHorizontal: SPACING.sm,
+    borderRadius: RADIUS.sm,
+    backgroundColor: COLORS.surfaceElevated,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  secBtnActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  secBtnText: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '700' },
+  secBtnTextActive: { color: '#fff' },
   createBtn: {
     backgroundColor: COLORS.primary,
     borderRadius: RADIUS.md,
