@@ -5,7 +5,7 @@ const supabase = createClient(
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 );
 
-const INSTAGRAM_API = 'https://graph.instagram.com/v18.0';
+const INSTAGRAM_API = 'https://graph.instagram.com';
 
 async function publishPost(post: {
   id: string;
