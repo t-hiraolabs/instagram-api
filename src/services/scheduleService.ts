@@ -9,7 +9,7 @@ export interface ScheduledPost {
   image_url: string | null;
   scheduled_at: string;
   status: 'pending' | 'published' | 'failed';
-  type: 'feed' | 'story';
+  type: 'feed' | 'story' | 'reel';
   repeat: RepeatOption;
   instagram_user_id: string | null;
   access_token: string | null;
@@ -21,7 +21,7 @@ export interface CreateScheduledPostInput {
   hashtags: string[];
   image_url?: string;
   scheduled_at: Date;
-  type: 'feed' | 'story';
+  type: 'feed' | 'story' | 'reel';
   repeat?: RepeatOption;
   instagram_user_id?: string;
   access_token?: string;

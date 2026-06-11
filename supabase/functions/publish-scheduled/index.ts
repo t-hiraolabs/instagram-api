@@ -20,24 +20,36 @@ async function publishPost(post: {
     .filter(Boolean)
     .join('\n\n');
 
-  // Step 1: メディアコンテナ作成
+  const isReel = post.type === 'reel';
+
+  // Step 1: メディアコンテナ作成（リールは image_url に動画URLを保存している）
+  const containerBody = isReel
+    ? {
+        media_type: 'REELS',
+        video_url: post.image_url,
+        caption: fullCaption,
+        share_to_feed: true,
+        access_token: post.access_token,
+      }
+    : {
+        image_url: post.image_url,
+        caption: fullCaption,
+        ...(post.type === 'story' ? { media_type: 'STORIES' } : {}),
+        access_token: post.access_token,
+      };
   const containerRes = await fetch(`${INSTAGRAM_API}/${post.instagram_user_id}/media`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      image_url: post.image_url,
-      caption: fullCaption,
-      ...(post.type === 'story' ? { media_type: 'STORIES' } : {}),
-      access_token: post.access_token,
-    }),
+    body: JSON.stringify(containerBody),
   });
 
   const container = await containerRes.json();
   if (!container.id) throw new Error(`コンテナ作成失敗: ${JSON.stringify(container)}`);
 
-  // Step 1.5: コンテナの処理完了を待つ（画像のダウンロード・変換に数秒かかる）
+  // Step 1.5: コンテナの処理完了を待つ（動画は時間がかかるので長めに待つ）
+  const maxTries = isReel ? 45 : 15;
   let ready = false;
-  for (let i = 0; i < 15; i++) {
+  for (let i = 0; i < maxTries; i++) {
     await new Promise((r) => setTimeout(r, 2000));
     const statusRes = await fetch(
       `${INSTAGRAM_API}/${container.id}?fields=status_code&access_token=${post.access_token}`

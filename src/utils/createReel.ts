@@ -314,10 +314,12 @@ export async function createReel(
   const N = slides.length;
 
   if (N === 1) {
-    // 1枚だけ：その写真を指定秒数表示
+    // 1枚だけ：その写真を指定秒数表示（無音の音声トラック付き）
     await ffmpeg.exec([
       '-framerate', '30', '-loop', '1', '-t', `${durations[0]}`, '-i', 's0.jpg',
-      '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', 'out.mp4',
+      '-f', 'lavfi', '-t', `${durations[0]}`, '-i', 'anullsrc=r=44100:cl=stereo',
+      '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest',
+      '-movflags', '+faststart', 'out.mp4',
     ]);
   } else {
     // 複数枚：写真の切り替わりをフェード(クロスフェード)で滑らかに
@@ -341,11 +343,15 @@ export async function createReel(
 
     await ffmpeg.exec([
       ...inputs,
+      '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=stereo', // 無音の音声トラック
       '-filter_complex', filter,
       '-map', '[vo]',
+      '-map', `${N}:a`,
       '-r', '30',
       '-c:v', 'libx264',
       '-pix_fmt', 'yuv420p',
+      '-c:a', 'aac',
+      '-shortest',
       '-movflags', '+faststart',
       'out.mp4',
     ]);

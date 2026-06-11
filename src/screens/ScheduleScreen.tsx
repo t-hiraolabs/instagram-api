@@ -491,9 +491,9 @@ export default function ScheduleScreen({ route }: any) {
             <View key={post.id} style={styles.postCard}>
               <View style={styles.postHeader}>
                 <View style={styles.postMeta}>
-                  <View style={[styles.typeBadge, post.type === 'story' && styles.typeBadgeStory]}>
+                  <View style={[styles.typeBadge, post.type !== 'feed' && styles.typeBadgeStory]}>
                     <Text style={styles.typeBadgeText}>
-                      {post.type === 'feed' ? '📷 フィード' : '📖 ストーリー'}
+                      {post.type === 'feed' ? '📷 フィード' : post.type === 'reel' ? '🎬 リール' : '📖 ストーリー'}
                     </Text>
                   </View>
                   <View

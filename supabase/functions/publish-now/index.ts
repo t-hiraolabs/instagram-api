@@ -18,36 +18,44 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
 
   try {
-    const { caption, hashtags, image_url, type, instagram_user_id, access_token } = await req.json();
+    const { caption, hashtags, image_url, video_url, type, instagram_user_id, access_token } = await req.json();
 
     if (!instagram_user_id || !access_token) {
       return json({ error: 'Instagram未連携（ユーザーID/トークンがありません）' }, 400);
     }
-    if (!image_url) {
+    const isReel = type === 'reel';
+    if (isReel && !video_url) {
+      return json({ error: 'リール投稿には公開動画URLが必要です' }, 400);
+    }
+    if (!isReel && !image_url) {
       return json({ error: '投稿には公開画像URLが必要です' }, 400);
     }
 
     const fullCaption = [caption, (hashtags ?? []).join(' ')].filter(Boolean).join('\n\n');
 
     // Step 1: メディアコンテナ作成
+    const containerBody = isReel
+      ? { media_type: 'REELS', video_url, caption: fullCaption, share_to_feed: true, access_token }
+      : {
+          image_url,
+          caption: fullCaption,
+          ...(type === 'story' ? { media_type: 'STORIES' } : {}),
+          access_token,
+        };
     const containerRes = await fetch(`${INSTAGRAM_API}/${instagram_user_id}/media`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        image_url,
-        caption: fullCaption,
-        ...(type === 'story' ? { media_type: 'STORIES' } : {}),
-        access_token,
-      }),
+      body: JSON.stringify(containerBody),
     });
     const container = await containerRes.json();
     if (!container.id) {
       return json({ error: 'コンテナ作成失敗', detail: container }, 400);
     }
 
-    // Step 1.5: コンテナの処理完了を待つ（画像のダウンロード・変換に数秒かかる）
+    // Step 1.5: コンテナの処理完了を待つ（動画は時間がかかるので長めに待つ）
+    const maxTries = isReel ? 45 : 15;
     let ready = false;
-    for (let i = 0; i < 15; i++) {
+    for (let i = 0; i < maxTries; i++) {
       await new Promise((r) => setTimeout(r, 2000));
       const statusRes = await fetch(
         `${INSTAGRAM_API}/${container.id}?fields=status_code,status&access_token=${access_token}`
@@ -82,7 +90,7 @@ Deno.serve(async (req) => {
       return json({ error: '公開失敗', detail: published }, 400);
     }
 
-    return json({ id: published.id, posted_type: type === 'story' ? 'story' : 'feed' });
+    return json({ id: published.id, posted_type: isReel ? 'reel' : type === 'story' ? 'story' : 'feed' });
   } catch (err) {
     return json({ error: String(err) }, 500);
   }

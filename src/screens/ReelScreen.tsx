@@ -20,6 +20,14 @@ import { generateReelCaptions } from '../services/aiService';
 import { ensureLoggedIn } from '../utils/requireLogin';
 import { useAppStore } from '../store/appStore';
 import { getAccountTheme } from '../utils/accountThemes';
+import { uploadBlob } from '../services/storage';
+import { publishNow } from '../services/publishNow';
+import { createScheduledPost } from '../services/scheduleService';
+
+function parseDate(str: string): Date | null {
+  const d = new Date(str.replace(/\//g, '-').replace(' ', 'T'));
+  return isNaN(d.getTime()) ? null : d;
+}
 
 interface Slide {
   uri: string;
@@ -40,6 +48,12 @@ export default function ReelScreen() {
   const [theme, setTheme] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const brandSettings = useAppStore((s) => s.brandSettings);
+  const instagramCredentials = useAppStore((s) => s.instagramCredentials);
+  const [reelBlob, setReelBlob] = useState<Blob | null>(null);
+  const [caption, setCaption] = useState('');
+  const [hashtagsText, setHashtagsText] = useState('');
+  const [dateText, setDateText] = useState('');
+  const [posting, setPosting] = useState(false);
 
   const videoHostRef = useRef<any>(null);
 
@@ -116,13 +130,14 @@ export default function ReelScreen() {
     const start = Date.now();
     try {
       const at = getAccountTheme(brandSettings.accountType);
-      const { url } = await createReel(
+      const { blob, url } = await createReel(
         slides.map((s) => ({ imageUri: s.uri, text: s.text, seconds: s.seconds })),
         SECONDS_PER,
         (msg) => setStatus(msg),
         { accent: at.accent, captionStyle: at.captionStyle }
       );
       setPreviewUrl(url);
+      setReelBlob(blob);
       setElapsed(Math.round((Date.now() - start) / 1000));
       setStatus('完成しました');
     } catch (e) {
@@ -132,6 +147,85 @@ export default function ReelScreen() {
       setStatus(detail);
     } finally {
       setWorking(false);
+    }
+  };
+
+  const buildHashtags = () =>
+    hashtagsText
+      .split(/[\s,　]+/)
+      .map((h) => h.trim())
+      .filter(Boolean);
+
+  const ensureReady = async () => {
+    if (!reelBlob) {
+      alertMsg('先に「リールを作成する」を押してください');
+      return false;
+    }
+    if (!instagramCredentials?.userId || !instagramCredentials?.accessToken) {
+      alertMsg('右上のアイコンからInstagramを連携してください', '未連携です');
+      return false;
+    }
+    return ensureLoggedIn('投稿にはログインが必要です');
+  };
+
+  const handlePublishReel = async () => {
+    if (!(await ensureReady())) return;
+    if (Platform.OS === 'web' && !window.confirm('このリールを今すぐ投稿します。よろしいですか？')) {
+      return;
+    }
+    setPosting(true);
+    try {
+      setStatus('動画をアップロード中...');
+      const videoUrl = await uploadBlob(reelBlob!);
+      setStatus('Instagramに投稿中...（動画の処理に1分ほどかかります）');
+      await publishNow({
+        caption: caption.trim(),
+        hashtags: buildHashtags(),
+        video_url: videoUrl,
+        type: 'reel',
+        instagram_user_id: instagramCredentials!.userId,
+        access_token: instagramCredentials!.accessToken,
+      });
+      alertMsg('リールを投稿しました ✅\nInstagramアプリで確認してください', '投稿完了');
+    } catch (e) {
+      alertMsg(e instanceof Error ? e.message : '投稿に失敗しました', 'エラー');
+    } finally {
+      setPosting(false);
+      setStatus('');
+    }
+  };
+
+  const handleScheduleReel = async () => {
+    if (!(await ensureReady())) return;
+    const date = parseDate(dateText);
+    if (!date) {
+      alertMsg('日時の形式が正しくありません\n例: 2026-06-15T18:00', '日時を確認してください');
+      return;
+    }
+    if (date <= new Date()) {
+      alertMsg('予約日時は未来の日時を指定してください');
+      return;
+    }
+    setPosting(true);
+    try {
+      setStatus('動画をアップロード中...');
+      const videoUrl = await uploadBlob(reelBlob!);
+      await createScheduledPost({
+        caption: caption.trim(),
+        hashtags: buildHashtags(),
+        image_url: videoUrl, // リールは image_url 列に動画URLを保存
+        scheduled_at: date,
+        type: 'reel',
+        instagram_user_id: instagramCredentials!.userId,
+        access_token: instagramCredentials!.accessToken,
+      });
+      alertMsg('リールを予約しました ✅\n指定の日時に自動投稿されます', '予約完了');
+      setDateText('');
+    } catch (e) {
+      alertMsg((e as { message?: string })?.message || '予約に失敗しました', 'エラー');
+    } finally {
+      setPosting(false);
+      setStatus('');
     }
   };
 
@@ -263,9 +357,68 @@ export default function ReelScreen() {
             プレビュー{elapsed != null ? `（作成 ${elapsed}秒）` : ''}
           </Text>
           <View ref={videoHostRef} style={styles.videoHost} />
-          <Text style={styles.previewHint}>
-            ※ これはテストです。ここまで動けば、次に「Instagramへ投稿・予約」を足します。
-          </Text>
+        </View>
+      ) : null}
+
+      {previewUrl ? (
+        <View style={styles.postWrap}>
+          <Text style={styles.sectionTitle}>キャプション</Text>
+          <TextInput
+            style={[styles.input, { height: 80, textAlignVertical: 'top' }]}
+            value={caption}
+            onChangeText={setCaption}
+            placeholder="リールの説明文（任意）"
+            placeholderTextColor={COLORS.textMuted}
+            multiline
+          />
+          <TextInput
+            style={[styles.input, { marginTop: SPACING.sm }]}
+            value={hashtagsText}
+            onChangeText={setHashtagsText}
+            placeholder="#ハッシュタグ #カフェ #新メニュー"
+            placeholderTextColor={COLORS.textMuted}
+          />
+
+          {instagramCredentials ? (
+            <Text style={styles.igOk}>
+              ✅ {instagramCredentials.username ? `@${instagramCredentials.username}` : '連携済み'} に投稿します
+            </Text>
+          ) : (
+            <Text style={styles.igWarn}>⚠️ 右上のアイコンからInstagramを連携してください</Text>
+          )}
+
+          <TouchableOpacity
+            style={[styles.postBtn, posting && styles.createBtnDisabled]}
+            onPress={handlePublishReel}
+            disabled={posting}
+            activeOpacity={0.85}
+          >
+            {posting ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.createBtnText}>🚀 今すぐ投稿する</Text>
+            )}
+          </TouchableOpacity>
+
+          <Text style={styles.sectionTitle}>または予約</Text>
+          <TextInput
+            style={styles.input}
+            value={dateText}
+            onChangeText={setDateText}
+            placeholder="例: 2026-06-15T18:00"
+            placeholderTextColor={COLORS.textMuted}
+            autoCapitalize="none"
+          />
+          <TouchableOpacity
+            style={[styles.scheduleBtn, posting && styles.createBtnDisabled]}
+            onPress={handleScheduleReel}
+            disabled={posting}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.createBtnText}>📅 この日時に予約する</Text>
+          </TouchableOpacity>
+
+          {posting && status ? <Text style={styles.status}>{status}</Text> : null}
         </View>
       ) : null}
     </ScrollView>
@@ -346,6 +499,30 @@ const styles = StyleSheet.create({
   createBtnDisabled: { opacity: 0.5 },
   createBtnText: { color: '#fff', fontSize: 15, fontWeight: '800' },
   status: { color: COLORS.textMuted, fontSize: 12, marginTop: SPACING.sm, textAlign: 'center' },
+  postWrap: { marginTop: SPACING.xl },
+  sectionTitle: {
+    color: COLORS.text,
+    fontSize: 15,
+    fontWeight: '800',
+    marginTop: SPACING.md,
+    marginBottom: SPACING.sm,
+  },
+  igOk: { color: COLORS.success ?? '#4CAF50', fontSize: 13, fontWeight: '600', marginTop: SPACING.md },
+  igWarn: { color: COLORS.warning ?? '#FF9800', fontSize: 13, fontWeight: '600', marginTop: SPACING.md },
+  postBtn: {
+    backgroundColor: COLORS.primary,
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.md,
+    alignItems: 'center',
+    marginTop: SPACING.md,
+  },
+  scheduleBtn: {
+    backgroundColor: COLORS.secondary,
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.md,
+    alignItems: 'center',
+    marginTop: SPACING.sm,
+  },
   previewWrap: { alignItems: 'center', marginTop: SPACING.xl },
   previewTitle: { color: COLORS.text, fontSize: 15, fontWeight: '700', marginBottom: SPACING.sm },
   videoHost: { width: 240, height: 427 },

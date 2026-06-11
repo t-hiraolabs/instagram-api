@@ -5,15 +5,16 @@ const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
 export interface PublishNowInput {
   caption: string;
   hashtags: string[];
-  image_url: string;
-  type: 'feed' | 'story';
+  image_url?: string;
+  video_url?: string;
+  type: 'feed' | 'story' | 'reel';
   instagram_user_id: string;
   access_token: string;
 }
 
 export interface PublishNowResult {
   id: string;
-  posted_type?: 'feed' | 'story';
+  posted_type?: 'feed' | 'story' | 'reel';
 }
 
 /** Instagramに今すぐ投稿し、投稿IDと種別を返す。失敗時は分かりやすいエラーをthrow */
