@@ -50,6 +50,12 @@ export default function GenerateScreen() {
     refreshUsage();
   }, []);
 
+  // Web では Alert.alert が表示されないため window.alert を使う
+  const alertMsg = (msg: string, title = 'お知らせ') => {
+    if (Platform.OS === 'web') window.alert(msg);
+    else Alert.alert(title, msg);
+  };
+
   // Photo mode
   const [selectedImage, setSelectedImage] = useState<{
     uri: string;
@@ -69,7 +75,7 @@ export default function GenerateScreen() {
     if (Platform.OS !== 'web') {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('権限エラー', '写真へのアクセスを許可してください');
+        alertMsg('写真へのアクセスを許可してください', '権限エラー');
         return;
       }
     }
@@ -105,7 +111,7 @@ export default function GenerateScreen() {
 
       if (mode === 'photo') {
         if (!selectedImage?.base64) {
-          Alert.alert('エラー', '写真を選択してください');
+          alertMsg('写真を選択してください', 'エラー');
           setLoading(false);
           return;
         }
@@ -119,7 +125,7 @@ export default function GenerateScreen() {
       } else {
         const selectedTheme = customTheme || theme;
         if (!selectedTheme) {
-          Alert.alert('エラー', 'テーマを選択または入力してください');
+          alertMsg('テーマを選択または入力してください', 'エラー');
           setLoading(false);
           return;
         }
@@ -143,8 +149,7 @@ export default function GenerateScreen() {
       // サーバーからのメッセージ（回数上限など）をそのまま表示
       const msg =
         (e as { message?: string })?.message || 'AI生成に失敗しました。もう一度お試しください。';
-      if (Platform.OS === 'web') window.alert(msg);
-      else Alert.alert('エラー', msg);
+      alertMsg(msg, 'エラー');
     } finally {
       setLoading(false);
       refreshUsage(); // 使用回数を更新
@@ -154,7 +159,7 @@ export default function GenerateScreen() {
   const copyResult = () => {
     if (!result) return;
     Clipboard.setString(result.caption + '\n\n' + result.hashtags.join(' '));
-    Alert.alert('コピーしました ✅');
+    alertMsg('コピーしました ✅');
   };
 
   const handleIndustrySelect = (key: string) => {
@@ -358,7 +363,7 @@ export default function GenerateScreen() {
 
           <TouchableOpacity
             style={styles.scheduleBtn}
-            onPress={() => Alert.alert('下書き保存 ✅', 'スケジュール画面で予約投稿に追加できます')}
+            onPress={() => alertMsg('スケジュール画面で予約投稿に追加できます', '下書き保存 ✅')}
             activeOpacity={0.8}
           >
             <Text style={styles.scheduleBtnText}>📅 予約投稿に追加 →</Text>
