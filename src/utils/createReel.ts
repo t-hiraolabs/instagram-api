@@ -188,10 +188,23 @@ export async function renderSlide(
   ctx.fillRect(0, 0, W, H);
 
   const img = await loadImage(imageUri);
-  const scale = Math.max(W / img.width, H / img.height);
-  const dw = img.width * scale;
-  const dh = img.height * scale;
-  ctx.drawImage(img, (W - dw) / 2, (H - dh) / 2, dw, dh);
+
+  // 背景：同じ写真をcover（画面いっぱい）＋ぼかして敷く（黒帯を防ぐ）
+  const coverScale = Math.max(W / img.width, H / img.height);
+  const cw = img.width * coverScale;
+  const ch = img.height * coverScale;
+  ctx.filter = 'blur(28px)';
+  ctx.drawImage(img, (W - cw) / 2, (H - ch) / 2, cw, ch);
+  ctx.filter = 'none';
+  // 背景を少し暗くして前景を引き立てる
+  ctx.fillStyle = 'rgba(0,0,0,0.28)';
+  ctx.fillRect(0, 0, W, H);
+
+  // 前景：写真全体が入るようにcontain（はみ出さない）で中央配置
+  const fitScale = Math.min(W / img.width, H / img.height);
+  const fw = img.width * fitScale;
+  const fh = img.height * fitScale;
+  ctx.drawImage(img, (W - fw) / 2, (H - fh) / 2, fw, fh);
 
   const t = text?.trim();
   if (t) {
