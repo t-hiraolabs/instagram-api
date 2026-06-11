@@ -4,6 +4,34 @@
 const W = 720;
 const H = 1280;
 
+// おしゃれな日本語フォント（極太）をWebフォントとして読み込んで使う
+const FONT_NAME = 'Zen Kaku Gothic New';
+const FONT_FAMILY = `"${FONT_NAME}", sans-serif`;
+
+function ensureFontLink() {
+  if (typeof document === 'undefined') return;
+  const id = 'reel-font-link';
+  if (document.getElementById(id)) return;
+  const link = document.createElement('link');
+  link.id = id;
+  link.rel = 'stylesheet';
+  link.href =
+    'https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@900&display=swap';
+  document.head.appendChild(link);
+}
+
+// 指定テキストに必要なフォント(サブセット)を読み込んでから使う
+async function loadFontFor(text: string) {
+  if (typeof document === 'undefined') return;
+  ensureFontLink();
+  try {
+    await (document as any).fonts.load(`900 80px "${FONT_NAME}"`, text);
+    await (document as any).fonts.ready;
+  } catch (_e) {
+    // 失敗時は標準フォントにフォールバック
+  }
+}
+
 const FF_VER = '0.12.10';
 const UTIL_VER = '0.12.1';
 const CORE_VER = '0.12.6';
@@ -107,12 +135,12 @@ function fitText(
   minSize = 46
 ): { lines: string[]; fontSize: number; lineH: number } {
   for (let size = baseSize; size >= minSize; size -= 3) {
-    ctx.font = `800 ${size}px sans-serif`;
+    ctx.font = `900 ${size}px ${FONT_FAMILY}`;
     if (ctx.measureText(text).width <= maxWidth) {
       return { lines: [text], fontSize: size, lineH: Math.round(size * 1.25) };
     }
   }
-  ctx.font = `800 ${minSize}px sans-serif`;
+  ctx.font = `900 ${minSize}px ${FONT_FAMILY}`;
   return {
     lines: wrapText(ctx, text, maxWidth),
     fontSize: minSize,
@@ -167,6 +195,7 @@ export async function renderSlide(
 
   const t = text?.trim();
   if (t) {
+    await loadFontFor(t); // おしゃれフォントを確実に読み込んでから描画
     ctx.textAlign = 'center';
     ctx.textBaseline = 'alphabetic';
     // 文字数に応じてサイズ自動調整（短ければ1行・大きく）

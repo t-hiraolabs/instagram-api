@@ -175,6 +175,7 @@ ${input.toneHint ? `トーン: ${input.toneHint}` : ''}
 - 1つ8〜16文字程度、短く端的に（写真の上にのせる前提）
 - 1枚目は引きつけるフック、最後の1枚は行動を促す一言（来店・予約・チェックなど）
 - 自然で等身大の日本語。キザ・大げさ・ポエム調・中二っぽい言い回しは避ける
+- 読点「、」や句点「。」は使わない（短いので不要）
 
 以下のJSONで返してください:
 {"captions": ["1枚目の文字", "2枚目の文字", ...]}`;
@@ -182,7 +183,10 @@ ${input.toneHint ? `トーン: ${input.toneHint}` : ''}
   const raw = await callClaude(prompt, systemPrompt);
   const clean = raw.replace(/```json|```/g, '').trim();
   const parsed = JSON.parse(clean);
-  return (parsed.captions as string[]).slice(0, input.count);
+  // 念のため読点・句点を除去
+  return (parsed.captions as string[])
+    .slice(0, input.count)
+    .map((c) => c.replace(/[、。]/g, '').trim());
 }
 
 export async function improveCaption(originalCaption: string): Promise<string[]> {
