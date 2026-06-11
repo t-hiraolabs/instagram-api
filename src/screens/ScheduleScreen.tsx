@@ -24,6 +24,7 @@ import {
 } from '../utils/composeStory';
 import StoryEditor from '../components/StoryEditor';
 import ReelScreen from './ReelScreen';
+import RosterScreen from './RosterScreen';
 import { generateStory } from '../services/aiService';
 import {
   getScheduledPosts,
@@ -135,7 +136,7 @@ export default function ScheduleScreen({ route }: any) {
   const [type, setType] = useState<'feed' | 'story'>('feed');
   const [repeat, setRepeat] = useState<RepeatOption>('none');
   const [plan, setPlan] = useState<'free' | 'pro'>('free');
-  const [showReel, setShowReel] = useState(false); // 投稿タブ内でリール作成を表示
+  const [nowSub, setNowSub] = useState<'menu' | 'reel' | 'roster'>('menu'); // 投稿タブ内の表示
 
   // 編集モーダル用
   const [editVisible, setEditVisible] = useState(false);
@@ -493,9 +494,12 @@ export default function ScheduleScreen({ route }: any) {
 
   const filtered = posts.filter((p) => filter === 'all' || p.status === filter);
 
-  // 投稿タブで「リールを作成」を選んだら、リール作成画面を表示
-  if (mode === 'now' && showReel) {
-    return <ReelScreen onBack={() => setShowReel(false)} />;
+  // 投稿タブのサブ画面（リール／本日の出勤）
+  if (mode === 'now' && nowSub === 'reel') {
+    return <ReelScreen onBack={() => setNowSub('menu')} />;
+  }
+  if (mode === 'now' && nowSub === 'roster') {
+    return <RosterScreen onBack={() => setNowSub('menu')} />;
   }
 
   return (
@@ -526,9 +530,15 @@ export default function ScheduleScreen({ route }: any) {
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.emptyAddBtn, styles.reelChoiceBtn]}
-              onPress={() => setShowReel(true)}
+              onPress={() => setNowSub('reel')}
             >
               <Text style={styles.emptyAddBtnText}>🎬 リールを作成</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.emptyAddBtn, styles.rosterChoiceBtn]}
+              onPress={() => setNowSub('roster')}
+            >
+              <Text style={styles.emptyAddBtnText}>🗓 本日の出勤を作成</Text>
             </TouchableOpacity>
           </View>
         ) : (
@@ -1167,6 +1177,7 @@ const styles = StyleSheet.create({
   },
   emptyAddBtnText: { color: '#fff', fontWeight: '700' },
   reelChoiceBtn: { backgroundColor: COLORS.secondary, marginTop: SPACING.sm },
+  rosterChoiceBtn: { backgroundColor: COLORS.primaryLight ?? '#F77737', marginTop: SPACING.sm },
   modal: { flex: 1, backgroundColor: COLORS.background },
   modalHeader: {
     flexDirection: 'row',
