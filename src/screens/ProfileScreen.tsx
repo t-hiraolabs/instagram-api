@@ -17,6 +17,7 @@ import { COLORS, SPACING, RADIUS } from '../utils/theme';
 import { useAppStore, InstagramCredentials, BrandSettings } from '../store/appStore';
 import { INDUSTRIES } from '../services/aiService';
 import { supabase } from '../services/supabaseClient';
+import { getMyPlan } from '../services/scheduleService';
 import { connectInstagram, clearInstagramStorage, SK_USER_ID, SK_TOKEN, SK_USERNAME, SK_PICTURE } from '../utils/instagram';
 
 const SK_BRAND = 'brand_settings_v1';
@@ -38,25 +39,20 @@ const PLANS = [
     id: 'free',
     name: 'フリー',
     price: '無料',
-    features: ['AI生成 月10回', '予約投稿 5件', '基本テンプレート'],
+    features: ['AI生成 月10回', '予約投稿 2件まで', '今すぐ投稿 無制限', '写真に文字を合成'],
     color: COLORS.textMuted,
-    current: true,
-  },
-  {
-    id: 'standard',
-    name: 'スタンダード',
-    price: '¥980/月',
-    features: ['AI生成 月100回', '予約投稿 無制限', '業種別テンプレート', 'ハッシュタグ分析'],
-    color: COLORS.primary,
-    current: false,
   },
   {
     id: 'pro',
-    name: 'プロ',
-    price: '¥2,980/月',
-    features: ['AI生成 無制限', '予約投稿 無制限', '画像AI生成', '分析ダッシュボード', '優先サポート'],
+    name: 'Pro',
+    price: '¥980/月',
+    features: [
+      'AI生成 月300回',
+      '予約投稿 無制限',
+      'くりかえし投稿（毎日/毎週/毎月/平日）',
+      '複数アカウント連携',
+    ],
     color: COLORS.secondary,
-    current: false,
   },
 ];
 
@@ -66,9 +62,14 @@ export default function ProfileScreen() {
 
   const [brandModalVisible, setBrandModalVisible] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [currentPlan, setCurrentPlan] = useState<'free' | 'pro'>('free');
 
   // Brand form
   const [draftBrand, setDraftBrand] = useState<BrandSettings>({ ...brandSettings });
+
+  useEffect(() => {
+    getMyPlan().then(setCurrentPlan).catch(() => {});
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -240,9 +241,11 @@ export default function ProfileScreen() {
         {/* Plan */}
         <Text style={styles.sectionTitle}>プラン</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.plansRow}>
-          {PLANS.map((plan) => (
-            <View key={plan.id} style={[styles.planCard, plan.current && styles.planCardCurrent, { borderColor: plan.color + '44' }]}>
-              {plan.current && <View style={[styles.planCurrentBadge, { backgroundColor: plan.color }]}>
+          {PLANS.map((plan) => {
+            const isCurrent = plan.id === currentPlan;
+            return (
+            <View key={plan.id} style={[styles.planCard, isCurrent && styles.planCardCurrent, { borderColor: plan.color + '44' }]}>
+              {isCurrent && <View style={[styles.planCurrentBadge, { backgroundColor: plan.color }]}>
                 <Text style={styles.planCurrentBadgeText}>現在のプラン</Text>
               </View>}
               <Text style={[styles.planName, { color: plan.color }]}>{plan.name}</Text>
@@ -250,7 +253,7 @@ export default function ProfileScreen() {
               {plan.features.map((f) => (
                 <Text key={f} style={styles.planFeature}>✓ {f}</Text>
               ))}
-              {!plan.current && (
+              {!isCurrent && plan.id === 'pro' && (
                 <TouchableOpacity
                   style={[styles.planUpgradeBtn, { backgroundColor: plan.color }]}
                   onPress={() => Alert.alert('近日公開', `${plan.name}プランは近日公開予定です`)}
@@ -259,7 +262,8 @@ export default function ProfileScreen() {
                 </TouchableOpacity>
               )}
             </View>
-          ))}
+            );
+          })}
         </ScrollView>
 
         {/* Help */}
