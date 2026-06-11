@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import { useNavigation } from '@react-navigation/native';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
 import { useAppStore } from '../store/appStore';
 import { getSeasonalThemes } from '../services/aiService';
+import { getAiUsage, AiUsage } from '../services/scheduleService';
 
 const QUICK_ACTIONS = [
   { label: 'AI投稿生成', emoji: '✨', tab: 'Generate', color: COLORS.primary },
@@ -67,6 +68,11 @@ export default function HomeScreen() {
   const tipIndex = useMemo(() => new Date().getDate() % JAPAN_TIPS.length, []);
   const todayTip = JAPAN_TIPS[tipIndex];
 
+  const [usage, setUsage] = useState<AiUsage | null>(null);
+  useEffect(() => {
+    getAiUsage().then(setUsage).catch(() => {});
+  }, []);
+
   const displayName = brandSettings.brandName || instagramCredentials?.username
     ? `@${instagramCredentials?.username ?? brandSettings.brandName}`
     : null;
@@ -119,7 +125,11 @@ export default function HomeScreen() {
         {[
           { label: '今月の投稿', value: '—', icon: '📷' },
           { label: '予約中', value: '—', icon: '📅' },
-          { label: 'AI生成数', value: '—', icon: '✨' },
+          {
+            label: 'AI残り回数',
+            value: usage ? `${usage.remaining}/${usage.limit}` : '—',
+            icon: '✨',
+          },
         ].map((stat) => (
           <View key={stat.label} style={styles.statCard}>
             <Text style={styles.statIcon}>{stat.icon}</Text>

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
 import { generatePost, generateFromImage, getSeasonalThemes, INDUSTRIES } from '../services/aiService';
+import { getAiUsage, AiUsage } from '../services/scheduleService';
 import { ensureLoggedIn } from '../utils/requireLogin';
 import { useAppStore } from '../store/appStore';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
@@ -43,6 +44,11 @@ export default function GenerateScreen() {
   const [selectedIndustry, setSelectedIndustry] = useState(brandSettings.industry || '');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<GenerationResult | null>(null);
+  const [usage, setUsage] = useState<AiUsage | null>(null);
+  const refreshUsage = () => getAiUsage().then(setUsage).catch(() => {});
+  useEffect(() => {
+    refreshUsage();
+  }, []);
 
   // Photo mode
   const [selectedImage, setSelectedImage] = useState<{
@@ -133,10 +139,15 @@ export default function GenerateScreen() {
         hashtags: generated.hashtags,
         type: contentType === 'reel' ? 'feed' : contentType,
       });
-    } catch {
-      Alert.alert('エラー', 'AI生成に失敗しました。\nプロフィール画面でAPIキーを設定してください。');
+    } catch (e) {
+      // サーバーからのメッセージ（回数上限など）をそのまま表示
+      const msg =
+        (e as { message?: string })?.message || 'AI生成に失敗しました。もう一度お試しください。';
+      if (Platform.OS === 'web') window.alert(msg);
+      else Alert.alert('エラー', msg);
     } finally {
       setLoading(false);
+      refreshUsage(); // 使用回数を更新
     }
   };
 
@@ -287,6 +298,21 @@ export default function GenerateScreen() {
           </TouchableOpacity>
         ))}
       </View>
+
+      {/* AI残り回数 */}
+      {usage && (
+        <View style={styles.usageBox}>
+          <Text style={styles.usageText}>
+            今月のAI生成：あと <Text style={styles.usageStrong}>{usage.remaining}</Text> 回
+            （{usage.used}/{usage.limit}）
+          </Text>
+          {usage.plan === 'free' && usage.remaining <= 3 && (
+            <Text style={styles.usageWarn}>
+              残りわずかです。Proなら月{300}回まで使えます。
+            </Text>
+          )}
+        </View>
+      )}
 
       {/* Generate button */}
       <TouchableOpacity
@@ -488,6 +514,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
   },
+  usageBox: {
+    backgroundColor: COLORS.surfaceElevated,
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    marginBottom: SPACING.sm,
+    alignItems: 'center',
+  },
+  usageText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },
+  usageStrong: { color: COLORS.primary, fontSize: 15, fontWeight: '800' },
+  usageWarn: { color: COLORS.warning, fontSize: 12, fontWeight: '600', marginTop: 4 },
   generateBtn: {
     backgroundColor: COLORS.primary,
     borderRadius: RADIUS.lg,
