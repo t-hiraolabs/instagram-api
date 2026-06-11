@@ -24,7 +24,7 @@ let ffmpegPromise: Promise<any> | null = null;
 
 async function getFFmpeg(onLog?: (msg: string) => void) {
   if (ffmpegPromise) return ffmpegPromise;
-  ffmpegPromise = (async () => {
+  const p = (async () => {
     await loadScript(`https://unpkg.com/@ffmpeg/ffmpeg@${FF_VER}/dist/umd/ffmpeg.js`);
     await loadScript(`https://unpkg.com/@ffmpeg/util@${UTIL_VER}/dist/umd/index.js`);
     const { FFmpeg } = (window as any).FFmpegWASM;
@@ -42,7 +42,12 @@ async function getFFmpeg(onLog?: (msg: string) => void) {
     });
     return ffmpeg;
   })();
-  return ffmpegPromise;
+  // 失敗したらキャッシュを消して、次回やり直せるようにする
+  p.catch(() => {
+    if (ffmpegPromise === p) ffmpegPromise = null;
+  });
+  ffmpegPromise = p;
+  return p;
 }
 
 function loadImage(src: string): Promise<HTMLImageElement> {
