@@ -130,6 +130,7 @@ export default function ScheduleScreen({ route }: any) {
   const [caption, setCaption] = useState('');
   const [hashtagsText, setHashtagsText] = useState('');
   const [imageUrl, setImageUrl] = useState('');
+  const [imageUrls, setImageUrls] = useState<string[]>([]); // フィードのカルーセル用（複数）
   const [imagePreview, setImagePreview] = useState('');
   const [imageUploading, setImageUploading] = useState(false);
   const [dateText, setDateText] = useState('');
@@ -184,6 +185,7 @@ export default function ScheduleScreen({ route }: any) {
     setHashtagsText(draft.hashtags.join(' ') || '');
     setType(draft.type || 'feed');
     setImageUrl('');
+    setImageUrls([]);
     setImagePreview('');
     setDateText('');
     setStoryRawUri('');
@@ -224,29 +226,39 @@ export default function ScheduleScreen({ route }: any) {
         return;
       }
     }
-    const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      // フィードは正方形、ストーリーは縦長(9:16)で切り抜く
-      allowsEditing: true,
-      aspect: type === 'story' ? [9, 16] : [1, 1],
-      quality: 0.9,
-    });
-    if (res.canceled) return;
-    const asset = res.assets[0];
-
     if (type === 'story') {
+      const res = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [9, 16],
+        quality: 0.9,
+      });
+      if (res.canceled) return;
       // ストーリーは文字を合成してから投稿するので、ここではアップロードしない
-      setStoryRawUri(asset.uri);
-      setImagePreview(asset.uri);
+      setStoryRawUri(res.assets[0].uri);
+      setImagePreview(res.assets[0].uri);
       setImageUrl('');
       return;
     }
 
-    setImagePreview(asset.uri);
+    // フィードは複数選択OK（カルーセル投稿）
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsMultipleSelection: true,
+      selectionLimit: 10,
+      quality: 0.9,
+    });
+    if (res.canceled) return;
+
+    setImagePreview(res.assets[0].uri);
     setImageUploading(true);
     try {
-      const publicUrl = await uploadPostImage(asset.uri);
-      setImageUrl(publicUrl);
+      const urls: string[] = [];
+      for (const a of res.assets) {
+        urls.push(await uploadPostImage(a.uri));
+      }
+      setImageUrls(urls);
+      setImageUrl(urls[0]);
     } catch (e) {
       setImagePreview('');
       alertMsg(e instanceof Error ? e.message : '画像アップロードに失敗しました');
@@ -350,6 +362,7 @@ export default function ScheduleScreen({ route }: any) {
         caption: caption.trim(),
         hashtags: buildHashtags(),
         image_url: imageUrl.trim(),
+        image_urls: type === 'feed' && imageUrls.length > 1 ? imageUrls : undefined,
         type,
         instagram_user_id: instagramCredentials.userId,
         access_token: instagramCredentials.accessToken,
@@ -403,7 +416,11 @@ export default function ScheduleScreen({ route }: any) {
       await createScheduledPost({
         caption: caption.trim(),
         hashtags: buildHashtags(),
-        image_url: imageUrl.trim() || undefined,
+        // フィードで複数枚なら改行区切りで保存（カルーセル）
+        image_url:
+          type === 'feed' && imageUrls.length > 1
+            ? imageUrls.join('\n')
+            : imageUrl.trim() || undefined,
         scheduled_at: scheduledDate,
         type,
         repeat,
@@ -676,7 +693,7 @@ export default function ScheduleScreen({ route }: any) {
 
             {/* 写真（フィード=正方形 / ストーリー=縦長） */}
             <Text style={styles.fieldLabel}>
-              {type === 'story' ? '背景写真（縦長 9:16）' : '投稿画像（正方形）'}
+              {type === 'story' ? '背景写真（縦長 9:16）' : '投稿画像（複数選択OK・カルーセル）'}
             </Text>
             <TouchableOpacity
               style={styles.imagePickerBox}
@@ -730,7 +747,9 @@ export default function ScheduleScreen({ route }: any) {
                   placeholderTextColor={COLORS.textMuted}
                 />
                 {imageUrl && !imageUploading ? (
-                  <Text style={styles.imageReadyText}>✅ 画像の準備ができました</Text>
+                  <Text style={styles.imageReadyText}>
+                    ✅ {imageUrls.length > 1 ? `画像${imageUrls.length}枚（カルーセル）の準備ができました` : '画像の準備ができました'}
+                  </Text>
                 ) : null}
               </>
             ) : (

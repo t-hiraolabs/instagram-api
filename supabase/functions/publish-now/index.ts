@@ -18,36 +18,67 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
 
   try {
-    const { caption, hashtags, image_url, video_url, type, instagram_user_id, access_token } = await req.json();
+    const { caption, hashtags, image_url, image_urls, video_url, type, instagram_user_id, access_token } = await req.json();
 
     if (!instagram_user_id || !access_token) {
       return json({ error: 'Instagram未連携（ユーザーID/トークンがありません）' }, 400);
     }
     const isReel = type === 'reel';
+    // フィードで複数画像 → カルーセル
+    const carousel: string[] = type === 'feed' && Array.isArray(image_urls) && image_urls.length > 1 ? image_urls : [];
+    const isCarousel = carousel.length > 1;
+
     if (isReel && !video_url) {
       return json({ error: 'リール投稿には公開動画URLが必要です' }, 400);
     }
-    if (!isReel && !image_url) {
+    if (!isReel && !isCarousel && !image_url) {
       return json({ error: '投稿には公開画像URLが必要です' }, 400);
     }
 
     const fullCaption = [caption, (hashtags ?? []).join(' ')].filter(Boolean).join('\n\n');
 
     // Step 1: メディアコンテナ作成
-    const containerBody = isReel
-      ? { media_type: 'REELS', video_url, caption: fullCaption, share_to_feed: true, access_token }
-      : {
-          image_url,
+    let container: { id?: string };
+    if (isCarousel) {
+      // 各画像の子コンテナを作成
+      const childIds: string[] = [];
+      for (const url of carousel) {
+        const cr = await fetch(`${INSTAGRAM_API}/${instagram_user_id}/media`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image_url: url, is_carousel_item: true, access_token }),
+        });
+        const cj = await cr.json();
+        if (!cj.id) return json({ error: 'カルーセル子コンテナ作成失敗', detail: cj }, 400);
+        childIds.push(cj.id);
+      }
+      const parentRes = await fetch(`${INSTAGRAM_API}/${instagram_user_id}/media`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          media_type: 'CAROUSEL',
+          children: childIds.join(','),
           caption: fullCaption,
-          ...(type === 'story' ? { media_type: 'STORIES' } : {}),
           access_token,
-        };
-    const containerRes = await fetch(`${INSTAGRAM_API}/${instagram_user_id}/media`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(containerBody),
-    });
-    const container = await containerRes.json();
+        }),
+      });
+      container = await parentRes.json();
+    } else {
+      const containerBody = isReel
+        ? { media_type: 'REELS', video_url, caption: fullCaption, share_to_feed: true, access_token }
+        : {
+            image_url,
+            caption: fullCaption,
+            ...(type === 'story' ? { media_type: 'STORIES' } : {}),
+            access_token,
+          };
+      const containerRes = await fetch(`${INSTAGRAM_API}/${instagram_user_id}/media`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(containerBody),
+      });
+      container = await containerRes.json();
+    }
     if (!container.id) {
       return json({ error: 'コンテナ作成失敗', detail: container }, 400);
     }

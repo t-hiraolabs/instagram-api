@@ -6,6 +6,7 @@ export interface PublishNowInput {
   caption: string;
   hashtags: string[];
   image_url?: string;
+  image_urls?: string[]; // フィードのカルーセル（複数画像）
   video_url?: string;
   type: 'feed' | 'story' | 'reel';
   instagram_user_id: string;

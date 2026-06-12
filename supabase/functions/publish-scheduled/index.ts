@@ -21,29 +21,56 @@ async function publishPost(post: {
     .join('\n\n');
 
   const isReel = post.type === 'reel';
+  // フィードで image_url が改行区切りの複数URL → カルーセル
+  const urls = (post.image_url ?? '').split('\n').map((u) => u.trim()).filter(Boolean);
+  const isCarousel = post.type === 'feed' && urls.length > 1;
 
-  // Step 1: メディアコンテナ作成（リールは image_url に動画URLを保存している）
-  const containerBody = isReel
-    ? {
-        media_type: 'REELS',
-        video_url: post.image_url,
+  let container: { id?: string };
+  if (isCarousel) {
+    const childIds: string[] = [];
+    for (const url of urls) {
+      const cr = await fetch(`${INSTAGRAM_API}/${post.instagram_user_id}/media`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image_url: url, is_carousel_item: true, access_token: post.access_token }),
+      });
+      const cj = await cr.json();
+      if (!cj.id) throw new Error(`カルーセル子コンテナ作成失敗: ${JSON.stringify(cj)}`);
+      childIds.push(cj.id);
+    }
+    const parentRes = await fetch(`${INSTAGRAM_API}/${post.instagram_user_id}/media`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        media_type: 'CAROUSEL',
+        children: childIds.join(','),
         caption: fullCaption,
-        share_to_feed: true,
         access_token: post.access_token,
-      }
-    : {
-        image_url: post.image_url,
-        caption: fullCaption,
-        ...(post.type === 'story' ? { media_type: 'STORIES' } : {}),
-        access_token: post.access_token,
-      };
-  const containerRes = await fetch(`${INSTAGRAM_API}/${post.instagram_user_id}/media`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(containerBody),
-  });
-
-  const container = await containerRes.json();
+      }),
+    });
+    container = await parentRes.json();
+  } else {
+    const containerBody = isReel
+      ? {
+          media_type: 'REELS',
+          video_url: post.image_url,
+          caption: fullCaption,
+          share_to_feed: true,
+          access_token: post.access_token,
+        }
+      : {
+          image_url: post.image_url,
+          caption: fullCaption,
+          ...(post.type === 'story' ? { media_type: 'STORIES' } : {}),
+          access_token: post.access_token,
+        };
+    const containerRes = await fetch(`${INSTAGRAM_API}/${post.instagram_user_id}/media`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(containerBody),
+    });
+    container = await containerRes.json();
+  }
   if (!container.id) throw new Error(`コンテナ作成失敗: ${JSON.stringify(container)}`);
 
   // Step 1.5: コンテナの処理完了を待つ（動画は時間がかかるので長めに待つ）
