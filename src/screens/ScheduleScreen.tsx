@@ -551,12 +551,14 @@ export default function ScheduleScreen({ route }: any) {
             >
               <Text style={styles.emptyAddBtnText}>🎬 リールを作成</Text>
             </TouchableOpacity>
+            {/* 「本日の出勤」は機能を練ってから公開予定。準備ができたら下を有効化する
             <TouchableOpacity
               style={[styles.emptyAddBtn, styles.rosterChoiceBtn]}
               onPress={() => setNowSub('roster')}
             >
               <Text style={styles.emptyAddBtnText}>🗓 本日の出勤を作成</Text>
             </TouchableOpacity>
+            */}
           </View>
         ) : (
           <>
