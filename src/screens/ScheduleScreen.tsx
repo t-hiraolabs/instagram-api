@@ -25,7 +25,7 @@ import {
 import StoryEditor from '../components/StoryEditor';
 import ReelScreen from './ReelScreen';
 import RosterScreen from './RosterScreen';
-import { generateStory } from '../services/aiService';
+import { generateStory, generatePost } from '../services/aiService';
 import {
   getScheduledPosts,
   createScheduledPost,
@@ -119,6 +119,7 @@ export default function ScheduleScreen({ route }: any) {
   const draft = useAppStore((s) => s.draft);
   const clearDraft = useAppStore((s) => s.clearDraft);
   const instagramCredentials = useAppStore((s) => s.instagramCredentials);
+  const brandSettings = useAppStore((s) => s.brandSettings);
 
   const [posts, setPosts] = useState<ScheduledPost[]>([]);
   const [loading, setLoading] = useState(true);
@@ -160,6 +161,7 @@ export default function ScheduleScreen({ route }: any) {
   const [storyTransform, setStoryTransform] = useState<StoryTransform>({
     ...DEFAULT_TRANSFORM,
   });
+  const [feedTheme, setFeedTheme] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const [composing, setComposing] = useState(false);
 
@@ -192,6 +194,7 @@ export default function ScheduleScreen({ route }: any) {
     setDateText('');
     setStoryRawUri('');
     setStoryTheme('');
+    setFeedTheme('');
     setStoryDetails('');
     setStoryTitle('');
     setStoryBody('');
@@ -271,6 +274,32 @@ export default function ScheduleScreen({ route }: any) {
   };
 
   // AIでストーリーの文言（タイトル・本文・CTA）を生成
+  // フィードのキャプション・ハッシュタグをAI生成
+  const handleGenerateFeedText = async () => {
+    if (!feedTheme.trim()) {
+      alertMsg('テーマを入力してください（例: 夏の新メニュー紹介）');
+      return;
+    }
+    if (!(await ensureLoggedIn('AI生成を使うにはログインが必要です'))) return;
+    setAiLoading(true);
+    try {
+      const g = await generatePost({
+        theme: feedTheme.trim(),
+        tone: brandSettings.tone || '明るい・ポジティブ',
+        keywords: [],
+        includeHashtags: true,
+        language: 'ja',
+        industry: brandSettings.industry,
+      });
+      setCaption(g.caption);
+      setHashtagsText(g.hashtags.join(' '));
+    } catch (e) {
+      alertMsg(e instanceof Error ? e.message : 'AI生成に失敗しました');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
   const handleGenerateStoryText = async () => {
     if (!storyTheme.trim() && !storyDetails.trim()) {
       alertMsg('テーマか内容を入力してください');
@@ -741,6 +770,28 @@ export default function ScheduleScreen({ route }: any) {
 
             {type === 'feed' ? (
               <>
+                <Text style={styles.sectionDivider}>✨ AIで文章を作る</Text>
+                <Text style={styles.fieldLabel}>テーマ</Text>
+                <TextInput
+                  style={styles.input}
+                  value={feedTheme}
+                  onChangeText={setFeedTheme}
+                  placeholder="例: 夏の新メニュー紹介 / 週末セールの告知"
+                  placeholderTextColor={COLORS.textMuted}
+                />
+                <TouchableOpacity
+                  style={[styles.aiBtn, aiLoading && styles.publishNowBtnDisabled]}
+                  onPress={handleGenerateFeedText}
+                  disabled={aiLoading}
+                  activeOpacity={0.85}
+                >
+                  {aiLoading ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={styles.aiBtnText}>✨ AIでキャプションを作る</Text>
+                  )}
+                </TouchableOpacity>
+
                 <Text style={styles.fieldLabel}>キャプション</Text>
                 <TextInput
                   style={[styles.input, styles.textArea]}
