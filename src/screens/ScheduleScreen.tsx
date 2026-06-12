@@ -131,6 +131,7 @@ export default function ScheduleScreen({ route }: any) {
   const [hashtagsText, setHashtagsText] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [imageUrls, setImageUrls] = useState<string[]>([]); // フィードのカルーセル用（複数）
+  const [feedPreviews, setFeedPreviews] = useState<string[]>([]); // 選択した写真のサムネ表示用
   const [imagePreview, setImagePreview] = useState('');
   const [imageUploading, setImageUploading] = useState(false);
   const [dateText, setDateText] = useState('');
@@ -186,6 +187,7 @@ export default function ScheduleScreen({ route }: any) {
     setType(draft.type || 'feed');
     setImageUrl('');
     setImageUrls([]);
+    setFeedPreviews([]);
     setImagePreview('');
     setDateText('');
     setStoryRawUri('');
@@ -250,6 +252,7 @@ export default function ScheduleScreen({ route }: any) {
     });
     if (res.canceled) return;
 
+    setFeedPreviews(res.assets.map((a) => a.uri));
     setImagePreview(res.assets[0].uri);
     setImageUploading(true);
     try {
@@ -703,19 +706,27 @@ export default function ScheduleScreen({ route }: any) {
               activeOpacity={0.85}
               disabled={imageUploading || composing}
             >
-              {imagePreview ? (
+              {type === 'feed' && feedPreviews.length > 0 ? (
+                <View style={styles.thumbRow}>
+                  {feedPreviews.map((uri, i) => (
+                    <View key={i} style={styles.thumbWrap}>
+                      <Image source={{ uri }} style={styles.thumb} resizeMode="cover" />
+                      <Text style={styles.thumbNum}>{i + 1}</Text>
+                    </View>
+                  ))}
+                </View>
+              ) : imagePreview ? (
                 <Image
                   source={{ uri: imagePreview }}
-                  style={[
-                    styles.imagePreview,
-                    { aspectRatio: type === 'story' ? 9 / 16 : 1 },
-                  ]}
+                  style={[styles.storyPreview]}
                   resizeMode="cover"
                 />
               ) : (
                 <View style={styles.imagePlaceholder}>
                   <Text style={styles.imagePlaceholderIcon}>🖼</Text>
-                  <Text style={styles.imagePlaceholderText}>タップして写真を選ぶ</Text>
+                  <Text style={styles.imagePlaceholderText}>
+                    タップして写真を選ぶ{type === 'feed' ? '（複数OK）' : ''}
+                  </Text>
                 </View>
               )}
               {(imageUploading || composing) && (
@@ -1291,11 +1302,36 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     borderRadius: RADIUS.md,
     overflow: 'hidden',
-    minHeight: 160,
+    minHeight: 120,
     justifyContent: 'center',
     alignItems: 'center',
+    padding: SPACING.sm,
   },
   imagePreview: { width: '100%', maxHeight: 360, alignSelf: 'center' },
+  storyPreview: { width: 150, aspectRatio: 9 / 16, alignSelf: 'center', borderRadius: RADIUS.sm },
+  thumbRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+    justifyContent: 'center',
+  },
+  thumbWrap: { position: 'relative' },
+  thumb: { width: 80, height: 80, borderRadius: RADIUS.sm, backgroundColor: '#000' },
+  thumbNum: {
+    position: 'absolute',
+    top: 3,
+    left: 3,
+    color: '#fff',
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    fontSize: 11,
+    fontWeight: '800',
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    textAlign: 'center',
+    lineHeight: 20,
+    overflow: 'hidden',
+  },
   imagePlaceholder: { alignItems: 'center', gap: SPACING.sm, paddingVertical: SPACING.xl },
   imagePlaceholderIcon: { fontSize: 36 },
   imagePlaceholderText: { color: COLORS.textMuted, fontSize: 14, fontWeight: '600' },
