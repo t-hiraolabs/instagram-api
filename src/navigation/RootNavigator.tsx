@@ -4,7 +4,6 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { View, Text, StyleSheet } from 'react-native';
 
 import HomeScreen from '../screens/HomeScreen';
-import GenerateScreen from '../screens/GenerateScreen';
 import ScheduleScreen from '../screens/ScheduleScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import { COLORS } from '../utils/theme';
@@ -47,14 +46,6 @@ function TabNavigator() {
         options={{
           tabBarLabel: 'ホーム',
           tabBarIcon: ({ focused }) => <TabIcon name="Home" focused={focused} />,
-        }}
-      />
-      <Tab.Screen
-        name="Generate"
-        component={GenerateScreen}
-        options={{
-          tabBarLabel: 'AI生成',
-          tabBarIcon: ({ focused }) => <TabIcon name="Generate" focused={focused} />,
         }}
       />
       <Tab.Screen

@@ -25,7 +25,7 @@ import {
 import StoryEditor from '../components/StoryEditor';
 import ReelScreen from './ReelScreen';
 import RosterScreen from './RosterScreen';
-import { generateStory, generatePost } from '../services/aiService';
+import { generateStory, generatePost, generateFromImage } from '../services/aiService';
 import {
   getScheduledPosts,
   createScheduledPost,
@@ -289,6 +289,38 @@ export default function ScheduleScreen({ route }: any) {
         keywords: [],
         includeHashtags: true,
         language: 'ja',
+        industry: brandSettings.industry,
+      });
+      setCaption(g.caption);
+      setHashtagsText(g.hashtags.join(' '));
+    } catch (e) {
+      alertMsg(e instanceof Error ? e.message : 'AI生成に失敗しました');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  // 写真からキャプション・ハッシュタグをAI生成
+  const handleGenerateFeedFromPhoto = async () => {
+    if (!(await ensureLoggedIn('AI生成を使うにはログインが必要です'))) return;
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      base64: true,
+      quality: 0.7,
+    });
+    if (res.canceled) return;
+    const a = res.assets[0];
+    if (!a.base64) {
+      alertMsg('写真の読み込みに失敗しました');
+      return;
+    }
+    setAiLoading(true);
+    try {
+      const g = await generateFromImage({
+        imageBase64: a.base64,
+        mimeType: (a.mimeType as 'image/jpeg') || 'image/jpeg',
+        contentType: 'feed',
+        tone: brandSettings.tone || '明るい・ポジティブ',
         industry: brandSettings.industry,
       });
       setCaption(g.caption);
@@ -788,8 +820,16 @@ export default function ScheduleScreen({ route }: any) {
                   {aiLoading ? (
                     <ActivityIndicator color="#fff" />
                   ) : (
-                    <Text style={styles.aiBtnText}>✨ AIでキャプションを作る</Text>
+                    <Text style={styles.aiBtnText}>✨ テーマからキャプションを作る</Text>
                   )}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.aiBtn, { marginTop: SPACING.sm }, aiLoading && styles.publishNowBtnDisabled]}
+                  onPress={handleGenerateFeedFromPhoto}
+                  disabled={aiLoading}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.aiBtnText}>📷 写真からキャプションを作る</Text>
                 </TouchableOpacity>
 
                 <Text style={styles.fieldLabel}>キャプション</Text>
