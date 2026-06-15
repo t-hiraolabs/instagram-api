@@ -319,12 +319,13 @@ export default function ScheduleScreen({ route }: any) {
 
   // 写真からキャプション・ハッシュタグをAI生成
   const handleGenerateFeedFromPhoto = async () => {
-    if (!(await ensureLoggedIn('AI生成を使うにはログインが必要です'))) return;
+    // ※ Webではユーザー操作直後に写真選択を開く必要があるため、ログイン確認は選択後に行う
     const res = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 0.7,
     });
     if (res.canceled) return;
+    if (!(await ensureLoggedIn('AI生成を使うにはログインが必要です'))) return;
     setAiLoading(true);
     try {
       const { base64, mime } = await uriToBase64(res.assets[0].uri);
