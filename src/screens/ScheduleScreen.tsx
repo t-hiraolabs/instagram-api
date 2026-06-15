@@ -317,18 +317,17 @@ export default function ScheduleScreen({ route }: any) {
     }
   };
 
-  // 写真からキャプション・ハッシュタグをAI生成
+  // 投稿用に選んだ写真（1枚目）からキャプション・ハッシュタグをAI生成
   const handleGenerateFeedFromPhoto = async () => {
-    // ※ Webではユーザー操作直後に写真選択を開く必要があるため、ログイン確認は選択後に行う
-    const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.7,
-    });
-    if (res.canceled) return;
+    const sourceUri = feedPreviews[0];
+    if (!sourceUri) {
+      alertMsg('先に投稿する写真を選んでください');
+      return;
+    }
     if (!(await ensureLoggedIn('AI生成を使うにはログインが必要です'))) return;
     setAiLoading(true);
     try {
-      const { base64, mime } = await uriToBase64(res.assets[0].uri);
+      const { base64, mime } = await uriToBase64(sourceUri);
       if (!base64) {
         alertMsg('写真の読み込みに失敗しました');
         return;
@@ -870,7 +869,7 @@ export default function ScheduleScreen({ route }: any) {
                   disabled={aiLoading}
                   activeOpacity={0.85}
                 >
-                  <Text style={styles.aiBtnText}>📷 写真からキャプションを作る</Text>
+                  <Text style={styles.aiBtnText}>📷 選んだ写真からキャプションを作る</Text>
                 </TouchableOpacity>
 
                 <Text style={styles.fieldLabel}>AIへの指示（口調・長さなど・任意）</Text>
