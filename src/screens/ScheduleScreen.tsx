@@ -26,7 +26,36 @@ import StoryEditor from '../components/StoryEditor';
 import ReelScreen from './ReelScreen';
 import RosterScreen from './RosterScreen';
 import { addTextToVideo } from '../utils/createReel';
-import { generateStory, generatePost, generateFromImages, refineCaption } from '../services/aiService';
+import { generateStory, generatePost, generateFromImage, generateFromImages, refineCaption } from '../services/aiService';
+
+// 動画の1フレームを取り出してbase64画像にする（AI見出し生成用・web）
+function extractVideoFrame(blob: Blob): Promise<{ base64: string; mime: string }> {
+  return new Promise((resolve, reject) => {
+    const video = document.createElement('video');
+    video.muted = true;
+    (video as any).playsInline = true;
+    video.src = URL.createObjectURL(blob);
+    video.onloadeddata = () => {
+      try {
+        video.currentTime = Math.min(1, (video.duration || 2) / 2);
+      } catch (_e) {
+        // noop
+      }
+    };
+    video.onseeked = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth || 720;
+      canvas.height = video.videoHeight || 1280;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return reject(new Error('Canvasを利用できません'));
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+      URL.revokeObjectURL(video.src);
+      resolve({ base64: dataUrl.split(',')[1] ?? '', mime: 'image/jpeg' });
+    };
+    video.onerror = () => reject(new Error('動画の読み込みに失敗しました'));
+  });
+}
 
 // 画像URI（web/ネイティブ）をbase64に変換（ImagePickerのbase64がwebで取れない対策）
 async function uriToBase64(uri: string): Promise<{ base64: string; mime: string }> {
@@ -171,6 +200,7 @@ export default function ScheduleScreen({ route }: any) {
   const [storyVideoUri, setStoryVideoUri] = useState('');
   const [storyVideoBlob, setStoryVideoBlob] = useState<Blob | null>(null);
   const [storyVideoText, setStoryVideoText] = useState('');
+  const [storyVideoTextPos, setStoryVideoTextPos] = useState<'top' | 'center' | 'bottom'>('bottom');
   const [storyTheme, setStoryTheme] = useState('');
   const [storyDetails, setStoryDetails] = useState('');
   const [storyTitle, setStoryTitle] = useState('');
@@ -217,6 +247,7 @@ export default function ScheduleScreen({ route }: any) {
     setStoryVideoUri('');
     setStoryVideoBlob(null);
     setStoryVideoText('');
+    setStoryVideoTextPos('bottom');
     setStoryTheme('');
     setFeedTheme('');
     setAiInstruction('');
@@ -319,10 +350,42 @@ export default function ScheduleScreen({ route }: any) {
   const uploadStoryVideo = async (): Promise<string> => {
     let blob = storyVideoBlob!;
     if (storyVideoText.trim()) {
-      const composed = await addTextToVideo(storyVideoBlob!, storyVideoText.trim());
+      const composed = await addTextToVideo(storyVideoBlob!, storyVideoText.trim(), storyVideoTextPos);
       blob = composed.blob;
     }
     return uploadBlob(blob);
+  };
+
+  // 動画から見出しをAIで作る（1フレームを抽出してAIに渡す）
+  const handleGenerateVideoHeadline = async () => {
+    if (!storyVideoBlob) {
+      alertMsg('先に動画を選んでください');
+      return;
+    }
+    if (!(await ensureLoggedIn('AI生成を使うにはログインが必要です'))) return;
+    setAiLoading(true);
+    try {
+      const { base64, mime } = await extractVideoFrame(storyVideoBlob);
+      if (!base64) {
+        alertMsg('動画の読み込みに失敗しました');
+        return;
+      }
+      const g = await generateFromImage({
+        imageBase64: base64,
+        mimeType: mime as 'image/jpeg',
+        contentType: 'story',
+        tone: brandSettings.tone || '明るい・ポジティブ',
+        industry: brandSettings.industry,
+        instruction:
+          '動画にのせる短い見出しを1つだけ。8〜14文字、記号や改行・ハッシュタグなし。' +
+          (aiInstruction.trim() ? ` ${aiInstruction.trim()}` : ''),
+      });
+      setStoryVideoText((g.caption || '').replace(/[\n#]/g, ' ').trim().slice(0, 24));
+    } catch (e) {
+      alertMsg(e instanceof Error ? e.message : 'AI生成に失敗しました');
+    } finally {
+      setAiLoading(false);
+    }
   };
 
   // フィードのキャプション・ハッシュタグをAI生成
@@ -902,6 +965,45 @@ export default function ScheduleScreen({ route }: any) {
                   placeholder="例: 本日OPEN / 新作入荷"
                   placeholderTextColor={COLORS.textMuted}
                 />
+                <TouchableOpacity
+                  style={[styles.aiBtn, { marginTop: SPACING.sm }, aiLoading && styles.publishNowBtnDisabled]}
+                  onPress={handleGenerateVideoHeadline}
+                  disabled={aiLoading}
+                  activeOpacity={0.85}
+                >
+                  {aiLoading ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={styles.aiBtnText}>✨ 動画から見出しを作る</Text>
+                  )}
+                </TouchableOpacity>
+
+                {storyVideoText.trim() ? (
+                  <>
+                    <Text style={styles.fieldLabel}>文字の位置</Text>
+                    <View style={styles.typeRow}>
+                      {([['top', '上'], ['center', '中央'], ['bottom', '下']] as const).map(
+                        ([pos, label]) => (
+                          <TouchableOpacity
+                            key={pos}
+                            style={[styles.typeBtn, storyVideoTextPos === pos && styles.typeBtnActive]}
+                            onPress={() => setStoryVideoTextPos(pos)}
+                          >
+                            <Text
+                              style={[
+                                styles.typeBtnText,
+                                storyVideoTextPos === pos && styles.typeBtnTextActive,
+                              ]}
+                            >
+                              {label}
+                            </Text>
+                          </TouchableOpacity>
+                        )
+                      )}
+                    </View>
+                  </>
+                ) : null}
+
                 <Text style={styles.publishNowHint}>
                   ※ 縦長(9:16)推奨。見出しを入れると動画に焼き込みます（少し時間がかかります）。音楽はInstagramで付けられます
                 </Text>
