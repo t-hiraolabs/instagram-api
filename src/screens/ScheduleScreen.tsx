@@ -846,7 +846,7 @@ export default function ScheduleScreen({ route }: any) {
                 <View style={styles.aiCard}>
                   <Text style={styles.aiCardTitle}>✨ AIで文章を作る</Text>
 
-                  <Text style={styles.fieldLabel}>① AIへの指示（任意）</Text>
+                  <Text style={styles.fieldLabel}>AIへの指示（任意・どちらにも反映）</Text>
                   <TextInput
                     style={styles.input}
                     value={aiInstruction}
@@ -855,36 +855,45 @@ export default function ScheduleScreen({ route }: any) {
                     placeholderTextColor={COLORS.textMuted}
                   />
 
-                  <Text style={styles.fieldLabel}>② テーマ</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={feedTheme}
-                    onChangeText={setFeedTheme}
-                    placeholder="例: 夏の新メニュー紹介"
-                    placeholderTextColor={COLORS.textMuted}
-                  />
+                  {/* 方法A: テーマから */}
+                  <View style={styles.aiMethod}>
+                    <Text style={styles.aiMethodTitle}>📝 テーマから作る</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={feedTheme}
+                      onChangeText={setFeedTheme}
+                      placeholder="例: 夏の新メニュー紹介"
+                      placeholderTextColor={COLORS.textMuted}
+                    />
+                    <TouchableOpacity
+                      style={[styles.aiBtn, { marginTop: SPACING.sm }, aiLoading && styles.publishNowBtnDisabled]}
+                      onPress={handleGenerateFeedText}
+                      disabled={aiLoading}
+                      activeOpacity={0.85}
+                    >
+                      {aiLoading ? (
+                        <ActivityIndicator color="#fff" />
+                      ) : (
+                        <Text style={styles.aiBtnText}>✨ テーマから作る</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
 
-                  <Text style={styles.fieldLabel}>③ 生成する</Text>
-                  <TouchableOpacity
-                    style={[styles.aiBtn, aiLoading && styles.publishNowBtnDisabled]}
-                    onPress={handleGenerateFeedText}
-                    disabled={aiLoading}
-                    activeOpacity={0.85}
-                  >
-                    {aiLoading ? (
-                      <ActivityIndicator color="#fff" />
-                    ) : (
-                      <Text style={styles.aiBtnText}>✨ テーマから作る</Text>
-                    )}
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.aiBtn, { marginTop: SPACING.sm }, aiLoading && styles.publishNowBtnDisabled]}
-                    onPress={handleGenerateFeedFromPhoto}
-                    disabled={aiLoading}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={styles.aiBtnText}>📷 選んだ写真から作る</Text>
-                  </TouchableOpacity>
+                  {/* 方法B: 写真から */}
+                  <View style={styles.aiMethod}>
+                    <Text style={styles.aiMethodTitle}>📷 写真から作る</Text>
+                    <Text style={styles.aiHintText}>投稿用に選んだ1枚目の写真を見て作ります</Text>
+                    <TouchableOpacity
+                      style={[styles.aiBtn, aiLoading && styles.publishNowBtnDisabled]}
+                      onPress={handleGenerateFeedFromPhoto}
+                      disabled={aiLoading}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={styles.aiBtnText}>📷 選んだ写真から作る</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* 書き直し */}
                   <TouchableOpacity
                     style={[styles.aiBtnGhost, aiLoading && styles.publishNowBtnDisabled]}
                     onPress={handleRefineCaption}
@@ -1558,6 +1567,13 @@ const styles = StyleSheet.create({
     marginTop: SPACING.sm,
   },
   aiBtnGhostText: { color: COLORS.secondary, fontSize: 14, fontWeight: '700' },
+  aiMethod: {
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.sm,
+    padding: SPACING.sm,
+    marginTop: SPACING.md,
+  },
+  aiMethodTitle: { color: COLORS.text, fontSize: 13, fontWeight: '800', marginBottom: SPACING.xs },
   composeBtn: {
     backgroundColor: COLORS.primary,
     borderRadius: RADIUS.md,
