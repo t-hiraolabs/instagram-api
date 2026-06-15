@@ -1036,39 +1036,42 @@ export default function ScheduleScreen({ route }: any) {
               </>
             ) : (
               <>
-                <Text style={styles.sectionDivider}>画像に載せる文字</Text>
+                {/* AI生成カード（フィードと統一） */}
+                <View style={styles.aiCard}>
+                  <Text style={styles.aiCardTitle}>✨ AIで文字を作る</Text>
+                  <Text style={styles.fieldLabel}>テーマ</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={storyTheme}
+                    onChangeText={setStoryTheme}
+                    placeholder="例: 夏セールのお知らせ"
+                    placeholderTextColor={COLORS.textMuted}
+                  />
+                  <Text style={styles.fieldLabel}>内容・詳細</Text>
+                  <TextInput
+                    style={[styles.input, styles.textArea]}
+                    value={storyDetails}
+                    onChangeText={setStoryDetails}
+                    placeholder="例: 7/20〜31限定で全品20%OFF"
+                    placeholderTextColor={COLORS.textMuted}
+                    multiline
+                    numberOfLines={2}
+                  />
+                  <TouchableOpacity
+                    style={[styles.aiBtn, { marginTop: SPACING.sm }, aiLoading && styles.publishNowBtnDisabled]}
+                    onPress={handleGenerateStoryText}
+                    disabled={aiLoading}
+                    activeOpacity={0.85}
+                  >
+                    {aiLoading ? (
+                      <ActivityIndicator color="#fff" />
+                    ) : (
+                      <Text style={styles.aiBtnText}>✨ AIで文章を作る</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
 
-                <Text style={styles.fieldLabel}>テーマ</Text>
-                <TextInput
-                  style={styles.input}
-                  value={storyTheme}
-                  onChangeText={setStoryTheme}
-                  placeholder="例: 夏セールのお知らせ"
-                  placeholderTextColor={COLORS.textMuted}
-                />
-                <Text style={styles.fieldLabel}>内容・詳細</Text>
-                <TextInput
-                  style={[styles.input, styles.textArea]}
-                  value={storyDetails}
-                  onChangeText={setStoryDetails}
-                  placeholder="例: 7/20〜31限定で全品20%OFF"
-                  placeholderTextColor={COLORS.textMuted}
-                  multiline
-                  numberOfLines={2}
-                />
-                <TouchableOpacity
-                  style={[styles.aiBtn, aiLoading && styles.publishNowBtnDisabled]}
-                  onPress={handleGenerateStoryText}
-                  disabled={aiLoading}
-                  activeOpacity={0.85}
-                >
-                  {aiLoading ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <Text style={styles.aiBtnText}>✨ AIで文章を作る</Text>
-                  )}
-                </TouchableOpacity>
-
+                <Text style={styles.sectionDivider}>画像にのせる文字</Text>
                 <Text style={styles.fieldLabel}>タイトル（大きく表示）</Text>
                 <TextInput
                   style={styles.input}
