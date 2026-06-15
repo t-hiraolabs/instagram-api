@@ -327,6 +327,16 @@ export default function ProfileScreen() {
                 </TouchableOpacity>
               ))}
             </View>
+            <Text style={[styles.fieldLabel, { marginTop: SPACING.sm }]}>
+              または業種を自由に入力
+            </Text>
+            <TextInput
+              style={styles.input}
+              value={draftBrand.industry}
+              onChangeText={(v) => setDraftBrand((p) => ({ ...p, industry: v }))}
+              placeholder="例: クラフトビール専門店、出張カメラマン など"
+              placeholderTextColor={COLORS.textMuted}
+            />
 
             <Text style={styles.fieldLabel}>アカウントタイプ（文字・デザインに反映）</Text>
             <View style={styles.industryGrid}>

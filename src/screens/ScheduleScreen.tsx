@@ -25,7 +25,21 @@ import {
 import StoryEditor from '../components/StoryEditor';
 import ReelScreen from './ReelScreen';
 import RosterScreen from './RosterScreen';
-import { generateStory, generatePost, generateFromImage } from '../services/aiService';
+import { generateStory, generatePost, generateFromImage, refineCaption } from '../services/aiService';
+
+// 画像URI（web/ネイティブ）をbase64に変換（ImagePickerのbase64がwebで取れない対策）
+async function uriToBase64(uri: string): Promise<{ base64: string; mime: string }> {
+  const res = await fetch(uri);
+  const blob = await res.blob();
+  const mime = blob.type || 'image/jpeg';
+  const base64 = await new Promise<string>((resolve, reject) => {
+    const r = new FileReader();
+    r.onloadend = () => resolve(String(r.result).split(',')[1] ?? '');
+    r.onerror = reject;
+    r.readAsDataURL(blob);
+  });
+  return { base64, mime };
+}
 import {
   getScheduledPosts,
   createScheduledPost,
@@ -162,6 +176,7 @@ export default function ScheduleScreen({ route }: any) {
     ...DEFAULT_TRANSFORM,
   });
   const [feedTheme, setFeedTheme] = useState('');
+  const [aiInstruction, setAiInstruction] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const [composing, setComposing] = useState(false);
 
@@ -195,6 +210,7 @@ export default function ScheduleScreen({ route }: any) {
     setStoryRawUri('');
     setStoryTheme('');
     setFeedTheme('');
+    setAiInstruction('');
     setStoryDetails('');
     setStoryTitle('');
     setStoryBody('');
@@ -290,6 +306,7 @@ export default function ScheduleScreen({ route }: any) {
         includeHashtags: true,
         language: 'ja',
         industry: brandSettings.industry,
+        instruction: aiInstruction.trim() || undefined,
       });
       setCaption(g.caption);
       setHashtagsText(g.hashtags.join(' '));
@@ -305,28 +322,51 @@ export default function ScheduleScreen({ route }: any) {
     if (!(await ensureLoggedIn('AI生成を使うにはログインが必要です'))) return;
     const res = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      base64: true,
       quality: 0.7,
     });
     if (res.canceled) return;
-    const a = res.assets[0];
-    if (!a.base64) {
-      alertMsg('写真の読み込みに失敗しました');
-      return;
-    }
     setAiLoading(true);
     try {
+      const { base64, mime } = await uriToBase64(res.assets[0].uri);
+      if (!base64) {
+        alertMsg('写真の読み込みに失敗しました');
+        return;
+      }
+      const allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
       const g = await generateFromImage({
-        imageBase64: a.base64,
-        mimeType: (a.mimeType as 'image/jpeg') || 'image/jpeg',
+        imageBase64: base64,
+        mimeType: (allowed.includes(mime) ? mime : 'image/jpeg') as 'image/jpeg',
         contentType: 'feed',
         tone: brandSettings.tone || '明るい・ポジティブ',
         industry: brandSettings.industry,
+        instruction: aiInstruction.trim() || undefined,
       });
       setCaption(g.caption);
       setHashtagsText(g.hashtags.join(' '));
     } catch (e) {
       alertMsg(e instanceof Error ? e.message : 'AI生成に失敗しました');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  // 生成済みキャプションを指示に従って書き直す
+  const handleRefineCaption = async () => {
+    if (!caption.trim()) {
+      alertMsg('先にキャプションを作成（または入力）してください');
+      return;
+    }
+    if (!aiInstruction.trim()) {
+      alertMsg('指示を入力してください（例: もっとカジュアルに、絵文字多めで）');
+      return;
+    }
+    if (!(await ensureLoggedIn('AI生成を使うにはログインが必要です'))) return;
+    setAiLoading(true);
+    try {
+      const newCaption = await refineCaption(caption.trim(), aiInstruction.trim());
+      setCaption(newCaption);
+    } catch (e) {
+      alertMsg(e instanceof Error ? e.message : '書き直しに失敗しました');
     } finally {
       setAiLoading(false);
     }
@@ -830,6 +870,23 @@ export default function ScheduleScreen({ route }: any) {
                   activeOpacity={0.85}
                 >
                   <Text style={styles.aiBtnText}>📷 写真からキャプションを作る</Text>
+                </TouchableOpacity>
+
+                <Text style={styles.fieldLabel}>AIへの指示（口調・長さなど・任意）</Text>
+                <TextInput
+                  style={styles.input}
+                  value={aiInstruction}
+                  onChangeText={setAiInstruction}
+                  placeholder="例: もっとカジュアルに / 絵文字多めで / 短く3行で"
+                  placeholderTextColor={COLORS.textMuted}
+                />
+                <TouchableOpacity
+                  style={[styles.aiBtn, { marginTop: SPACING.sm, backgroundColor: COLORS.primary }, aiLoading && styles.publishNowBtnDisabled]}
+                  onPress={handleRefineCaption}
+                  disabled={aiLoading}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.aiBtnText}>✏️ 今の文章を指示で書き直す</Text>
                 </TouchableOpacity>
 
                 <Text style={styles.fieldLabel}>キャプション</Text>

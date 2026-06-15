@@ -62,6 +62,25 @@ export default function ReelScreen({ onBack }: { onBack?: () => void } = {}) {
     else Alert.alert(title, msg);
   };
 
+  // 自分の動画をそのままリールに使う
+  const pickOwnVideo = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+      quality: 1,
+    });
+    if (result.canceled) return;
+    try {
+      const r = await fetch(result.assets[0].uri);
+      const b = await r.blob();
+      setReelBlob(b);
+      setPreviewUrl(URL.createObjectURL(b));
+      setElapsed(null);
+      setStatus('');
+    } catch (e) {
+      alertMsg(e instanceof Error ? e.message : '動画の読み込みに失敗しました', 'エラー');
+    }
+  };
+
   const pickPhotos = async () => {
     const { status: perm } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (perm !== 'granted') {
@@ -279,8 +298,14 @@ export default function ReelScreen({ onBack }: { onBack?: () => void } = {}) {
         <Text style={styles.title}>リール作成</Text>
       </View>
       <Text style={styles.desc}>
-        写真を数枚選び、文字をのせると、スライド動画(MP4)を作ります。
+        自分の動画をそのまま投稿するか、写真からスライド動画を作れます。
       </Text>
+
+      <TouchableOpacity style={styles.ownVideoBtn} onPress={pickOwnVideo} activeOpacity={0.85}>
+        <Text style={styles.ownVideoBtnText}>📹 自分の動画を選んで投稿</Text>
+      </TouchableOpacity>
+
+      <Text style={styles.orText}>― または 写真からスライド動画を作る ―</Text>
 
       <TouchableOpacity style={styles.pickBtn} onPress={pickPhotos} activeOpacity={0.85}>
         <Text style={styles.pickBtnText}>＋ 写真を選ぶ（複数OK）</Text>
@@ -351,18 +376,20 @@ export default function ReelScreen({ onBack }: { onBack?: () => void } = {}) {
         </View>
       ))}
 
-      <TouchableOpacity
-        style={[styles.createBtn, working && styles.createBtnDisabled]}
-        onPress={handleCreate}
-        disabled={working}
-        activeOpacity={0.85}
-      >
-        {working ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.createBtnText}>🎬 リールを作成する</Text>
-        )}
-      </TouchableOpacity>
+      {slides.length > 0 && (
+        <TouchableOpacity
+          style={[styles.createBtn, working && styles.createBtnDisabled]}
+          onPress={handleCreate}
+          disabled={working}
+          activeOpacity={0.85}
+        >
+          {working ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.createBtnText}>🎬 リールを作成する</Text>
+          )}
+        </TouchableOpacity>
+      )}
 
       {working && <Text style={styles.status}>{status}</Text>}
 
@@ -465,6 +492,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   pickBtnText: { color: COLORS.primary, fontSize: 15, fontWeight: '700' },
+  ownVideoBtn: {
+    backgroundColor: COLORS.primary,
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.md,
+    alignItems: 'center',
+  },
+  ownVideoBtnText: { color: '#fff', fontSize: 15, fontWeight: '800' },
+  orText: {
+    color: COLORS.textMuted,
+    fontSize: 12,
+    textAlign: 'center',
+    marginVertical: SPACING.md,
+  },
   countText: { color: COLORS.textSecondary, fontSize: 13, marginTop: SPACING.sm },
   aiBox: {
     backgroundColor: COLORS.surface,

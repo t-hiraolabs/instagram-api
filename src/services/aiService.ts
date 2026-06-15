@@ -45,6 +45,7 @@ interface GeneratePostInput {
   includeHashtags: boolean;
   language: 'ja' | 'en';
   industry?: string;
+  instruction?: string;
 }
 
 interface GeneratedPost {
@@ -101,6 +102,7 @@ export async function generatePost(input: GeneratePostInput): Promise<GeneratedP
 テーマ: ${input.theme}
 トーン: ${input.tone}
 ${input.industry ? `業種: ${input.industry}` : ''}
+${input.instruction ? `追加の指示（最優先で従う）: ${input.instruction}` : ''}
 キーワード: ${input.keywords.join(', ')}
 ハッシュタグ: ${input.includeHashtags ? '含める（15〜20個）' : '含めない'}
 
@@ -201,12 +203,30 @@ export async function improveCaption(originalCaption: string): Promise<string[]>
   return parsed.suggestions as string[];
 }
 
+/** 既存キャプションを、指示（口調・長さなど）に従って書き直す */
+export async function refineCaption(caption: string, instruction: string): Promise<string> {
+  const systemPrompt = `あなたはInstagramのプロ編集者です。与えられたキャプションを、指示に従って自然な日本語で書き直します。必ずJSONフォーマットだけで返答してください。`;
+  const prompt = `次のキャプションを、指示に従って書き直してください。意味は保ちつつ、指示を最優先で反映してください。
+
+現在のキャプション:
+"${caption}"
+
+指示: ${instruction}
+
+以下のJSONで返してください:
+{"caption": "書き直したキャプション"}`;
+  const raw = await callClaude(prompt, systemPrompt);
+  const clean = raw.replace(/```json|```/g, '').trim();
+  return JSON.parse(clean).caption as string;
+}
+
 export async function generateFromImage(input: {
   imageBase64: string;
   mimeType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
   contentType: 'feed' | 'story' | 'reel';
   tone: string;
   industry?: string;
+  instruction?: string;
 }): Promise<GeneratedPost> {
   const brandCtx = getBrandContext();
   const labels = { feed: 'フィード投稿', story: 'ストーリー', reel: 'リール' };
@@ -243,6 +263,7 @@ export async function generateFromImage(input: {
                 text: `この画像からInstagram${labels[input.contentType]}のコンテンツを生成してください。${brandCtx}
 トーン: ${input.tone}
 ${input.industry ? `業種: ${input.industry}` : ''}
+${input.instruction ? `追加の指示（最優先で従う）: ${input.instruction}` : ''}
 ${extraInstructions}
 
 ハッシュタグは15〜20個、日英混合で。
