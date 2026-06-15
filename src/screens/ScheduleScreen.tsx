@@ -25,6 +25,7 @@ import {
 import StoryEditor from '../components/StoryEditor';
 import ReelScreen from './ReelScreen';
 import RosterScreen from './RosterScreen';
+import { addTextToVideo } from '../utils/createReel';
 import { generateStory, generatePost, generateFromImages, refineCaption } from '../services/aiService';
 
 // 画像URI（web/ネイティブ）をbase64に変換（ImagePickerのbase64がwebで取れない対策）
@@ -169,6 +170,7 @@ export default function ScheduleScreen({ route }: any) {
   const [storyMode, setStoryMode] = useState<'image' | 'video'>('image'); // ストーリー: 写真+文字 / 動画
   const [storyVideoUri, setStoryVideoUri] = useState('');
   const [storyVideoBlob, setStoryVideoBlob] = useState<Blob | null>(null);
+  const [storyVideoText, setStoryVideoText] = useState('');
   const [storyTheme, setStoryTheme] = useState('');
   const [storyDetails, setStoryDetails] = useState('');
   const [storyTitle, setStoryTitle] = useState('');
@@ -214,6 +216,7 @@ export default function ScheduleScreen({ route }: any) {
     setStoryMode('image');
     setStoryVideoUri('');
     setStoryVideoBlob(null);
+    setStoryVideoText('');
     setStoryTheme('');
     setFeedTheme('');
     setAiInstruction('');
@@ -310,6 +313,16 @@ export default function ScheduleScreen({ route }: any) {
     } catch (e) {
       alertMsg(e instanceof Error ? e.message : '動画の読み込みに失敗しました');
     }
+  };
+
+  // 動画ストーリーの最終Blob（文字があれば焼き込む）をアップロードしてURLを返す
+  const uploadStoryVideo = async (): Promise<string> => {
+    let blob = storyVideoBlob!;
+    if (storyVideoText.trim()) {
+      const composed = await addTextToVideo(storyVideoBlob!, storyVideoText.trim());
+      blob = composed.blob;
+    }
+    return uploadBlob(blob);
   };
 
   // フィードのキャプション・ハッシュタグをAI生成
@@ -496,7 +509,7 @@ export default function ScheduleScreen({ route }: any) {
 
     setPublishing(true);
     try {
-      const storyVideoUrl = isStoryVideo ? await uploadBlob(storyVideoBlob!) : undefined;
+      const storyVideoUrl = isStoryVideo ? await uploadStoryVideo() : undefined;
       const result = await publishNow({
         caption: caption.trim(),
         hashtags: buildHashtags(),
@@ -560,7 +573,7 @@ export default function ScheduleScreen({ route }: any) {
     setSaving(true);
     try {
       // ストーリー動画は動画をアップロードして image_url に動画URLを保存
-      const storyVideoUrl = isStoryVideo ? await uploadBlob(storyVideoBlob!) : undefined;
+      const storyVideoUrl = isStoryVideo ? await uploadStoryVideo() : undefined;
       await createScheduledPost({
         caption: caption.trim(),
         hashtags: buildHashtags(),
@@ -881,8 +894,16 @@ export default function ScheduleScreen({ route }: any) {
                     </View>
                   )}
                 </TouchableOpacity>
+                <Text style={styles.fieldLabel}>動画にのせる見出し（任意）</Text>
+                <TextInput
+                  style={styles.input}
+                  value={storyVideoText}
+                  onChangeText={setStoryVideoText}
+                  placeholder="例: 本日OPEN / 新作入荷"
+                  placeholderTextColor={COLORS.textMuted}
+                />
                 <Text style={styles.publishNowHint}>
-                  ※ 縦長(9:16)の動画がおすすめ。音楽はInstagramで付けられます
+                  ※ 縦長(9:16)推奨。見出しを入れると動画に焼き込みます（少し時間がかかります）。音楽はInstagramで付けられます
                 </Text>
               </>
             ) : (

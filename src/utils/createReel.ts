@@ -284,6 +284,73 @@ export async function renderSlide(
   return canvas.toDataURL('image/jpeg', 0.9);
 }
 
+// 透明背景に見出しテキストを描いたPNG(dataURL)を返す（動画オーバーレイ用）
+async function renderTextOverlay(text: string): Promise<string> {
+  await loadFontFor(text);
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Canvasを利用できません');
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+  const { lines, lineH } = fitText(ctx, text, W - 90);
+  const blockH = lines.length * lineH;
+
+  // 下部に薄い暗がり（読みやすさ）
+  const grad = ctx.createLinearGradient(0, H * 0.62, 0, H);
+  grad.addColorStop(0, 'rgba(0,0,0,0)');
+  grad.addColorStop(1, 'rgba(0,0,0,0.5)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, H * 0.62, W, H * 0.38);
+
+  let y = H - 170 - blockH + lineH;
+  ctx.lineJoin = 'round';
+  for (const line of lines) {
+    ctx.lineWidth = 16;
+    ctx.strokeStyle = 'rgba(0,0,0,0.92)';
+    ctx.strokeText(line, W / 2, y);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillText(line, W / 2, y);
+    y += lineH;
+  }
+  return canvas.toDataURL('image/png');
+}
+
+/** 動画に見出しテキストを焼き込んでMP4を生成 */
+export async function addTextToVideo(
+  videoBlob: Blob,
+  text: string,
+  onLog?: (msg: string) => void
+): Promise<{ blob: Blob; url: string }> {
+  const ffmpeg = await getFFmpeg(onLog);
+  const { fetchFile } = (window as any).FFmpegUtil;
+
+  await ffmpeg.writeFile('in.mp4', await fetchFile(videoBlob));
+  const overlay = await renderTextOverlay(text);
+  await ffmpeg.writeFile('ov.png', await fetchFile(overlay));
+
+  await ffmpeg.exec([
+    '-i', 'in.mp4',
+    '-i', 'ov.png',
+    '-filter_complex',
+    `[0:v]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},setsar=1[v];[v][1:v]overlay=0:0[vo]`,
+    '-map', '[vo]',
+    '-map', '0:a?',
+    '-c:v', 'libx264',
+    '-pix_fmt', 'yuv420p',
+    '-c:a', 'aac',
+    '-shortest',
+    '-movflags', '+faststart',
+    'out.mp4',
+  ]);
+
+  const data = await ffmpeg.readFile('out.mp4');
+  const blob = new Blob([(data as Uint8Array).buffer], { type: 'video/mp4' });
+  return { blob, url: URL.createObjectURL(blob) };
+}
+
 export interface ReelSlide {
   imageUri: string;
   text?: string;
