@@ -843,6 +843,19 @@ export default function ScheduleScreen({ route }: any) {
             {type === 'feed' ? (
               <>
                 <Text style={styles.sectionDivider}>✨ AIで文章を作る</Text>
+
+                <Text style={styles.fieldLabel}>AIへの指示（口調・長さなど・任意）</Text>
+                <TextInput
+                  style={styles.input}
+                  value={aiInstruction}
+                  onChangeText={setAiInstruction}
+                  placeholder="例: もっとカジュアルに / 絵文字多めで / 短く3行で"
+                  placeholderTextColor={COLORS.textMuted}
+                />
+                <Text style={styles.aiHintText}>
+                  ※ ここに書いておくと、下の生成すべてに反映されます
+                </Text>
+
                 <Text style={styles.fieldLabel}>テーマ</Text>
                 <TextInput
                   style={styles.input}
@@ -871,15 +884,6 @@ export default function ScheduleScreen({ route }: any) {
                 >
                   <Text style={styles.aiBtnText}>📷 選んだ写真からキャプションを作る</Text>
                 </TouchableOpacity>
-
-                <Text style={styles.fieldLabel}>AIへの指示（口調・長さなど・任意）</Text>
-                <TextInput
-                  style={styles.input}
-                  value={aiInstruction}
-                  onChangeText={setAiInstruction}
-                  placeholder="例: もっとカジュアルに / 絵文字多めで / 短く3行で"
-                  placeholderTextColor={COLORS.textMuted}
-                />
                 <TouchableOpacity
                   style={[styles.aiBtn, { marginTop: SPACING.sm, backgroundColor: COLORS.primary }, aiLoading && styles.publishNowBtnDisabled]}
                   onPress={handleRefineCaption}
@@ -1527,6 +1531,7 @@ const styles = StyleSheet.create({
     marginTop: SPACING.sm,
   },
   aiBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  aiHintText: { color: COLORS.textMuted, fontSize: 11, marginTop: 4, marginBottom: SPACING.sm },
   composeBtn: {
     backgroundColor: COLORS.primary,
     borderRadius: RADIUS.md,
