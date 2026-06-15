@@ -166,6 +166,9 @@ export default function ScheduleScreen({ route }: any) {
 
   // ストーリー用：合成前の元写真と、画像に載せる文字
   const [storyRawUri, setStoryRawUri] = useState('');
+  const [storyMode, setStoryMode] = useState<'image' | 'video'>('image'); // ストーリー: 写真+文字 / 動画
+  const [storyVideoUri, setStoryVideoUri] = useState('');
+  const [storyVideoBlob, setStoryVideoBlob] = useState<Blob | null>(null);
   const [storyTheme, setStoryTheme] = useState('');
   const [storyDetails, setStoryDetails] = useState('');
   const [storyTitle, setStoryTitle] = useState('');
@@ -208,6 +211,9 @@ export default function ScheduleScreen({ route }: any) {
     setImagePreview('');
     setDateText('');
     setStoryRawUri('');
+    setStoryMode('image');
+    setStoryVideoUri('');
+    setStoryVideoBlob(null);
     setStoryTheme('');
     setFeedTheme('');
     setAiInstruction('');
@@ -289,7 +295,23 @@ export default function ScheduleScreen({ route }: any) {
     }
   };
 
-  // AIでストーリーの文言（タイトル・本文・CTA）を生成
+  // ストーリー用の動画を選ぶ
+  const pickStoryVideo = async () => {
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+      quality: 1,
+    });
+    if (res.canceled) return;
+    try {
+      const r = await fetch(res.assets[0].uri);
+      const b = await r.blob();
+      setStoryVideoBlob(b);
+      setStoryVideoUri(URL.createObjectURL(b));
+    } catch (e) {
+      alertMsg(e instanceof Error ? e.message : '動画の読み込みに失敗しました');
+    }
+  };
+
   // フィードのキャプション・ハッシュタグをAI生成
   const handleGenerateFeedText = async () => {
     if (!feedTheme.trim()) {
@@ -444,11 +466,17 @@ export default function ScheduleScreen({ route }: any) {
 
   // 今すぐInstagramに投稿（テスト/手動投稿）
   const handlePublishNow = async () => {
+    const isStoryVideo = type === 'story' && storyMode === 'video';
     if (type === 'feed' && !caption.trim()) {
       alertMsg('キャプションを入力してください', '入力に不備があります');
       return;
     }
-    if (!imageUrl.trim()) {
+    if (isStoryVideo) {
+      if (!storyVideoBlob) {
+        alertMsg('ストーリーにする動画を選んでください', '動画が必要です');
+        return;
+      }
+    } else if (!imageUrl.trim()) {
       alertMsg(
         type === 'story'
           ? '写真を選び「✅ この画像で確定する」を押してください'
@@ -468,11 +496,13 @@ export default function ScheduleScreen({ route }: any) {
 
     setPublishing(true);
     try {
+      const storyVideoUrl = isStoryVideo ? await uploadBlob(storyVideoBlob!) : undefined;
       const result = await publishNow({
         caption: caption.trim(),
         hashtags: buildHashtags(),
-        image_url: imageUrl.trim(),
+        image_url: isStoryVideo ? undefined : imageUrl.trim(),
         image_urls: type === 'feed' && imageUrls.length > 1 ? imageUrls : undefined,
+        video_url: storyVideoUrl,
         type,
         instagram_user_id: instagramCredentials.userId,
         access_token: instagramCredentials.accessToken,
@@ -493,11 +523,17 @@ export default function ScheduleScreen({ route }: any) {
   };
 
   const handleSave = async () => {
+    const isStoryVideo = type === 'story' && storyMode === 'video';
     if (type === 'feed' && !caption.trim()) {
       alertMsg('キャプションを入力してください', '入力に不備があります');
       return;
     }
-    if (!imageUrl.trim()) {
+    if (isStoryVideo) {
+      if (!storyVideoBlob) {
+        alertMsg('ストーリーにする動画を選んでください', '動画が必要です');
+        return;
+      }
+    } else if (!imageUrl.trim()) {
       alertMsg(
         type === 'story'
           ? '写真を選び「✅ この画像で確定する」を押してください'
@@ -523,12 +559,15 @@ export default function ScheduleScreen({ route }: any) {
 
     setSaving(true);
     try {
+      // ストーリー動画は動画をアップロードして image_url に動画URLを保存
+      const storyVideoUrl = isStoryVideo ? await uploadBlob(storyVideoBlob!) : undefined;
       await createScheduledPost({
         caption: caption.trim(),
         hashtags: buildHashtags(),
-        // フィードで複数枚なら改行区切りで保存（カルーセル）
-        image_url:
-          type === 'feed' && imageUrls.length > 1
+        // フィードで複数枚なら改行区切りで保存（カルーセル）／ストーリー動画は動画URL
+        image_url: isStoryVideo
+          ? storyVideoUrl
+          : type === 'feed' && imageUrls.length > 1
             ? imageUrls.join('\n')
             : imageUrl.trim() || undefined,
         scheduled_at: scheduledDate,
@@ -803,6 +842,51 @@ export default function ScheduleScreen({ route }: any) {
               ))}
             </View>
 
+            {/* ストーリー：写真+文字 か 動画 を選ぶ */}
+            {type === 'story' && (
+              <>
+                <Text style={styles.fieldLabel}>ストーリーの種類</Text>
+                <View style={styles.typeRow}>
+                  <TouchableOpacity
+                    style={[styles.typeBtn, storyMode === 'image' && styles.typeBtnActive]}
+                    onPress={() => setStoryMode('image')}
+                  >
+                    <Text style={[styles.typeBtnText, storyMode === 'image' && styles.typeBtnTextActive]}>
+                      🖼 写真＋文字
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.typeBtn, storyMode === 'video' && styles.typeBtnActive]}
+                    onPress={() => setStoryMode('video')}
+                  >
+                    <Text style={[styles.typeBtnText, storyMode === 'video' && styles.typeBtnTextActive]}>
+                      📹 動画
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+
+            {/* ストーリー動画モード */}
+            {type === 'story' && storyMode === 'video' ? (
+              <>
+                <Text style={styles.fieldLabel}>ストーリーにする動画</Text>
+                <TouchableOpacity style={styles.imagePickerBox} onPress={pickStoryVideo} activeOpacity={0.85}>
+                  {storyVideoUri ? (
+                    <Text style={styles.imageReadyText}>✅ 動画を選びました（タップで変更）</Text>
+                  ) : (
+                    <View style={styles.imagePlaceholder}>
+                      <Text style={styles.imagePlaceholderIcon}>📹</Text>
+                      <Text style={styles.imagePlaceholderText}>タップして動画を選ぶ</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+                <Text style={styles.publishNowHint}>
+                  ※ 縦長(9:16)の動画がおすすめ。音楽はInstagramで付けられます
+                </Text>
+              </>
+            ) : (
+              <>
             {/* 写真（フィード=正方形 / ストーリー=縦長） */}
             <Text style={styles.fieldLabel}>
               {type === 'story' ? '背景写真（縦長 9:16）' : '投稿画像（複数選択OK・カルーセル）'}
@@ -845,8 +929,10 @@ export default function ScheduleScreen({ route }: any) {
                 </View>
               )}
             </TouchableOpacity>
+              </>
+            )}
 
-            {type === 'feed' ? (
+            {type === 'story' && storyMode === 'video' ? null : type === 'feed' ? (
               <>
                 {/* AI生成カード */}
                 <View style={styles.aiCard}>

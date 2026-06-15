@@ -24,6 +24,8 @@ Deno.serve(async (req) => {
       return json({ error: 'Instagram未連携（ユーザーID/トークンがありません）' }, 400);
     }
     const isReel = type === 'reel';
+    const isStoryVideo = type === 'story' && !!video_url;
+    const isVideo = isReel || isStoryVideo;
     // フィードで複数画像 → カルーセル
     const carousel: string[] = type === 'feed' && Array.isArray(image_urls) && image_urls.length > 1 ? image_urls : [];
     const isCarousel = carousel.length > 1;
@@ -31,7 +33,7 @@ Deno.serve(async (req) => {
     if (isReel && !video_url) {
       return json({ error: 'リール投稿には公開動画URLが必要です' }, 400);
     }
-    if (!isReel && !isCarousel && !image_url) {
+    if (!isVideo && !isCarousel && !image_url) {
       return json({ error: '投稿には公開画像URLが必要です' }, 400);
     }
 
@@ -66,6 +68,8 @@ Deno.serve(async (req) => {
     } else {
       const containerBody = isReel
         ? { media_type: 'REELS', video_url, caption: fullCaption, share_to_feed: true, access_token }
+        : isStoryVideo
+        ? { media_type: 'STORIES', video_url, access_token }
         : {
             image_url,
             caption: fullCaption,
@@ -84,7 +88,7 @@ Deno.serve(async (req) => {
     }
 
     // Step 1.5: コンテナの処理完了を待つ（動画は時間がかかるので長めに待つ）
-    const maxTries = isReel ? 45 : 15;
+    const maxTries = isVideo ? 45 : 15;
     let ready = false;
     for (let i = 0; i < maxTries; i++) {
       await new Promise((r) => setTimeout(r, 2000));

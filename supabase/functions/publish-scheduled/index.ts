@@ -21,6 +21,9 @@ async function publishPost(post: {
     .join('\n\n');
 
   const isReel = post.type === 'reel';
+  // ストーリーで image_url が動画URL → 動画ストーリー
+  const isStoryVideo =
+    post.type === 'story' && /\.(mp4|mov|webm|m4v)(\?|$)/i.test(post.image_url ?? '');
   // フィードで image_url が改行区切りの複数URL → カルーセル
   const urls = (post.image_url ?? '').split('\n').map((u) => u.trim()).filter(Boolean);
   const isCarousel = post.type === 'feed' && urls.length > 1;
@@ -58,6 +61,8 @@ async function publishPost(post: {
           share_to_feed: true,
           access_token: post.access_token,
         }
+      : isStoryVideo
+      ? { media_type: 'STORIES', video_url: post.image_url, access_token: post.access_token }
       : {
           image_url: post.image_url,
           caption: fullCaption,
@@ -74,7 +79,7 @@ async function publishPost(post: {
   if (!container.id) throw new Error(`コンテナ作成失敗: ${JSON.stringify(container)}`);
 
   // Step 1.5: コンテナの処理完了を待つ（動画は時間がかかるので長めに待つ）
-  const maxTries = isReel ? 45 : 15;
+  const maxTries = isReel || isStoryVideo ? 45 : 15;
   let ready = false;
   for (let i = 0; i < maxTries; i++) {
     await new Promise((r) => setTimeout(r, 2000));
