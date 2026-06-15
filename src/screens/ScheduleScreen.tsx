@@ -854,12 +854,29 @@ export default function ScheduleScreen({ route }: any) {
 
                   <Text style={styles.fieldLabel}>AIへの指示（任意・どちらにも反映）</Text>
                   <TextInput
-                    style={styles.input}
+                    style={[styles.input, styles.aiInstructionInput]}
                     value={aiInstruction}
                     onChangeText={setAiInstruction}
-                    placeholder="例: もっとカジュアルに / 絵文字多めで"
+                    placeholder={'例: もっとカジュアルに\n絵文字多めで\n短く3行で'}
                     placeholderTextColor={COLORS.textMuted}
+                    multiline
                   />
+
+                  {/* 書き直し（生成後のみ表示・指示欄の下） */}
+                  {caption.trim() ? (
+                    <TouchableOpacity
+                      style={[styles.aiBtnGhost, aiLoading && styles.publishNowBtnDisabled]}
+                      onPress={handleRefineCaption}
+                      disabled={aiLoading}
+                      activeOpacity={0.85}
+                    >
+                      {aiLoading ? (
+                        <ActivityIndicator color={COLORS.secondary} />
+                      ) : (
+                        <Text style={styles.aiBtnGhostText}>✏️ 今の文章を指示で書き直す</Text>
+                      )}
+                    </TouchableOpacity>
+                  ) : null}
 
                   {/* 方法A: テーマから */}
                   <View style={styles.aiMethod}>
@@ -897,21 +914,13 @@ export default function ScheduleScreen({ route }: any) {
                       disabled={aiLoading}
                       activeOpacity={0.85}
                     >
-                      <Text style={styles.aiBtnText}>📷 選んだ写真から作る</Text>
+                      {aiLoading ? (
+                        <ActivityIndicator color="#fff" />
+                      ) : (
+                        <Text style={styles.aiBtnText}>📷 選んだ写真から作る</Text>
+                      )}
                     </TouchableOpacity>
                   </View>
-
-                  {/* 書き直し（生成後のみ表示） */}
-                  {caption.trim() ? (
-                    <TouchableOpacity
-                      style={[styles.aiBtnGhost, aiLoading && styles.publishNowBtnDisabled]}
-                      onPress={handleRefineCaption}
-                      disabled={aiLoading}
-                      activeOpacity={0.85}
-                    >
-                      <Text style={styles.aiBtnGhostText}>✏️ 今の文章を指示で書き直す</Text>
-                    </TouchableOpacity>
-                  ) : null}
                 </View>
 
                 <Text style={styles.sectionDivider}>投稿内容</Text>
@@ -1584,6 +1593,7 @@ const styles = StyleSheet.create({
     marginTop: SPACING.md,
   },
   aiMethodTitle: { color: COLORS.text, fontSize: 13, fontWeight: '800', marginBottom: SPACING.xs },
+  aiInstructionInput: { height: 90, textAlignVertical: 'top' },
   composeBtn: {
     backgroundColor: COLORS.primary,
     borderRadius: RADIUS.md,
