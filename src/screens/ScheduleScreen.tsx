@@ -842,57 +842,60 @@ export default function ScheduleScreen({ route }: any) {
 
             {type === 'feed' ? (
               <>
-                <Text style={styles.sectionDivider}>✨ AIで文章を作る</Text>
+                {/* AI生成カード */}
+                <View style={styles.aiCard}>
+                  <Text style={styles.aiCardTitle}>✨ AIで文章を作る</Text>
 
-                <Text style={styles.fieldLabel}>AIへの指示（口調・長さなど・任意）</Text>
-                <TextInput
-                  style={styles.input}
-                  value={aiInstruction}
-                  onChangeText={setAiInstruction}
-                  placeholder="例: もっとカジュアルに / 絵文字多めで / 短く3行で"
-                  placeholderTextColor={COLORS.textMuted}
-                />
-                <Text style={styles.aiHintText}>
-                  ※ ここに書いておくと、下の生成すべてに反映されます
-                </Text>
+                  <Text style={styles.fieldLabel}>① AIへの指示（任意）</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={aiInstruction}
+                    onChangeText={setAiInstruction}
+                    placeholder="例: もっとカジュアルに / 絵文字多めで"
+                    placeholderTextColor={COLORS.textMuted}
+                  />
 
-                <Text style={styles.fieldLabel}>テーマ</Text>
-                <TextInput
-                  style={styles.input}
-                  value={feedTheme}
-                  onChangeText={setFeedTheme}
-                  placeholder="例: 夏の新メニュー紹介 / 週末セールの告知"
-                  placeholderTextColor={COLORS.textMuted}
-                />
-                <TouchableOpacity
-                  style={[styles.aiBtn, aiLoading && styles.publishNowBtnDisabled]}
-                  onPress={handleGenerateFeedText}
-                  disabled={aiLoading}
-                  activeOpacity={0.85}
-                >
-                  {aiLoading ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <Text style={styles.aiBtnText}>✨ テーマからキャプションを作る</Text>
-                  )}
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.aiBtn, { marginTop: SPACING.sm }, aiLoading && styles.publishNowBtnDisabled]}
-                  onPress={handleGenerateFeedFromPhoto}
-                  disabled={aiLoading}
-                  activeOpacity={0.85}
-                >
-                  <Text style={styles.aiBtnText}>📷 選んだ写真からキャプションを作る</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.aiBtn, { marginTop: SPACING.sm, backgroundColor: COLORS.primary }, aiLoading && styles.publishNowBtnDisabled]}
-                  onPress={handleRefineCaption}
-                  disabled={aiLoading}
-                  activeOpacity={0.85}
-                >
-                  <Text style={styles.aiBtnText}>✏️ 今の文章を指示で書き直す</Text>
-                </TouchableOpacity>
+                  <Text style={styles.fieldLabel}>② テーマ</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={feedTheme}
+                    onChangeText={setFeedTheme}
+                    placeholder="例: 夏の新メニュー紹介"
+                    placeholderTextColor={COLORS.textMuted}
+                  />
 
+                  <Text style={styles.fieldLabel}>③ 生成する</Text>
+                  <TouchableOpacity
+                    style={[styles.aiBtn, aiLoading && styles.publishNowBtnDisabled]}
+                    onPress={handleGenerateFeedText}
+                    disabled={aiLoading}
+                    activeOpacity={0.85}
+                  >
+                    {aiLoading ? (
+                      <ActivityIndicator color="#fff" />
+                    ) : (
+                      <Text style={styles.aiBtnText}>✨ テーマから作る</Text>
+                    )}
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.aiBtn, { marginTop: SPACING.sm }, aiLoading && styles.publishNowBtnDisabled]}
+                    onPress={handleGenerateFeedFromPhoto}
+                    disabled={aiLoading}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.aiBtnText}>📷 選んだ写真から作る</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.aiBtnGhost, aiLoading && styles.publishNowBtnDisabled]}
+                    onPress={handleRefineCaption}
+                    disabled={aiLoading}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.aiBtnGhostText}>✏️ 今の文章を指示で書き直す</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <Text style={styles.sectionDivider}>投稿内容</Text>
                 <Text style={styles.fieldLabel}>キャプション</Text>
                 <TextInput
                   style={[styles.input, styles.textArea]}
@@ -1532,6 +1535,29 @@ const styles = StyleSheet.create({
   },
   aiBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
   aiHintText: { color: COLORS.textMuted, fontSize: 11, marginTop: 4, marginBottom: SPACING.sm },
+  aiCard: {
+    backgroundColor: COLORS.surfaceElevated,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.secondary + '55',
+    padding: SPACING.md,
+    marginTop: SPACING.md,
+  },
+  aiCardTitle: {
+    color: COLORS.text,
+    fontSize: 15,
+    fontWeight: '800',
+    marginBottom: SPACING.xs,
+  },
+  aiBtnGhost: {
+    borderWidth: 1,
+    borderColor: COLORS.secondary,
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.sm,
+    alignItems: 'center',
+    marginTop: SPACING.sm,
+  },
+  aiBtnGhostText: { color: COLORS.secondary, fontSize: 14, fontWeight: '700' },
   composeBtn: {
     backgroundColor: COLORS.primary,
     borderRadius: RADIUS.md,
