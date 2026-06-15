@@ -287,6 +287,48 @@ ${extraInstructions}
   return JSON.parse(clean) as GeneratedPost;
 }
 
+/** 複数の写真からキャプション・ハッシュタグを生成（カルーセル向け） */
+export async function generateFromImages(input: {
+  images: { base64: string; mimeType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp' }[];
+  tone: string;
+  industry?: string;
+  instruction?: string;
+}): Promise<GeneratedPost> {
+  const brandCtx = getBrandContext();
+  const systemPrompt = `あなたは日本のInstagramマーケティングの専門家です。
+複数の写真の内容・雰囲気を読み取り、日本の個人事業主向けの最適なフィード投稿テキストを生成します。
+必ずJSONフォーマットだけで返答してください。`;
+
+  const content: any[] = input.images.map((im) => ({
+    type: 'image',
+    source: { type: 'base64', media_type: im.mimeType, data: im.base64 },
+  }));
+  content.push({
+    type: 'text',
+    text: `これら${input.images.length}枚の写真（カルーセル投稿）に合うInstagramフィードのキャプションを1つ作ってください。${brandCtx}
+トーン: ${input.tone}
+${input.industry ? `業種: ${input.industry}` : ''}
+${input.instruction ? `追加の指示（最優先で従う）: ${input.instruction}` : ''}
+写真全体の世界観が伝わる文章で。ハッシュタグは15〜20個、日英混合で。
+
+{"caption":"投稿文（絵文字含む、200〜400文字）","hashtags":["#タグ1",...],"suggestions":["アドバイス1","アドバイス2","アドバイス3"]}`,
+  });
+
+  let response;
+  try {
+    response = await axios.post(
+      CLAUDE_API_URL,
+      { model: MODEL, max_tokens: 1024, system: systemPrompt, messages: [{ role: 'user', content }] },
+      { headers: await getAuthHeaders() }
+    );
+  } catch (err) {
+    throw new Error(extractError(err));
+  }
+  const raw = response.data.content[0].text;
+  const clean = raw.replace(/```json|```/g, '').trim();
+  return JSON.parse(clean) as GeneratedPost;
+}
+
 export async function generateHashtags(theme: string, count: number = 15): Promise<string[]> {
   const brandCtx = getBrandContext();
   const systemPrompt = `あなたはInstagramのSEOエキスパートです。

@@ -25,7 +25,7 @@ import {
 import StoryEditor from '../components/StoryEditor';
 import ReelScreen from './ReelScreen';
 import RosterScreen from './RosterScreen';
-import { generateStory, generatePost, generateFromImage, refineCaption } from '../services/aiService';
+import { generateStory, generatePost, generateFromImages, refineCaption } from '../services/aiService';
 
 // 画像URI（web/ネイティブ）をbase64に変換（ImagePickerのbase64がwebで取れない対策）
 async function uriToBase64(uri: string): Promise<{ base64: string; mime: string }> {
@@ -317,26 +317,32 @@ export default function ScheduleScreen({ route }: any) {
     }
   };
 
-  // 投稿用に選んだ写真（1枚目）からキャプション・ハッシュタグをAI生成
+  // 投稿用に選んだ写真（最大5枚）すべてからキャプション・ハッシュタグをAI生成
   const handleGenerateFeedFromPhoto = async () => {
-    const sourceUri = feedPreviews[0];
-    if (!sourceUri) {
+    if (feedPreviews.length === 0) {
       alertMsg('先に投稿する写真を選んでください');
       return;
     }
     if (!(await ensureLoggedIn('AI生成を使うにはログインが必要です'))) return;
     setAiLoading(true);
     try {
-      const { base64, mime } = await uriToBase64(sourceUri);
-      if (!base64) {
+      const allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+      const images = [];
+      for (const uri of feedPreviews.slice(0, 5)) {
+        const { base64, mime } = await uriToBase64(uri);
+        if (base64) {
+          images.push({
+            base64,
+            mimeType: (allowed.includes(mime) ? mime : 'image/jpeg') as 'image/jpeg',
+          });
+        }
+      }
+      if (images.length === 0) {
         alertMsg('写真の読み込みに失敗しました');
         return;
       }
-      const allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-      const g = await generateFromImage({
-        imageBase64: base64,
-        mimeType: (allowed.includes(mime) ? mime : 'image/jpeg') as 'image/jpeg',
-        contentType: 'feed',
+      const g = await generateFromImages({
+        images,
         tone: brandSettings.tone || '明るい・ポジティブ',
         industry: brandSettings.industry,
         instruction: aiInstruction.trim() || undefined,
@@ -882,7 +888,9 @@ export default function ScheduleScreen({ route }: any) {
                   {/* 方法B: 写真から */}
                   <View style={styles.aiMethod}>
                     <Text style={styles.aiMethodTitle}>📷 写真から作る</Text>
-                    <Text style={styles.aiHintText}>投稿用に選んだ1枚目の写真を見て作ります</Text>
+                    <Text style={styles.aiHintText}>
+                      投稿用に選んだ写真（最大5枚）を見て作ります
+                    </Text>
                     <TouchableOpacity
                       style={[styles.aiBtn, aiLoading && styles.publishNowBtnDisabled]}
                       onPress={handleGenerateFeedFromPhoto}
@@ -893,15 +901,17 @@ export default function ScheduleScreen({ route }: any) {
                     </TouchableOpacity>
                   </View>
 
-                  {/* 書き直し */}
-                  <TouchableOpacity
-                    style={[styles.aiBtnGhost, aiLoading && styles.publishNowBtnDisabled]}
-                    onPress={handleRefineCaption}
-                    disabled={aiLoading}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={styles.aiBtnGhostText}>✏️ 今の文章を指示で書き直す</Text>
-                  </TouchableOpacity>
+                  {/* 書き直し（生成後のみ表示） */}
+                  {caption.trim() ? (
+                    <TouchableOpacity
+                      style={[styles.aiBtnGhost, aiLoading && styles.publishNowBtnDisabled]}
+                      onPress={handleRefineCaption}
+                      disabled={aiLoading}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={styles.aiBtnGhostText}>✏️ 今の文章を指示で書き直す</Text>
+                    </TouchableOpacity>
+                  ) : null}
                 </View>
 
                 <Text style={styles.sectionDivider}>投稿内容</Text>
