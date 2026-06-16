@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -201,6 +201,7 @@ export default function ScheduleScreen({ route }: any) {
   const [storyVideoBlob, setStoryVideoBlob] = useState<Blob | null>(null);
   const [storyVideoText, setStoryVideoText] = useState('');
   const [storyVideoTextPos, setStoryVideoTextPos] = useState<'top' | 'center' | 'bottom'>('bottom');
+  const storyVideoHostRef = useRef<any>(null);
   const [storyTheme, setStoryTheme] = useState('');
   const [storyDetails, setStoryDetails] = useState('');
   const [storyTitle, setStoryTitle] = useState('');
@@ -232,6 +233,30 @@ export default function ScheduleScreen({ route }: any) {
     fetchPosts();
     getMyPlan().then(setPlan).catch(() => {});
   }, [fetchPosts]);
+
+  // 動画ストーリーのプレビュー：選んだ動画を<video>で表示
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const host = storyVideoHostRef.current as HTMLElement | null;
+    if (!host) return;
+    host.innerHTML = '';
+    if (!storyVideoUri) return;
+    const v = document.createElement('video');
+    v.src = storyVideoUri;
+    v.controls = true;
+    v.muted = true;
+    v.loop = true;
+    v.playsInline = true;
+    Object.assign(v.style, {
+      width: '200px',
+      height: '356px',
+      borderRadius: '12px',
+      backgroundColor: '#000',
+      display: 'block',
+      objectFit: 'cover',
+    } as Partial<CSSStyleDeclaration>);
+    host.appendChild(v);
+  }, [storyVideoUri, storyMode, modalVisible]);
 
   const openModal = () => {
     setCaption(draft.caption || '');
@@ -1002,6 +1027,25 @@ export default function ScheduleScreen({ route }: any) {
                       )}
                     </View>
                   </>
+                ) : null}
+
+                {storyVideoUri ? (
+                  <View style={styles.videoPreviewWrap}>
+                    <View ref={storyVideoHostRef} style={styles.videoPreviewHost} />
+                    {storyVideoText.trim() ? (
+                      <Text
+                        pointerEvents="none"
+                        style={[
+                          styles.videoOverlayText,
+                          storyVideoTextPos === 'top' && { top: 16 },
+                          storyVideoTextPos === 'center' && { top: '44%' },
+                          storyVideoTextPos === 'bottom' && { bottom: 24 },
+                        ]}
+                      >
+                        {storyVideoText.trim()}
+                      </Text>
+                    ) : null}
+                  </View>
                 ) : null}
 
                 <Text style={styles.publishNowHint}>
@@ -1806,6 +1850,26 @@ const styles = StyleSheet.create({
   },
   aiMethodTitle: { color: COLORS.text, fontSize: 13, fontWeight: '800', marginBottom: SPACING.xs },
   aiInstructionInput: { height: 90, textAlignVertical: 'top' },
+  videoPreviewWrap: {
+    width: 200,
+    height: 356,
+    alignSelf: 'center',
+    marginTop: SPACING.md,
+    position: 'relative',
+  },
+  videoPreviewHost: { width: 200, height: 356 },
+  videoOverlayText: {
+    position: 'absolute',
+    left: 8,
+    right: 8,
+    textAlign: 'center',
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: '900',
+    textShadowColor: 'rgba(0,0,0,0.9)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 6,
+  },
   composeBtn: {
     backgroundColor: COLORS.primary,
     borderRadius: RADIUS.md,
