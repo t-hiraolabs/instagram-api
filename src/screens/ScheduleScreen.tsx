@@ -1034,7 +1034,6 @@ export default function ScheduleScreen({ route }: any) {
                     <View ref={storyVideoHostRef} style={styles.videoPreviewHost} />
                     {storyVideoText.trim() ? (
                       <Text
-                        pointerEvents="none"
                         style={[
                           styles.videoOverlayText,
                           storyVideoTextPos === 'top' && { top: 16 },
