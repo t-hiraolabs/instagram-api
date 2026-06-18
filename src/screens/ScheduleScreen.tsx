@@ -202,7 +202,9 @@ export default function ScheduleScreen({ route }: any) {
   const [storyVideoBlob, setStoryVideoBlob] = useState<Blob | null>(null);
   const [storyVideoText, setStoryVideoText] = useState('');
   const [storyVideoTextXY, setStoryVideoTextXY] = useState({ x: 0.5, y: 0.85 });
+  const [storyVideoTextScale, setStoryVideoTextScale] = useState(1);
   const [storyTextSize, setStoryTextSize] = useState({ w: 0, h: 0 });
+  const [storyDragging, setStoryDragging] = useState(false);
   const storyVideoHostRef = useRef<any>(null);
   const xyRef = useRef({ x: 0.5, y: 0.85 });
   xyRef.current = storyVideoTextXY;
@@ -216,6 +218,7 @@ export default function ScheduleScreen({ route }: any) {
       onMoveShouldSetPanResponder: () => true,
       onPanResponderGrant: () => {
         dragStart.current = { ...xyRef.current };
+        setStoryDragging(true);
       },
       onPanResponderMove: (_e, g) => {
         setStoryVideoTextXY({
@@ -223,6 +226,8 @@ export default function ScheduleScreen({ route }: any) {
           y: clamp01(dragStart.current.y + g.dy / PREVIEW_H),
         });
       },
+      onPanResponderRelease: () => setStoryDragging(false),
+      onPanResponderTerminate: () => setStoryDragging(false),
     })
   ).current;
   const [storyTheme, setStoryTheme] = useState('');
@@ -296,6 +301,7 @@ export default function ScheduleScreen({ route }: any) {
     setStoryVideoBlob(null);
     setStoryVideoText('');
     setStoryVideoTextXY({ x: 0.5, y: 0.85 });
+    setStoryVideoTextScale(1);
     setStoryTheme('');
     setFeedTheme('');
     setAiInstruction('');
@@ -402,7 +408,8 @@ export default function ScheduleScreen({ route }: any) {
         storyVideoBlob!,
         storyVideoText.trim(),
         storyVideoTextXY.x,
-        storyVideoTextXY.y
+        storyVideoTextXY.y,
+        storyVideoTextScale
       );
       blob = composed.blob;
     }
@@ -955,7 +962,11 @@ export default function ScheduleScreen({ route }: any) {
             )}
           </View>
 
-          <ScrollView style={styles.modalBody} keyboardShouldPersistTaps="handled">
+          <ScrollView
+            style={styles.modalBody}
+            keyboardShouldPersistTaps="handled"
+            scrollEnabled={!storyDragging}
+          >
             <Text style={styles.fieldLabel}>投稿タイプ</Text>
             <View style={styles.typeRow}>
               {(['feed', 'story'] as const).map((t) => (
@@ -1045,21 +1056,38 @@ export default function ScheduleScreen({ route }: any) {
                         }
                         style={[
                           styles.videoOverlayBox,
+                          { touchAction: 'none', cursor: 'grab' } as any,
                           {
                             left: storyVideoTextXY.x * 200 - storyTextSize.w / 2,
                             top: storyVideoTextXY.y * 356 - storyTextSize.h / 2,
                           },
                         ]}
                       >
-                        <Text style={styles.videoOverlayText}>{storyVideoText.trim()}</Text>
+                        <Text style={[styles.videoOverlayText, { fontSize: 20 * storyVideoTextScale }]}>
+                          {storyVideoText.trim()}
+                        </Text>
                       </View>
                     ) : null}
                   </View>
                 ) : null}
                 {storyVideoText.trim() ? (
-                  <Text style={styles.aiHintText}>
-                    👆 プレビューの文字をドラッグで自由に移動できます
-                  </Text>
+                  <>
+                    <Text style={styles.aiHintText}>👆 文字をドラッグで移動 ／ ＋−で拡大縮小</Text>
+                    <View style={styles.typeRow}>
+                      <TouchableOpacity
+                        style={styles.typeBtn}
+                        onPress={() => setStoryVideoTextScale((s) => Math.max(0.5, +(s - 0.1).toFixed(2)))}
+                      >
+                        <Text style={styles.typeBtnText}>－ 小さく</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.typeBtn}
+                        onPress={() => setStoryVideoTextScale((s) => Math.min(2.5, +(s + 0.1).toFixed(2)))}
+                      >
+                        <Text style={styles.typeBtnText}>＋ 大きく</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </>
                 ) : null}
 
                 <Text style={styles.publishNowHint}>

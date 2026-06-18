@@ -285,8 +285,8 @@ export async function renderSlide(
 }
 
 // 透明背景に見出しテキストを描いたPNG(dataURL)を返す（動画オーバーレイ用）
-// nx,ny は 0〜1 の正規化座標で、文字ブロックの「中心」位置
-async function renderTextOverlay(text: string, nx = 0.5, ny = 0.85): Promise<string> {
+// nx,ny は 0〜1 の正規化座標で文字ブロックの「中心」位置、scale は文字の拡大率
+async function renderTextOverlay(text: string, nx = 0.5, ny = 0.85, scale = 1): Promise<string> {
   await loadFontFor(text);
   const canvas = document.createElement('canvas');
   canvas.width = W;
@@ -296,7 +296,7 @@ async function renderTextOverlay(text: string, nx = 0.5, ny = 0.85): Promise<str
 
   ctx.textAlign = 'center';
   ctx.textBaseline = 'alphabetic';
-  const { lines, lineH } = fitText(ctx, text, W - 90);
+  const { lines, lineH } = fitText(ctx, text, W - 90, Math.round(82 * scale), Math.round(46 * scale));
   const blockH = lines.length * lineH;
 
   const cx = nx * W;
@@ -320,13 +320,14 @@ export async function addTextToVideo(
   text: string,
   nx = 0.5,
   ny = 0.85,
+  scale = 1,
   onLog?: (msg: string) => void
 ): Promise<{ blob: Blob; url: string }> {
   const ffmpeg = await getFFmpeg(onLog);
   const { fetchFile } = (window as any).FFmpegUtil;
 
   await ffmpeg.writeFile('in.mp4', await fetchFile(videoBlob));
-  const overlay = await renderTextOverlay(text, nx, ny);
+  const overlay = await renderTextOverlay(text, nx, ny, scale);
   await ffmpeg.writeFile('ov.png', await fetchFile(overlay));
 
   await ffmpeg.exec([
