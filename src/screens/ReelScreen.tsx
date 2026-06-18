@@ -272,12 +272,14 @@ export default function ReelScreen({ onBack }: { onBack?: () => void } = {}) {
     video.loop = true;
     video.muted = true;
     video.playsInline = true;
+    (video as any).disablePictureInPicture = true;
     Object.assign(video.style, {
       width: '240px',
       height: '427px',
       borderRadius: '14px',
       backgroundColor: '#000',
       display: 'block',
+      touchAction: 'none', // ピンチで全画面/拡大表示にならないように
     } as Partial<CSSStyleDeclaration>);
     host.appendChild(video);
   }, [previewUrl]);

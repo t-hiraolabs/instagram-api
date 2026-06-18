@@ -298,10 +298,12 @@ export default function ScheduleScreen({ route }: any) {
     if (!storyVideoUri) return;
     const v = document.createElement('video');
     v.src = storyVideoUri;
-    v.controls = true;
+    v.controls = false; // コントロール非表示（ピンチで全画面化するのを防ぐ）
+    v.autoplay = true;
     v.muted = true;
     v.loop = true;
     v.playsInline = true;
+    (v as any).disablePictureInPicture = true;
     Object.assign(v.style, {
       width: '200px',
       height: '356px',
@@ -309,7 +311,10 @@ export default function ScheduleScreen({ route }: any) {
       backgroundColor: '#000',
       display: 'block',
       objectFit: 'cover',
+      pointerEvents: 'none', // 動画はタッチを受け取らない（操作は上の枠で受ける）
+      touchAction: 'none',
     } as Partial<CSSStyleDeclaration>);
+    v.play?.().catch(() => {});
     host.appendChild(v);
   }, [storyVideoUri, storyMode, modalVisible]);
 
@@ -1070,11 +1075,18 @@ export default function ScheduleScreen({ route }: any) {
                 </TouchableOpacity>
 
                 {storyVideoUri ? (
-                  <View style={styles.videoPreviewWrap}>
-                    <View ref={storyVideoHostRef} style={styles.videoPreviewHost} />
+                  <View
+                    {...(storyVideoText.trim() ? storyTextPan.panHandlers : {})}
+                    style={[styles.videoPreviewWrap, { touchAction: 'none' } as any]}
+                  >
+                    <View
+                      ref={storyVideoHostRef}
+                      style={styles.videoPreviewHost}
+                      pointerEvents="none"
+                    />
                     {storyVideoText.trim() ? (
                       <View
-                        {...storyTextPan.panHandlers}
+                        pointerEvents="none"
                         onLayout={(e) =>
                           setStoryTextSize({
                             w: e.nativeEvent.layout.width,
@@ -1083,7 +1095,6 @@ export default function ScheduleScreen({ route }: any) {
                         }
                         style={[
                           styles.videoOverlayBox,
-                          { touchAction: 'none', cursor: 'grab' } as any,
                           {
                             left: storyVideoTextXY.x * 200 - storyTextSize.w / 2,
                             top: storyVideoTextXY.y * 356 - storyTextSize.h / 2,
