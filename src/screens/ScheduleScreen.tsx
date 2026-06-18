@@ -208,7 +208,11 @@ export default function ScheduleScreen({ route }: any) {
   const storyVideoHostRef = useRef<any>(null);
   const xyRef = useRef({ x: 0.5, y: 0.85 });
   xyRef.current = storyVideoTextXY;
+  const scaleRef = useRef(1);
+  scaleRef.current = storyVideoTextScale;
   const dragStart = useRef({ x: 0.5, y: 0.85 });
+  const pinchRef = useRef({ active: false, startDist: 0, startScale: 1 });
+  const wasPinchRef = useRef(false);
   const PREVIEW_W = 200;
   const PREVIEW_H = 356;
   const clamp01 = (v: number, lo = 0.06, hi = 0.94) => Math.max(lo, Math.min(hi, v));
@@ -218,9 +222,32 @@ export default function ScheduleScreen({ route }: any) {
       onMoveShouldSetPanResponder: () => true,
       onPanResponderGrant: () => {
         dragStart.current = { ...xyRef.current };
+        pinchRef.current = { active: false, startDist: 0, startScale: scaleRef.current };
+        wasPinchRef.current = false;
         setStoryDragging(true);
       },
-      onPanResponderMove: (_e, g) => {
+      onPanResponderMove: (e, g) => {
+        // 二本指：ピンチで拡大縮小
+        if (g.numberActiveTouches >= 2) {
+          const t: any[] = (e.nativeEvent as any).touches || [];
+          if (t.length >= 2) {
+            wasPinchRef.current = true;
+            const dist = Math.hypot(t[0].pageX - t[1].pageX, t[0].pageY - t[1].pageY);
+            if (!pinchRef.current.active) {
+              pinchRef.current = { active: true, startDist: dist, startScale: scaleRef.current };
+            } else if (pinchRef.current.startDist > 0) {
+              const next = Math.max(
+                0.5,
+                Math.min(2.5, pinchRef.current.startScale * (dist / pinchRef.current.startDist))
+              );
+              setStoryVideoTextScale(+next.toFixed(2));
+            }
+          }
+          return;
+        }
+        // 一本指：ドラッグで移動（ピンチ後は誤動作防止でスキップ）
+        pinchRef.current.active = false;
+        if (wasPinchRef.current) return;
         setStoryVideoTextXY({
           x: clamp01(dragStart.current.x + g.dx / PREVIEW_W),
           y: clamp01(dragStart.current.y + g.dy / PREVIEW_H),
@@ -1072,7 +1099,9 @@ export default function ScheduleScreen({ route }: any) {
                 ) : null}
                 {storyVideoText.trim() ? (
                   <>
-                    <Text style={styles.aiHintText}>👆 文字をドラッグで移動 ／ ＋−で拡大縮小</Text>
+                    <Text style={styles.aiHintText}>
+                      👆 文字をドラッグで移動 ／ 二本指(または＋−)で拡大縮小
+                    </Text>
                     <View style={styles.typeRow}>
                       <TouchableOpacity
                         style={styles.typeBtn}
