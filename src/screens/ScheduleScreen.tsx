@@ -12,6 +12,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Image,
+  PanResponder,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -200,8 +201,30 @@ export default function ScheduleScreen({ route }: any) {
   const [storyVideoUri, setStoryVideoUri] = useState('');
   const [storyVideoBlob, setStoryVideoBlob] = useState<Blob | null>(null);
   const [storyVideoText, setStoryVideoText] = useState('');
-  const [storyVideoTextPos, setStoryVideoTextPos] = useState<'top' | 'center' | 'bottom'>('bottom');
+  const [storyVideoTextXY, setStoryVideoTextXY] = useState({ x: 0.5, y: 0.85 });
+  const [storyTextSize, setStoryTextSize] = useState({ w: 0, h: 0 });
   const storyVideoHostRef = useRef<any>(null);
+  const xyRef = useRef({ x: 0.5, y: 0.85 });
+  xyRef.current = storyVideoTextXY;
+  const dragStart = useRef({ x: 0.5, y: 0.85 });
+  const PREVIEW_W = 200;
+  const PREVIEW_H = 356;
+  const clamp01 = (v: number, lo = 0.06, hi = 0.94) => Math.max(lo, Math.min(hi, v));
+  const storyTextPan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: () => {
+        dragStart.current = { ...xyRef.current };
+      },
+      onPanResponderMove: (_e, g) => {
+        setStoryVideoTextXY({
+          x: clamp01(dragStart.current.x + g.dx / PREVIEW_W),
+          y: clamp01(dragStart.current.y + g.dy / PREVIEW_H),
+        });
+      },
+    })
+  ).current;
   const [storyTheme, setStoryTheme] = useState('');
   const [storyDetails, setStoryDetails] = useState('');
   const [storyTitle, setStoryTitle] = useState('');
@@ -272,7 +295,7 @@ export default function ScheduleScreen({ route }: any) {
     setStoryVideoUri('');
     setStoryVideoBlob(null);
     setStoryVideoText('');
-    setStoryVideoTextPos('bottom');
+    setStoryVideoTextXY({ x: 0.5, y: 0.85 });
     setStoryTheme('');
     setFeedTheme('');
     setAiInstruction('');
@@ -375,7 +398,12 @@ export default function ScheduleScreen({ route }: any) {
   const uploadStoryVideo = async (): Promise<string> => {
     let blob = storyVideoBlob!;
     if (storyVideoText.trim()) {
-      const composed = await addTextToVideo(storyVideoBlob!, storyVideoText.trim(), storyVideoTextPos);
+      const composed = await addTextToVideo(
+        storyVideoBlob!,
+        storyVideoText.trim(),
+        storyVideoTextXY.x,
+        storyVideoTextXY.y
+      );
       blob = composed.blob;
     }
     return uploadBlob(blob);
@@ -1003,48 +1031,35 @@ export default function ScheduleScreen({ route }: any) {
                   )}
                 </TouchableOpacity>
 
-                {storyVideoText.trim() ? (
-                  <>
-                    <Text style={styles.fieldLabel}>文字の位置</Text>
-                    <View style={styles.typeRow}>
-                      {([['top', '上'], ['center', '中央'], ['bottom', '下']] as const).map(
-                        ([pos, label]) => (
-                          <TouchableOpacity
-                            key={pos}
-                            style={[styles.typeBtn, storyVideoTextPos === pos && styles.typeBtnActive]}
-                            onPress={() => setStoryVideoTextPos(pos)}
-                          >
-                            <Text
-                              style={[
-                                styles.typeBtnText,
-                                storyVideoTextPos === pos && styles.typeBtnTextActive,
-                              ]}
-                            >
-                              {label}
-                            </Text>
-                          </TouchableOpacity>
-                        )
-                      )}
-                    </View>
-                  </>
-                ) : null}
-
                 {storyVideoUri ? (
                   <View style={styles.videoPreviewWrap}>
                     <View ref={storyVideoHostRef} style={styles.videoPreviewHost} />
                     {storyVideoText.trim() ? (
-                      <Text
+                      <View
+                        {...storyTextPan.panHandlers}
+                        onLayout={(e) =>
+                          setStoryTextSize({
+                            w: e.nativeEvent.layout.width,
+                            h: e.nativeEvent.layout.height,
+                          })
+                        }
                         style={[
-                          styles.videoOverlayText,
-                          storyVideoTextPos === 'top' && { top: 16 },
-                          storyVideoTextPos === 'center' && { top: '44%' },
-                          storyVideoTextPos === 'bottom' && { bottom: 24 },
+                          styles.videoOverlayBox,
+                          {
+                            left: storyVideoTextXY.x * 200 - storyTextSize.w / 2,
+                            top: storyVideoTextXY.y * 356 - storyTextSize.h / 2,
+                          },
                         ]}
                       >
-                        {storyVideoText.trim()}
-                      </Text>
+                        <Text style={styles.videoOverlayText}>{storyVideoText.trim()}</Text>
+                      </View>
                     ) : null}
                   </View>
+                ) : null}
+                {storyVideoText.trim() ? (
+                  <Text style={styles.aiHintText}>
+                    👆 プレビューの文字をドラッグで自由に移動できます
+                  </Text>
                 ) : null}
 
                 <Text style={styles.publishNowHint}>
@@ -1857,15 +1872,17 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   videoPreviewHost: { width: 200, height: 356 },
-  videoOverlayText: {
+  videoOverlayBox: {
     position: 'absolute',
-    left: 8,
-    right: 8,
+    maxWidth: 184,
+    paddingHorizontal: 6,
+  },
+  videoOverlayText: {
     textAlign: 'center',
     color: '#fff',
     fontSize: 20,
     fontWeight: '900',
-    textShadowColor: 'rgba(0,0,0,0.9)',
+    textShadowColor: 'rgba(0,0,0,0.95)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 6,
   },

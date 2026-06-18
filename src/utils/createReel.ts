@@ -284,10 +284,9 @@ export async function renderSlide(
   return canvas.toDataURL('image/jpeg', 0.9);
 }
 
-export type TextPosition = 'top' | 'center' | 'bottom';
-
 // 透明背景に見出しテキストを描いたPNG(dataURL)を返す（動画オーバーレイ用）
-async function renderTextOverlay(text: string, pos: TextPosition = 'bottom'): Promise<string> {
+// nx,ny は 0〜1 の正規化座標で、文字ブロックの「中心」位置
+async function renderTextOverlay(text: string, nx = 0.5, ny = 0.85): Promise<string> {
   await loadFontFor(text);
   const canvas = document.createElement('canvas');
   canvas.width = W;
@@ -300,46 +299,34 @@ async function renderTextOverlay(text: string, pos: TextPosition = 'bottom'): Pr
   const { lines, lineH } = fitText(ctx, text, W - 90);
   const blockH = lines.length * lineH;
 
-  // 位置に応じてブロックの先頭Yを決める
-  let y: number;
-  if (pos === 'top') {
-    y = 240 + lineH;
-  } else if (pos === 'center') {
-    y = (H - blockH) / 2 + lineH;
-  } else {
-    // bottom：下に薄い暗がりも敷く
-    const grad = ctx.createLinearGradient(0, H * 0.62, 0, H);
-    grad.addColorStop(0, 'rgba(0,0,0,0)');
-    grad.addColorStop(1, 'rgba(0,0,0,0.5)');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, H * 0.62, W, H * 0.38);
-    y = H - 170 - blockH + lineH;
-  }
+  const cx = nx * W;
+  let y = ny * H - blockH / 2 + lineH * 0.8; // 中心に揃える
 
   ctx.lineJoin = 'round';
   for (const line of lines) {
     ctx.lineWidth = 16;
     ctx.strokeStyle = 'rgba(0,0,0,0.92)';
-    ctx.strokeText(line, W / 2, y);
+    ctx.strokeText(line, cx, y);
     ctx.fillStyle = '#FFFFFF';
-    ctx.fillText(line, W / 2, y);
+    ctx.fillText(line, cx, y);
     y += lineH;
   }
   return canvas.toDataURL('image/png');
 }
 
-/** 動画に見出しテキストを焼き込んでMP4を生成 */
+/** 動画に見出しテキストを焼き込んでMP4を生成（nx,ny=0〜1の中心位置） */
 export async function addTextToVideo(
   videoBlob: Blob,
   text: string,
-  pos: TextPosition = 'bottom',
+  nx = 0.5,
+  ny = 0.85,
   onLog?: (msg: string) => void
 ): Promise<{ blob: Blob; url: string }> {
   const ffmpeg = await getFFmpeg(onLog);
   const { fetchFile } = (window as any).FFmpegUtil;
 
   await ffmpeg.writeFile('in.mp4', await fetchFile(videoBlob));
-  const overlay = await renderTextOverlay(text, pos);
+  const overlay = await renderTextOverlay(text, nx, ny);
   await ffmpeg.writeFile('ov.png', await fetchFile(overlay));
 
   await ffmpeg.exec([
