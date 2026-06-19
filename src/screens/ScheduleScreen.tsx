@@ -475,6 +475,28 @@ export default function ScheduleScreen({ route }: any) {
     return { url: await uploadBlob(c.blob), isVideo: false };
   };
 
+  // 見出しを指示で書き直す
+  const handleRefineHeadline = async () => {
+    if (!storyVideoText.trim()) {
+      alertMsg('先に見出しを作成（または入力）してください');
+      return;
+    }
+    if (!aiInstruction.trim()) {
+      alertMsg('指示を入力してください（例: もっと短く / 絵文字を入れて）');
+      return;
+    }
+    if (!(await ensureLoggedIn('AI生成を使うにはログインが必要です'))) return;
+    setAiLoading(true);
+    try {
+      const r = await refineCaption(storyVideoText.trim(), aiInstruction.trim());
+      setStoryVideoText((r || '').replace(/[\n#]/g, ' ').trim().slice(0, 24));
+    } catch (e) {
+      alertMsg(e instanceof Error ? e.message : '書き直しに失敗しました');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
   // 写真/動画から見出しをAIで作る
   const handleGenerateHeadlineFromMedia = async () => {
     if (!storyMediaType) {
@@ -530,7 +552,8 @@ export default function ScheduleScreen({ route }: any) {
       const g = await generateStory({
         theme: storyVideoTheme.trim(),
         type: 'announcement',
-        details: storyVideoTheme.trim(),
+        details:
+          storyVideoTheme.trim() + (aiInstruction.trim() ? ` 指示:${aiInstruction.trim()}` : ''),
       });
       setStoryVideoText((g.title || g.bodyText || '').replace(/[\n#]/g, ' ').trim().slice(0, 24));
     } catch (e) {
@@ -1145,46 +1168,79 @@ export default function ScheduleScreen({ route }: any) {
                   )}
                 </TouchableOpacity>
 
-                <Text style={styles.fieldLabel}>のせる見出し（任意）</Text>
+                {/* AI生成カード（フィードと同じ構成） */}
+                <View style={styles.aiCard}>
+                  <Text style={styles.aiCardTitle}>✨ AIで見出しを作る</Text>
+
+                  <Text style={styles.fieldLabel}>AIへの指示（任意・どちらにも反映）</Text>
+                  <TextInput
+                    style={[styles.input, styles.aiInstructionInput]}
+                    value={aiInstruction}
+                    onChangeText={setAiInstruction}
+                    placeholder="例: もっと短く / 絵文字を入れて"
+                    placeholderTextColor={COLORS.textMuted}
+                    multiline
+                  />
+                  {storyVideoText.trim() ? (
+                    <TouchableOpacity
+                      style={[styles.aiBtnGhost, aiLoading && styles.publishNowBtnDisabled]}
+                      onPress={handleRefineHeadline}
+                      disabled={aiLoading}
+                      activeOpacity={0.85}
+                    >
+                      {aiLoading ? (
+                        <ActivityIndicator color={COLORS.secondary} />
+                      ) : (
+                        <Text style={styles.aiBtnGhostText}>✏️ 今の見出しを指示で書き直す</Text>
+                      )}
+                    </TouchableOpacity>
+                  ) : null}
+
+                  <View style={styles.aiMethod}>
+                    <Text style={styles.aiMethodTitle}>📝 テーマから作る</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={storyVideoTheme}
+                      onChangeText={setStoryVideoTheme}
+                      placeholder="例: 本日OPEN / 週末セール"
+                      placeholderTextColor={COLORS.textMuted}
+                    />
+                    <TouchableOpacity
+                      style={[styles.aiBtn, { marginTop: SPACING.sm }, aiLoading && styles.publishNowBtnDisabled]}
+                      onPress={handleGenerateVideoHeadlineFromTheme}
+                      disabled={aiLoading}
+                      activeOpacity={0.85}
+                    >
+                      {aiLoading ? (
+                        <ActivityIndicator color="#fff" />
+                      ) : (
+                        <Text style={styles.aiBtnText}>✨ テーマから作る</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.aiMethod}>
+                    <Text style={styles.aiMethodTitle}>📷 写真/動画から作る</Text>
+                    <Text style={styles.aiHintText}>選んだメディアを見て見出しを作ります</Text>
+                    <TouchableOpacity
+                      style={[styles.aiBtn, aiLoading && styles.publishNowBtnDisabled]}
+                      onPress={handleGenerateHeadlineFromMedia}
+                      disabled={aiLoading}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={styles.aiBtnText}>📷 選んだメディアから作る</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                <Text style={styles.sectionDivider}>のせる見出し</Text>
                 <TextInput
                   style={styles.input}
                   value={storyVideoText}
                   onChangeText={setStoryVideoText}
-                  placeholder="例: 本日OPEN / 新作入荷"
+                  placeholder="例: 本日OPEN / 新作入荷（任意）"
                   placeholderTextColor={COLORS.textMuted}
                 />
-
-                <View style={styles.aiCard}>
-                  <Text style={styles.aiCardTitle}>✨ AIで見出しを作る</Text>
-                  <Text style={styles.fieldLabel}>テーマ</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={storyVideoTheme}
-                    onChangeText={setStoryVideoTheme}
-                    placeholder="例: 本日OPEN / 週末セール"
-                    placeholderTextColor={COLORS.textMuted}
-                  />
-                  <TouchableOpacity
-                    style={[styles.aiBtn, { marginTop: SPACING.sm }, aiLoading && styles.publishNowBtnDisabled]}
-                    onPress={handleGenerateVideoHeadlineFromTheme}
-                    disabled={aiLoading}
-                    activeOpacity={0.85}
-                  >
-                    {aiLoading ? (
-                      <ActivityIndicator color="#fff" />
-                    ) : (
-                      <Text style={styles.aiBtnText}>📝 テーマから見出しを作る</Text>
-                    )}
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.aiBtn, { marginTop: SPACING.sm }, aiLoading && styles.publishNowBtnDisabled]}
-                    onPress={handleGenerateHeadlineFromMedia}
-                    disabled={aiLoading}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={styles.aiBtnText}>📷 写真/動画から見出しを作る</Text>
-                  </TouchableOpacity>
-                </View>
 
                 {storyMediaType ? (
                   <>
