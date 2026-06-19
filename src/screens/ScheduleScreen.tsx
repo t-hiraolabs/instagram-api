@@ -201,6 +201,7 @@ export default function ScheduleScreen({ route }: any) {
   const [storyVideoUri, setStoryVideoUri] = useState('');
   const [storyVideoBlob, setStoryVideoBlob] = useState<Blob | null>(null);
   const [storyVideoText, setStoryVideoText] = useState('');
+  const [storyVideoTheme, setStoryVideoTheme] = useState('');
   const [storyVideoTextXY, setStoryVideoTextXY] = useState({ x: 0.5, y: 0.85 });
   const [storyVideoTextScale, setStoryVideoTextScale] = useState(1);
   const [storyTextSize, setStoryTextSize] = useState({ w: 0, h: 0 });
@@ -332,6 +333,7 @@ export default function ScheduleScreen({ route }: any) {
     setStoryVideoUri('');
     setStoryVideoBlob(null);
     setStoryVideoText('');
+    setStoryVideoTheme('');
     setStoryVideoTextXY({ x: 0.5, y: 0.85 });
     setStoryVideoTextScale(1);
     setStoryTheme('');
@@ -446,6 +448,28 @@ export default function ScheduleScreen({ route }: any) {
       blob = composed.blob;
     }
     return uploadBlob(blob);
+  };
+
+  // テーマから見出しをAIで作る
+  const handleGenerateVideoHeadlineFromTheme = async () => {
+    if (!storyVideoTheme.trim()) {
+      alertMsg('テーマを入力してください（例: 本日OPEN）');
+      return;
+    }
+    if (!(await ensureLoggedIn('AI生成を使うにはログインが必要です'))) return;
+    setAiLoading(true);
+    try {
+      const g = await generateStory({
+        theme: storyVideoTheme.trim(),
+        type: 'announcement',
+        details: storyVideoTheme.trim(),
+      });
+      setStoryVideoText((g.title || g.bodyText || '').replace(/[\n#]/g, ' ').trim().slice(0, 24));
+    } catch (e) {
+      alertMsg(e instanceof Error ? e.message : 'AI生成に失敗しました');
+    } finally {
+      setAiLoading(false);
+    }
   };
 
   // 動画から見出しをAIで作る（1フレームを抽出してAIに渡す）
@@ -1061,18 +1085,38 @@ export default function ScheduleScreen({ route }: any) {
                   placeholder="例: 本日OPEN / 新作入荷"
                   placeholderTextColor={COLORS.textMuted}
                 />
-                <TouchableOpacity
-                  style={[styles.aiBtn, { marginTop: SPACING.sm }, aiLoading && styles.publishNowBtnDisabled]}
-                  onPress={handleGenerateVideoHeadline}
-                  disabled={aiLoading}
-                  activeOpacity={0.85}
-                >
-                  {aiLoading ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <Text style={styles.aiBtnText}>✨ 動画から見出しを作る</Text>
-                  )}
-                </TouchableOpacity>
+
+                <View style={styles.aiCard}>
+                  <Text style={styles.aiCardTitle}>✨ AIで見出しを作る</Text>
+                  <Text style={styles.fieldLabel}>テーマ</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={storyVideoTheme}
+                    onChangeText={setStoryVideoTheme}
+                    placeholder="例: 本日OPEN / 週末セール"
+                    placeholderTextColor={COLORS.textMuted}
+                  />
+                  <TouchableOpacity
+                    style={[styles.aiBtn, { marginTop: SPACING.sm }, aiLoading && styles.publishNowBtnDisabled]}
+                    onPress={handleGenerateVideoHeadlineFromTheme}
+                    disabled={aiLoading}
+                    activeOpacity={0.85}
+                  >
+                    {aiLoading ? (
+                      <ActivityIndicator color="#fff" />
+                    ) : (
+                      <Text style={styles.aiBtnText}>📝 テーマから見出しを作る</Text>
+                    )}
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.aiBtn, { marginTop: SPACING.sm }, aiLoading && styles.publishNowBtnDisabled]}
+                    onPress={handleGenerateVideoHeadline}
+                    disabled={aiLoading}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.aiBtnText}>📷 動画から見出しを作る</Text>
+                  </TouchableOpacity>
+                </View>
 
                 {storyVideoUri ? (
                   <View
