@@ -26,7 +26,7 @@ import {
 import StoryEditor from '../components/StoryEditor';
 import ReelScreen from './ReelScreen';
 import RosterScreen from './RosterScreen';
-import { addTextToVideo } from '../utils/createReel';
+import { addTextToVideo, composeImageWithHeadline } from '../utils/createReel';
 import { generateStory, generatePost, generateFromImage, generateFromImages, refineCaption } from '../services/aiService';
 
 // 動画の1フレームを取り出してbase64画像にする（AI見出し生成用・web）
@@ -200,6 +200,8 @@ export default function ScheduleScreen({ route }: any) {
   const [storyMode, setStoryMode] = useState<'image' | 'video'>('image'); // ストーリー: 写真+文字 / 動画
   const [storyVideoUri, setStoryVideoUri] = useState('');
   const [storyVideoBlob, setStoryVideoBlob] = useState<Blob | null>(null);
+  const [storyMediaType, setStoryMediaType] = useState<'' | 'image' | 'video'>('');
+  const [storyImageUri, setStoryImageUri] = useState('');
   const [storyVideoText, setStoryVideoText] = useState('');
   const [storyVideoTheme, setStoryVideoTheme] = useState('');
   const [storyVideoTextXY, setStoryVideoTextXY] = useState({ x: 0.5, y: 0.85 });
@@ -317,7 +319,7 @@ export default function ScheduleScreen({ route }: any) {
     } as Partial<CSSStyleDeclaration>);
     v.play?.().catch(() => {});
     host.appendChild(v);
-  }, [storyVideoUri, storyMode, modalVisible]);
+  }, [storyVideoUri, storyMediaType, modalVisible]);
 
   const openModal = () => {
     setCaption(draft.caption || '');
@@ -330,6 +332,8 @@ export default function ScheduleScreen({ route }: any) {
     setDateText('');
     setStoryRawUri('');
     setStoryMode('image');
+    setStoryMediaType('');
+    setStoryImageUri('');
     setStoryVideoUri('');
     setStoryVideoBlob(null);
     setStoryVideoText('');
@@ -417,37 +421,101 @@ export default function ScheduleScreen({ route }: any) {
     }
   };
 
-  // ストーリー用の動画を選ぶ
-  const pickStoryVideo = async () => {
+  // ストーリー用のメディア（写真 または 動画）を選ぶ
+  const pickStoryMedia = async () => {
     const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+      mediaTypes: ImagePicker.MediaTypeOptions.All,
       quality: 1,
     });
     if (res.canceled) return;
-    try {
-      const r = await fetch(res.assets[0].uri);
-      const b = await r.blob();
-      setStoryVideoBlob(b);
-      setStoryVideoUri(URL.createObjectURL(b));
-    } catch (e) {
-      alertMsg(e instanceof Error ? e.message : '動画の読み込みに失敗しました');
+    const a = res.assets[0];
+    if (a.type === 'video') {
+      try {
+        const r = await fetch(a.uri);
+        const b = await r.blob();
+        setStoryMediaType('video');
+        setStoryVideoBlob(b);
+        setStoryVideoUri(URL.createObjectURL(b));
+        setStoryImageUri('');
+      } catch (e) {
+        alertMsg(e instanceof Error ? e.message : '動画の読み込みに失敗しました');
+      }
+    } else {
+      setStoryMediaType('image');
+      setStoryImageUri(a.uri);
+      setStoryVideoBlob(null);
+      setStoryVideoUri('');
     }
   };
 
-  // 動画ストーリーの最終Blob（文字があれば焼き込む）をアップロードしてURLを返す
-  const uploadStoryVideo = async (): Promise<string> => {
-    let blob = storyVideoBlob!;
-    if (storyVideoText.trim()) {
-      const composed = await addTextToVideo(
-        storyVideoBlob!,
-        storyVideoText.trim(),
-        storyVideoTextXY.x,
-        storyVideoTextXY.y,
-        storyVideoTextScale
-      );
-      blob = composed.blob;
+  // 統合ストーリーのメディアを合成・アップロードしてURLと種別を返す
+  const uploadStoryMedia = async (): Promise<{ url: string; isVideo: boolean }> => {
+    if (storyMediaType === 'video') {
+      let blob = storyVideoBlob!;
+      if (storyVideoText.trim()) {
+        const c = await addTextToVideo(
+          storyVideoBlob!,
+          storyVideoText.trim(),
+          storyVideoTextXY.x,
+          storyVideoTextXY.y,
+          storyVideoTextScale
+        );
+        blob = c.blob;
+      }
+      return { url: await uploadBlob(blob), isVideo: true };
     }
-    return uploadBlob(blob);
+    // 写真：見出しを合成
+    const c = await composeImageWithHeadline(
+      storyImageUri,
+      storyVideoText.trim(),
+      storyVideoTextXY.x,
+      storyVideoTextXY.y,
+      storyVideoTextScale
+    );
+    return { url: await uploadBlob(c.blob), isVideo: false };
+  };
+
+  // 写真/動画から見出しをAIで作る
+  const handleGenerateHeadlineFromMedia = async () => {
+    if (!storyMediaType) {
+      alertMsg('先に写真または動画を選んでください');
+      return;
+    }
+    if (!(await ensureLoggedIn('AI生成を使うにはログインが必要です'))) return;
+    setAiLoading(true);
+    try {
+      let base64 = '';
+      let mime = 'image/jpeg';
+      if (storyMediaType === 'video') {
+        const f = await extractVideoFrame(storyVideoBlob!);
+        base64 = f.base64;
+        mime = f.mime;
+      } else {
+        const f = await uriToBase64(storyImageUri);
+        base64 = f.base64;
+        mime = f.mime;
+      }
+      if (!base64) {
+        alertMsg('読み込みに失敗しました');
+        return;
+      }
+      const allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+      const g = await generateFromImage({
+        imageBase64: base64,
+        mimeType: (allowed.includes(mime) ? mime : 'image/jpeg') as 'image/jpeg',
+        contentType: 'story',
+        tone: brandSettings.tone || '明るい・ポジティブ',
+        industry: brandSettings.industry,
+        instruction:
+          'ストーリーにのせる短い見出しを1つだけ。8〜14文字、記号や改行・ハッシュタグなし。' +
+          (aiInstruction.trim() ? ` ${aiInstruction.trim()}` : ''),
+      });
+      setStoryVideoText((g.caption || '').replace(/[\n#]/g, ' ').trim().slice(0, 24));
+    } catch (e) {
+      alertMsg(e instanceof Error ? e.message : 'AI生成に失敗しました');
+    } finally {
+      setAiLoading(false);
+    }
   };
 
   // テーマから見出しをAIで作る
@@ -658,23 +726,18 @@ export default function ScheduleScreen({ route }: any) {
 
   // 今すぐInstagramに投稿（テスト/手動投稿）
   const handlePublishNow = async () => {
-    const isStoryVideo = type === 'story' && storyMode === 'video';
+    const isStory = type === 'story';
     if (type === 'feed' && !caption.trim()) {
       alertMsg('キャプションを入力してください', '入力に不備があります');
       return;
     }
-    if (isStoryVideo) {
-      if (!storyVideoBlob) {
-        alertMsg('ストーリーにする動画を選んでください', '動画が必要です');
+    if (isStory) {
+      if (!storyMediaType) {
+        alertMsg('写真または動画を選んでください', 'メディアが必要です');
         return;
       }
     } else if (!imageUrl.trim()) {
-      alertMsg(
-        type === 'story'
-          ? '写真を選び「✅ この画像で確定する」を押してください'
-          : '写真を選んでください',
-        '画像が必要です'
-      );
+      alertMsg('写真を選んでください', '画像が必要です');
       return;
     }
     if (!instagramCredentials?.userId || !instagramCredentials?.accessToken) {
@@ -688,13 +751,13 @@ export default function ScheduleScreen({ route }: any) {
 
     setPublishing(true);
     try {
-      const storyVideoUrl = isStoryVideo ? await uploadStoryVideo() : undefined;
+      const storyMedia = isStory ? await uploadStoryMedia() : null;
       const result = await publishNow({
         caption: caption.trim(),
         hashtags: buildHashtags(),
-        image_url: isStoryVideo ? undefined : imageUrl.trim(),
+        image_url: isStory ? (storyMedia!.isVideo ? undefined : storyMedia!.url) : imageUrl.trim(),
         image_urls: type === 'feed' && imageUrls.length > 1 ? imageUrls : undefined,
-        video_url: storyVideoUrl,
+        video_url: isStory && storyMedia!.isVideo ? storyMedia!.url : undefined,
         type,
         instagram_user_id: instagramCredentials.userId,
         access_token: instagramCredentials.accessToken,
@@ -715,23 +778,18 @@ export default function ScheduleScreen({ route }: any) {
   };
 
   const handleSave = async () => {
-    const isStoryVideo = type === 'story' && storyMode === 'video';
+    const isStory = type === 'story';
     if (type === 'feed' && !caption.trim()) {
       alertMsg('キャプションを入力してください', '入力に不備があります');
       return;
     }
-    if (isStoryVideo) {
-      if (!storyVideoBlob) {
-        alertMsg('ストーリーにする動画を選んでください', '動画が必要です');
+    if (isStory) {
+      if (!storyMediaType) {
+        alertMsg('写真または動画を選んでください', 'メディアが必要です');
         return;
       }
     } else if (!imageUrl.trim()) {
-      alertMsg(
-        type === 'story'
-          ? '写真を選び「✅ この画像で確定する」を押してください'
-          : '写真を選んでください',
-        '画像が必要です'
-      );
+      alertMsg('写真を選んでください', '画像が必要です');
       return;
     }
     if (!dateText.trim()) {
@@ -751,14 +809,14 @@ export default function ScheduleScreen({ route }: any) {
 
     setSaving(true);
     try {
-      // ストーリー動画は動画をアップロードして image_url に動画URLを保存
-      const storyVideoUrl = isStoryVideo ? await uploadStoryVideo() : undefined;
+      // ストーリーは合成して image_url に保存（動画URLでも可、Edge側で判定）
+      const storyMedia = isStory ? await uploadStoryMedia() : null;
       await createScheduledPost({
         caption: caption.trim(),
         hashtags: buildHashtags(),
-        // フィードで複数枚なら改行区切りで保存（カルーセル）／ストーリー動画は動画URL
-        image_url: isStoryVideo
-          ? storyVideoUrl
+        // フィードで複数枚なら改行区切りで保存（カルーセル）
+        image_url: isStory
+          ? storyMedia!.url
           : type === 'feed' && imageUrls.length > 1
             ? imageUrls.join('\n')
             : imageUrl.trim() || undefined,
@@ -1038,46 +1096,56 @@ export default function ScheduleScreen({ route }: any) {
               ))}
             </View>
 
-            {/* ストーリー：写真+文字 か 動画 を選ぶ */}
-            {type === 'story' && (
+            {type === 'feed' ? (
               <>
-                <Text style={styles.fieldLabel}>ストーリーの種類</Text>
-                <View style={styles.typeRow}>
-                  <TouchableOpacity
-                    style={[styles.typeBtn, storyMode === 'image' && styles.typeBtnActive]}
-                    onPress={() => setStoryMode('image')}
-                  >
-                    <Text style={[styles.typeBtnText, storyMode === 'image' && styles.typeBtnTextActive]}>
-                      🖼 写真＋文字
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.typeBtn, storyMode === 'video' && styles.typeBtnActive]}
-                    onPress={() => setStoryMode('video')}
-                  >
-                    <Text style={[styles.typeBtnText, storyMode === 'video' && styles.typeBtnTextActive]}>
-                      📹 動画
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </>
-            )}
-
-            {/* ストーリー動画モード */}
-            {type === 'story' && storyMode === 'video' ? (
-              <>
-                <Text style={styles.fieldLabel}>ストーリーにする動画</Text>
-                <TouchableOpacity style={styles.imagePickerBox} onPress={pickStoryVideo} activeOpacity={0.85}>
-                  {storyVideoUri ? (
-                    <Text style={styles.imageReadyText}>✅ 動画を選びました（タップで変更）</Text>
+                <Text style={styles.fieldLabel}>投稿画像（複数選択OK・カルーセル）</Text>
+                <TouchableOpacity
+                  style={styles.imagePickerBox}
+                  onPress={pickAndUploadImage}
+                  activeOpacity={0.85}
+                  disabled={imageUploading}
+                >
+                  {feedPreviews.length > 0 ? (
+                    <View style={styles.thumbRow}>
+                      {feedPreviews.map((uri, i) => (
+                        <View key={i} style={styles.thumbWrap}>
+                          <Image source={{ uri }} style={styles.thumb} resizeMode="cover" />
+                          <Text style={styles.thumbNum}>{i + 1}</Text>
+                        </View>
+                      ))}
+                    </View>
                   ) : (
                     <View style={styles.imagePlaceholder}>
-                      <Text style={styles.imagePlaceholderIcon}>📹</Text>
-                      <Text style={styles.imagePlaceholderText}>タップして動画を選ぶ</Text>
+                      <Text style={styles.imagePlaceholderIcon}>🖼</Text>
+                      <Text style={styles.imagePlaceholderText}>タップして写真を選ぶ（複数OK）</Text>
+                    </View>
+                  )}
+                  {imageUploading && (
+                    <View style={styles.imageUploadingOverlay}>
+                      <ActivityIndicator color="#fff" />
+                      <Text style={styles.imageUploadingText}>アップロード中...</Text>
                     </View>
                   )}
                 </TouchableOpacity>
-                <Text style={styles.fieldLabel}>動画にのせる見出し（任意）</Text>
+              </>
+            ) : (
+              <>
+                {/* 統合ストーリー：写真でも動画でも同じ流れ */}
+                <Text style={styles.fieldLabel}>メディア（写真 または 動画）</Text>
+                <TouchableOpacity style={styles.imagePickerBox} onPress={pickStoryMedia} activeOpacity={0.85}>
+                  {storyMediaType ? (
+                    <Text style={styles.imageReadyText}>
+                      ✅ {storyMediaType === 'video' ? '動画' : '写真'}を選びました（タップで変更）
+                    </Text>
+                  ) : (
+                    <View style={styles.imagePlaceholder}>
+                      <Text style={styles.imagePlaceholderIcon}>🖼</Text>
+                      <Text style={styles.imagePlaceholderText}>タップして写真/動画を選ぶ</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+
+                <Text style={styles.fieldLabel}>のせる見出し（任意）</Text>
                 <TextInput
                   style={styles.input}
                   value={storyVideoText}
@@ -1110,122 +1178,83 @@ export default function ScheduleScreen({ route }: any) {
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.aiBtn, { marginTop: SPACING.sm }, aiLoading && styles.publishNowBtnDisabled]}
-                    onPress={handleGenerateVideoHeadline}
+                    onPress={handleGenerateHeadlineFromMedia}
                     disabled={aiLoading}
                     activeOpacity={0.85}
                   >
-                    <Text style={styles.aiBtnText}>📷 動画から見出しを作る</Text>
+                    <Text style={styles.aiBtnText}>📷 写真/動画から見出しを作る</Text>
                   </TouchableOpacity>
                 </View>
 
-                {storyVideoUri ? (
-                  <View
-                    {...(storyVideoText.trim() ? storyTextPan.panHandlers : {})}
-                    style={[styles.videoPreviewWrap, { touchAction: 'none' } as any]}
-                  >
-                    <View
-                      ref={storyVideoHostRef}
-                      style={styles.videoPreviewHost}
-                      pointerEvents="none"
-                    />
-                    {storyVideoText.trim() ? (
-                      <View
-                        pointerEvents="none"
-                        onLayout={(e) =>
-                          setStoryTextSize({
-                            w: e.nativeEvent.layout.width,
-                            h: e.nativeEvent.layout.height,
-                          })
-                        }
-                        style={[
-                          styles.videoOverlayBox,
-                          {
-                            left: storyVideoTextXY.x * 200 - storyTextSize.w / 2,
-                            top: storyVideoTextXY.y * 356 - storyTextSize.h / 2,
-                          },
-                        ]}
-                      >
-                        <Text style={[styles.videoOverlayText, { fontSize: 20 * storyVideoTextScale }]}>
-                          {storyVideoText.trim()}
-                        </Text>
-                      </View>
-                    ) : null}
-                  </View>
-                ) : null}
-                {storyVideoText.trim() ? (
+                {storyMediaType ? (
                   <>
-                    <Text style={styles.aiHintText}>
-                      👆 文字をドラッグで移動 ／ 二本指(または＋−)で拡大縮小
-                    </Text>
-                    <View style={styles.typeRow}>
-                      <TouchableOpacity
-                        style={styles.typeBtn}
-                        onPress={() => setStoryVideoTextScale((s) => Math.max(0.5, +(s - 0.1).toFixed(2)))}
-                      >
-                        <Text style={styles.typeBtnText}>－ 小さく</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={styles.typeBtn}
-                        onPress={() => setStoryVideoTextScale((s) => Math.min(2.5, +(s + 0.1).toFixed(2)))}
-                      >
-                        <Text style={styles.typeBtnText}>＋ 大きく</Text>
-                      </TouchableOpacity>
+                    <View
+                      {...(storyVideoText.trim() ? storyTextPan.panHandlers : {})}
+                      style={[styles.videoPreviewWrap, { touchAction: 'none' } as any]}
+                    >
+                      {storyMediaType === 'video' ? (
+                        <View ref={storyVideoHostRef} style={styles.videoPreviewHost} pointerEvents="none" />
+                      ) : (
+                        <Image
+                          source={{ uri: storyImageUri }}
+                          style={[styles.videoPreviewHost, { pointerEvents: 'none' }] as any}
+                          resizeMode="cover"
+                        />
+                      )}
+                      {storyVideoText.trim() ? (
+                        <View
+                          pointerEvents="none"
+                          onLayout={(e) =>
+                            setStoryTextSize({
+                              w: e.nativeEvent.layout.width,
+                              h: e.nativeEvent.layout.height,
+                            })
+                          }
+                          style={[
+                            styles.videoOverlayBox,
+                            {
+                              left: storyVideoTextXY.x * 200 - storyTextSize.w / 2,
+                              top: storyVideoTextXY.y * 356 - storyTextSize.h / 2,
+                            },
+                          ]}
+                        >
+                          <Text style={[styles.videoOverlayText, { fontSize: 20 * storyVideoTextScale }]}>
+                            {storyVideoText.trim()}
+                          </Text>
+                        </View>
+                      ) : null}
                     </View>
+                    {storyVideoText.trim() ? (
+                      <>
+                        <Text style={styles.aiHintText}>
+                          👆 文字をドラッグで移動 ／ 二本指(または＋−)で拡大縮小
+                        </Text>
+                        <View style={styles.typeRow}>
+                          <TouchableOpacity
+                            style={styles.typeBtn}
+                            onPress={() => setStoryVideoTextScale((s) => Math.max(0.5, +(s - 0.1).toFixed(2)))}
+                          >
+                            <Text style={styles.typeBtnText}>－ 小さく</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.typeBtn}
+                            onPress={() => setStoryVideoTextScale((s) => Math.min(2.5, +(s + 0.1).toFixed(2)))}
+                          >
+                            <Text style={styles.typeBtnText}>＋ 大きく</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </>
+                    ) : null}
                   </>
                 ) : null}
 
                 <Text style={styles.publishNowHint}>
-                  ※ 縦長(9:16)推奨。見出しを入れると動画に焼き込みます（少し時間がかかります）。音楽はInstagramで付けられます
+                  ※ 縦長(9:16)推奨。動画は見出しを焼き込みます（少し時間がかかります）。音楽はInstagramで付けられます
                 </Text>
-              </>
-            ) : (
-              <>
-            {/* 写真（フィード=正方形 / ストーリー=縦長） */}
-            <Text style={styles.fieldLabel}>
-              {type === 'story' ? '背景写真（縦長 9:16）' : '投稿画像（複数選択OK・カルーセル）'}
-            </Text>
-            <TouchableOpacity
-              style={styles.imagePickerBox}
-              onPress={pickAndUploadImage}
-              activeOpacity={0.85}
-              disabled={imageUploading || composing}
-            >
-              {type === 'feed' && feedPreviews.length > 0 ? (
-                <View style={styles.thumbRow}>
-                  {feedPreviews.map((uri, i) => (
-                    <View key={i} style={styles.thumbWrap}>
-                      <Image source={{ uri }} style={styles.thumb} resizeMode="cover" />
-                      <Text style={styles.thumbNum}>{i + 1}</Text>
-                    </View>
-                  ))}
-                </View>
-              ) : imagePreview ? (
-                <Image
-                  source={{ uri: imagePreview }}
-                  style={[styles.storyPreview]}
-                  resizeMode="cover"
-                />
-              ) : (
-                <View style={styles.imagePlaceholder}>
-                  <Text style={styles.imagePlaceholderIcon}>🖼</Text>
-                  <Text style={styles.imagePlaceholderText}>
-                    タップして写真を選ぶ{type === 'feed' ? '（複数OK）' : ''}
-                  </Text>
-                </View>
-              )}
-              {(imageUploading || composing) && (
-                <View style={styles.imageUploadingOverlay}>
-                  <ActivityIndicator color="#fff" />
-                  <Text style={styles.imageUploadingText}>
-                    {composing ? '合成中...' : 'アップロード中...'}
-                  </Text>
-                </View>
-              )}
-            </TouchableOpacity>
               </>
             )}
 
-            {type === 'story' && storyMode === 'video' ? null : type === 'feed' ? (
+            {type === 'feed' ? (
               <>
                 {/* AI生成カード */}
                 <View style={styles.aiCard}>
@@ -1327,123 +1356,7 @@ export default function ScheduleScreen({ route }: any) {
                   </Text>
                 ) : null}
               </>
-            ) : (
-              <>
-                {/* AI生成カード（フィードと統一） */}
-                <View style={styles.aiCard}>
-                  <Text style={styles.aiCardTitle}>✨ AIで文字を作る</Text>
-                  <Text style={styles.fieldLabel}>テーマ</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={storyTheme}
-                    onChangeText={setStoryTheme}
-                    placeholder="例: 夏セールのお知らせ"
-                    placeholderTextColor={COLORS.textMuted}
-                  />
-                  <Text style={styles.fieldLabel}>内容・詳細</Text>
-                  <TextInput
-                    style={[styles.input, styles.textArea]}
-                    value={storyDetails}
-                    onChangeText={setStoryDetails}
-                    placeholder="例: 7/20〜31限定で全品20%OFF"
-                    placeholderTextColor={COLORS.textMuted}
-                    multiline
-                    numberOfLines={2}
-                  />
-                  <TouchableOpacity
-                    style={[styles.aiBtn, { marginTop: SPACING.sm }, aiLoading && styles.publishNowBtnDisabled]}
-                    onPress={handleGenerateStoryText}
-                    disabled={aiLoading}
-                    activeOpacity={0.85}
-                  >
-                    {aiLoading ? (
-                      <ActivityIndicator color="#fff" />
-                    ) : (
-                      <Text style={styles.aiBtnText}>✨ AIで文章を作る</Text>
-                    )}
-                  </TouchableOpacity>
-                </View>
-
-                <Text style={styles.sectionDivider}>画像にのせる文字</Text>
-                <Text style={styles.fieldLabel}>タイトル（大きく表示）</Text>
-                <TextInput
-                  style={styles.input}
-                  value={storyTitle}
-                  onChangeText={(t) => {
-                    setStoryTitle(t);
-                    setImageUrl('');
-                  }}
-                  placeholder="見出し"
-                  placeholderTextColor={COLORS.textMuted}
-                />
-                <Text style={styles.fieldLabel}>本文</Text>
-                <TextInput
-                  style={[styles.input, styles.textArea]}
-                  value={storyBody}
-                  onChangeText={(t) => {
-                    setStoryBody(t);
-                    setImageUrl('');
-                  }}
-                  placeholder="補足の文章"
-                  placeholderTextColor={COLORS.textMuted}
-                  multiline
-                  numberOfLines={2}
-                />
-                <Text style={styles.fieldLabel}>ボタン文言（CTA）</Text>
-                <TextInput
-                  style={styles.input}
-                  value={storyCta}
-                  onChangeText={(t) => {
-                    setStoryCta(t);
-                    setImageUrl('');
-                  }}
-                  placeholder="例: 今すぐチェック"
-                  placeholderTextColor={COLORS.textMuted}
-                />
-
-                {storyRawUri &&
-                (storyTitle.trim() || storyBody.trim() || storyCta.trim()) ? (
-                  <>
-                    <Text style={styles.sectionDivider}>レイアウト調整</Text>
-                    <StoryEditor
-                      imageUri={storyRawUri}
-                      overlay={{
-                        title: storyTitle.trim(),
-                        bodyText: storyBody.trim(),
-                        cta: storyCta.trim(),
-                        textColor: storyTextColor,
-                      }}
-                      onChange={(t) => {
-                        setStoryTransform(t);
-                        setImageUrl('');
-                      }}
-                    />
-
-                    <TouchableOpacity
-                      style={[styles.composeBtn, composing && styles.publishNowBtnDisabled]}
-                      onPress={handleComposeStory}
-                      disabled={composing}
-                      activeOpacity={0.85}
-                    >
-                      {composing ? (
-                        <ActivityIndicator color="#fff" />
-                      ) : (
-                        <Text style={styles.composeBtnText}>✅ この画像で確定する</Text>
-                      )}
-                    </TouchableOpacity>
-                    {imageUrl && !composing ? (
-                      <Text style={styles.imageReadyText}>
-                        ✅ ストーリー画像の準備ができました
-                      </Text>
-                    ) : null}
-                  </>
-                ) : (
-                  <Text style={styles.publishNowHint}>
-                    写真を選び、文字を入力すると編集プレビューが表示されます
-                  </Text>
-                )}
-              </>
-            )}
+            ) : null}
 
             {mode === 'schedule' && (
               <>

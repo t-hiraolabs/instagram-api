@@ -284,34 +284,99 @@ export async function renderSlide(
   return canvas.toDataURL('image/jpeg', 0.9);
 }
 
-// 透明背景に見出しテキストを描いたPNG(dataURL)を返す（動画オーバーレイ用）
+// 見出しを任意サイズのcanvasに描く（写真・動画オーバーレイ共通）
 // nx,ny は 0〜1 の正規化座標で文字ブロックの「中心」位置、scale は文字の拡大率
-async function renderTextOverlay(text: string, nx = 0.5, ny = 0.85, scale = 1): Promise<string> {
+async function drawHeadline(
+  ctx: CanvasRenderingContext2D,
+  Wt: number,
+  Ht: number,
+  text: string,
+  nx: number,
+  ny: number,
+  scale: number
+) {
   await loadFontFor(text);
-  const canvas = document.createElement('canvas');
-  canvas.width = W;
-  canvas.height = H;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) throw new Error('Canvasを利用できません');
-
   ctx.textAlign = 'center';
   ctx.textBaseline = 'alphabetic';
-  const { lines, lineH } = fitText(ctx, text, W - 90, Math.round(82 * scale), Math.round(46 * scale));
+  const base = Math.round(Wt * 0.115 * scale);
+  const min = Math.round(Wt * 0.065 * scale);
+  const { lines, lineH } = fitText(ctx, text, Wt - Wt * 0.12, base, min);
   const blockH = lines.length * lineH;
-
-  const cx = nx * W;
-  let y = ny * H - blockH / 2 + lineH * 0.8; // 中心に揃える
-
+  const cx = nx * Wt;
+  let y = ny * Ht - blockH / 2 + lineH * 0.8;
+  const lw = Math.max(8, Math.round(Wt * 0.022));
   ctx.lineJoin = 'round';
   for (const line of lines) {
-    ctx.lineWidth = 16;
+    ctx.lineWidth = lw;
     ctx.strokeStyle = 'rgba(0,0,0,0.92)';
     ctx.strokeText(line, cx, y);
     ctx.fillStyle = '#FFFFFF';
     ctx.fillText(line, cx, y);
     y += lineH;
   }
+}
+
+// 透明背景に見出しを描いたPNG(dataURL)（動画オーバーレイ用）
+async function renderTextOverlay(text: string, nx = 0.5, ny = 0.85, scale = 1): Promise<string> {
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Canvasを利用できません');
+  await drawHeadline(ctx, W, H, text, nx, ny, scale);
   return canvas.toDataURL('image/png');
+}
+
+// 写真に見出しを合成してストーリー画像(JPEG)を作る（写真全体＋ぼかし背景）
+export async function composeImageWithHeadline(
+  imageUri: string,
+  text: string,
+  nx = 0.5,
+  ny = 0.85,
+  scale = 1
+): Promise<{ blob: Blob; previewUrl: string }> {
+  const IW = 1080;
+  const IH = 1920;
+  const canvas = document.createElement('canvas');
+  canvas.width = IW;
+  canvas.height = IH;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Canvasを利用できません');
+
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, IW, IH);
+  const img = await loadImage(imageUri);
+  const cover = Math.max(IW / img.width, IH / img.height);
+  ctx.filter = 'blur(34px)';
+  ctx.drawImage(
+    img,
+    (IW - img.width * cover) / 2,
+    (IH - img.height * cover) / 2,
+    img.width * cover,
+    img.height * cover
+  );
+  ctx.filter = 'none';
+  ctx.fillStyle = 'rgba(0,0,0,0.28)';
+  ctx.fillRect(0, 0, IW, IH);
+  const fit = Math.min(IW / img.width, IH / img.height);
+  ctx.drawImage(
+    img,
+    (IW - img.width * fit) / 2,
+    (IH - img.height * fit) / 2,
+    img.width * fit,
+    img.height * fit
+  );
+
+  if (text.trim()) await drawHeadline(ctx, IW, IH, text.trim(), nx, ny, scale);
+
+  const blob = await new Promise<Blob>((resolve, reject) =>
+    canvas.toBlob(
+      (b) => (b ? resolve(b) : reject(new Error('画像の生成に失敗しました'))),
+      'image/jpeg',
+      0.92
+    )
+  );
+  return { blob, previewUrl: canvas.toDataURL('image/jpeg', 0.9) };
 }
 
 /** 動画に見出しテキストを焼き込んでMP4を生成（nx,ny=0〜1の中心位置） */
