@@ -82,11 +82,6 @@ export default function ReelScreen({ onBack }: { onBack?: () => void } = {}) {
   };
 
   const pickPhotos = async () => {
-    const { status: perm } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (perm !== 'granted') {
-      alertMsg('写真へのアクセスを許可してください', '権限エラー');
-      return;
-    }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsMultipleSelection: true,
