@@ -84,7 +84,7 @@ import { ensureLoggedIn } from '../utils/requireLogin';
 import { useAppStore } from '../store/appStore';
 import { publishNow } from '../services/publishNow';
 
-type Filter = 'all' | 'pending' | 'published' | 'failed';
+type Filter = 'all' | 'draft' | 'pending' | 'published' | 'failed';
 
 function formatDate(iso: string) {
   const d = new Date(iso);
@@ -195,6 +195,9 @@ export default function ScheduleScreen({ route }: any) {
   // 編集モーダル用
   const [editVisible, setEditVisible] = useState(false);
   const [editingPost, setEditingPost] = useState<ScheduledPost | null>(null);
+  const [editDuplicateSource, setEditDuplicateSource] = useState<ScheduledPost | null>(null);
+  const [editPublishDraft, setEditPublishDraft] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
   const [editCaption, setEditCaption] = useState('');
   const [editHashtags, setEditHashtags] = useState('');
   const [editDate, setEditDate] = useState('');
@@ -870,6 +873,70 @@ export default function ScheduleScreen({ route }: any) {
     }
   };
 
+  // 下書き保存：日時を決めずに内容だけ保存しておく（自動投稿の対象外）
+  const handleSaveDraft = async () => {
+    const isStory = type === 'story';
+    if (type === 'feed' && !caption.trim()) {
+      alertMsg('キャプションを入力してください', '入力に不備があります');
+      return;
+    }
+    if (isStory) {
+      if (!storyMediaType) {
+        alertMsg('写真または動画を選んでください', 'メディアが必要です');
+        return;
+      }
+    } else if (!imageUrl.trim()) {
+      alertMsg('写真を選んでください', '画像が必要です');
+      return;
+    }
+    if (!(await ensureLoggedIn('下書きを保存するにはログインが必要です'))) return;
+
+    setSavingDraft(true);
+    try {
+      const storyMedia = isStory ? await uploadStoryMedia() : null;
+      await createScheduledPost({
+        caption: caption.trim(),
+        hashtags: buildHashtags(),
+        image_url: isStory
+          ? storyMedia!.url
+          : type === 'feed' && imageUrls.length > 1
+            ? imageUrls.join('\n')
+            : imageUrl.trim() || undefined,
+        scheduled_at: new Date(), // 仮の日時（下書きなので投稿はされない）
+        type,
+        repeat,
+        status: 'draft',
+        instagram_user_id: instagramCredentials?.userId || undefined,
+        access_token: instagramCredentials?.accessToken || undefined,
+      });
+      clearDraft();
+      setModalVisible(false);
+      setFilter('draft');
+      await fetchPosts();
+      alertMsg('下書きに保存しました。「下書き」タブの 📅 から予約できます', '保存しました');
+    } catch (e) {
+      const msg =
+        (e as { message?: string })?.message ||
+        (typeof e === 'string' ? e : '保存に失敗しました');
+      alertMsg(msg, '保存できませんでした');
+    } finally {
+      setSavingDraft(false);
+    }
+  };
+
+  // 下書き → 予約に変換（編集画面で日時を決めて保存）
+  const openScheduleDraft = (post: ScheduledPost) => {
+    setEditDuplicateSource(null);
+    setEditingPost(post);
+    setEditCaption(post.caption ?? '');
+    setEditHashtags((post.hashtags ?? []).join(' '));
+    const d = new Date(Date.now() + 24 * 3600 * 1000);
+    setEditDate(toLocalInput(d.toISOString()));
+    setEditRepeat(post.repeat ?? 'none');
+    setEditPublishDraft(true);
+    setEditVisible(true);
+  };
+
   const doDelete = async (id: string) => {
     try {
       await deleteScheduledPost(id);
@@ -891,40 +958,38 @@ export default function ScheduleScreen({ route }: any) {
   };
 
   // 編集
-  // 複製：同じ内容で新しい予約を作る（日時は1週間後／過去なら明日に）
-  const handleDuplicate = async (post: ScheduledPost) => {
-    if (!(await ensureLoggedIn('複製するにはログインが必要です'))) return;
+  // 複製：編集画面を開いてから保存（保存時に新規作成）
+  const openDuplicate = (post: ScheduledPost) => {
     let d = new Date(new Date(post.scheduled_at).getTime() + 7 * 24 * 3600 * 1000);
     if (d <= new Date()) d = new Date(Date.now() + 24 * 3600 * 1000);
-    try {
-      await createScheduledPost({
-        caption: post.caption,
-        hashtags: post.hashtags ?? [],
-        image_url: post.image_url ?? undefined,
-        scheduled_at: d,
-        type: post.type,
-        repeat: post.repeat,
-        instagram_user_id: post.instagram_user_id ?? undefined,
-        access_token: post.access_token ?? undefined,
-      });
-      await fetchPosts();
-      alertMsg('複製しました。日時は ✏️ から変更できます', '複製完了');
-    } catch (e) {
-      alertMsg((e as { message?: string })?.message || '複製に失敗しました', '複製できませんでした');
-    }
+    setEditingPost(null);
+    setEditPublishDraft(false);
+    setEditDuplicateSource(post);
+    setEditCaption(post.caption ?? '');
+    setEditHashtags((post.hashtags ?? []).join(' '));
+    setEditDate(toLocalInput(d.toISOString()));
+    setEditRepeat(post.repeat ?? 'none');
+    setEditVisible(true);
   };
 
   const openEdit = (post: ScheduledPost) => {
+    setEditDuplicateSource(null);
+    setEditPublishDraft(false);
     setEditingPost(post);
     setEditCaption(post.caption ?? '');
     setEditHashtags((post.hashtags ?? []).join(' '));
-    setEditDate(toLocalInput(post.scheduled_at));
+    // 下書きは日時が仮なので、明日を初期値にしておく
+    if (post.status === 'draft') {
+      setEditDate(toLocalInput(new Date(Date.now() + 24 * 3600 * 1000).toISOString()));
+    } else {
+      setEditDate(toLocalInput(post.scheduled_at));
+    }
     setEditRepeat(post.repeat ?? 'none');
     setEditVisible(true);
   };
 
   const saveEdit = async () => {
-    if (!editingPost) return;
+    if (!editingPost && !editDuplicateSource) return;
     const date = parseDate(editDate);
     if (!date) {
       alertMsg('日時の形式が正しくありません\n例: 2026-06-15T18:00', '入力に不備があります');
@@ -934,16 +999,36 @@ export default function ScheduleScreen({ route }: any) {
       alertMsg('予約日時は未来の日時を指定してください', '入力に不備があります');
       return;
     }
+    const hashtags = editHashtags.split(/[\s,　]+/).map((h) => h.trim()).filter(Boolean);
     setEditSaving(true);
     try {
-      await updateScheduledPost(editingPost.id, {
-        caption: editCaption.trim(),
-        hashtags: editHashtags.split(/[\s,　]+/).map((h) => h.trim()).filter(Boolean),
-        scheduled_at: date,
-        repeat: editRepeat,
-      });
+      if (editDuplicateSource) {
+        // 複製：同じ内容で新しい予約を作成（メディアはアップロード済みURLを再利用）
+        const src = editDuplicateSource;
+        await createScheduledPost({
+          caption: editCaption.trim(),
+          hashtags,
+          image_url: src.image_url ?? undefined,
+          scheduled_at: date,
+          type: src.type,
+          repeat: editRepeat,
+          instagram_user_id: src.instagram_user_id ?? undefined,
+          access_token: src.access_token ?? undefined,
+        });
+      } else if (editingPost) {
+        await updateScheduledPost(editingPost.id, {
+          caption: editCaption.trim(),
+          hashtags,
+          scheduled_at: date,
+          repeat: editRepeat,
+          // 下書きを予約に変換するときは status を pending に
+          ...(editPublishDraft ? { status: 'pending' as const } : {}),
+        });
+      }
       setEditVisible(false);
       setEditingPost(null);
+      setEditDuplicateSource(null);
+      setEditPublishDraft(false);
       await fetchPosts();
     } catch (e) {
       alertMsg((e as { message?: string })?.message || '更新に失敗しました', '保存できませんでした');
@@ -998,7 +1083,13 @@ export default function ScheduleScreen({ route }: any) {
             ]}
           >
             <Text style={styles.statusText}>
-              {post.status === 'pending' ? '⏳ 予約中' : post.status === 'published' ? '✅ 投稿済' : '❌ 失敗'}
+              {post.status === 'draft'
+                ? '📝 下書き'
+                : post.status === 'pending'
+                ? '⏳ 予約中'
+                : post.status === 'published'
+                ? '✅ 投稿済'
+                : '❌ 失敗'}
             </Text>
           </View>
           {post.repeat && post.repeat !== 'none' && (
@@ -1008,10 +1099,15 @@ export default function ScheduleScreen({ route }: any) {
           )}
         </View>
         <View style={styles.cardActions}>
-          <TouchableOpacity onPress={() => handleDuplicate(post)} hitSlop={8}>
+          {post.status === 'draft' && (
+            <TouchableOpacity onPress={() => openScheduleDraft(post)} hitSlop={8}>
+              <Text style={styles.editBtn}>📅</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity onPress={() => openDuplicate(post)} hitSlop={8}>
             <Text style={styles.editBtn}>📄</Text>
           </TouchableOpacity>
-          {post.status === 'pending' && (
+          {(post.status === 'pending' || post.status === 'draft') && (
             <>
               <TouchableOpacity onPress={() => openEdit(post)} hitSlop={8}>
                 <Text style={styles.editBtn}>✏️</Text>
@@ -1034,7 +1130,9 @@ export default function ScheduleScreen({ route }: any) {
       )}
 
       <View style={styles.postFooter}>
-        <Text style={styles.scheduleTime}>🕐 {formatDate(post.scheduled_at)}</Text>
+        <Text style={styles.scheduleTime}>
+          {post.status === 'draft' ? '🕐 日時未定（📅で予約）' : `🕐 ${formatDate(post.scheduled_at)}`}
+        </Text>
       </View>
     </View>
   );
@@ -1118,14 +1216,14 @@ export default function ScheduleScreen({ route }: any) {
         {calView === 'list' ? (
           <>
             <View style={styles.filterRow}>
-              {(['all', 'pending', 'published', 'failed'] as Filter[]).map((f) => (
+              {(['all', 'draft', 'pending', 'published', 'failed'] as Filter[]).map((f) => (
                 <TouchableOpacity
                   key={f}
                   style={[styles.filterTab, filter === f && styles.filterTabActive]}
                   onPress={() => setFilter(f)}
                 >
                   <Text style={[styles.filterText, filter === f && styles.filterTextActive]}>
-                    {f === 'all' ? 'すべて' : f === 'pending' ? '予約中' : f === 'published' ? '投稿済' : '失敗'}
+                    {f === 'all' ? 'すべて' : f === 'draft' ? '下書き' : f === 'pending' ? '予約中' : f === 'published' ? '投稿済' : '失敗'}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -1666,6 +1764,23 @@ export default function ScheduleScreen({ route }: any) {
                 </Text>
               </>
             )}
+
+            {/* 下書き保存（日時は決めずに内容だけ保存） */}
+            <TouchableOpacity
+              style={[styles.draftSaveBtn, savingDraft && styles.publishNowBtnDisabled]}
+              onPress={handleSaveDraft}
+              disabled={savingDraft}
+              activeOpacity={0.85}
+            >
+              {savingDraft ? (
+                <ActivityIndicator color={COLORS.primary} />
+              ) : (
+                <Text style={styles.draftSaveText}>📝 下書きに保存</Text>
+              )}
+            </TouchableOpacity>
+            <Text style={styles.publishNowHint}>
+              ※ 日時を決めずに保存。「予約投稿」タブの「下書き」から後で予約できます
+            </Text>
           </ScrollView>
         </KeyboardAvoidingView>
       </Modal>
@@ -1680,7 +1795,9 @@ export default function ScheduleScreen({ route }: any) {
             <TouchableOpacity onPress={() => setEditVisible(false)}>
               <Text style={styles.modalCancel}>キャンセル</Text>
             </TouchableOpacity>
-            <Text style={styles.modalTitle}>予約を編集</Text>
+            <Text style={styles.modalTitle}>
+              {editDuplicateSource ? '複製して保存' : editPublishDraft ? '下書きを予約する' : '予約を編集'}
+            </Text>
             <TouchableOpacity onPress={saveEdit} disabled={editSaving}>
               {editSaving ? (
                 <ActivityIndicator color={COLORS.primary} />
@@ -1691,18 +1808,18 @@ export default function ScheduleScreen({ route }: any) {
           </View>
 
           <ScrollView style={styles.modalBody} keyboardShouldPersistTaps="handled">
-            {editingPost && (
+            {(editingPost ?? editDuplicateSource) && (
               <Text style={styles.editKind}>
-                {editingPost.type === 'feed'
+                {(editingPost ?? editDuplicateSource)!.type === 'feed'
                   ? '📷 フィード投稿'
-                  : editingPost.type === 'reel'
+                  : (editingPost ?? editDuplicateSource)!.type === 'reel'
                   ? '🎬 リール'
                   : '📖 ストーリー'}
                 ／ 画像・動画は変更できません
               </Text>
             )}
 
-            {editingPost?.type !== 'story' && (
+            {(editingPost ?? editDuplicateSource)?.type !== 'story' && (
               <>
                 <Text style={styles.fieldLabel}>キャプション</Text>
                 <TextInput
@@ -2082,6 +2199,16 @@ const styles = StyleSheet.create({
   },
   publishNowBtnDisabled: { opacity: 0.5 },
   publishNowText: { color: '#fff', fontSize: 15, fontWeight: '800' },
+  draftSaveBtn: {
+    backgroundColor: '#fff',
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.md,
+    alignItems: 'center',
+    marginTop: SPACING.md,
+    borderWidth: 1.5,
+    borderColor: COLORS.primary,
+  },
+  draftSaveText: { color: COLORS.primary, fontSize: 15, fontWeight: '800' },
   aiBtn: {
     backgroundColor: COLORS.secondary,
     borderRadius: RADIUS.md,

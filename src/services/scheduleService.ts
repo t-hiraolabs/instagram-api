@@ -8,7 +8,7 @@ export interface ScheduledPost {
   hashtags: string[];
   image_url: string | null;
   scheduled_at: string;
-  status: 'pending' | 'published' | 'failed';
+  status: 'pending' | 'published' | 'failed' | 'draft';
   type: 'feed' | 'story' | 'reel';
   repeat: RepeatOption;
   instagram_user_id: string | null;
@@ -25,6 +25,7 @@ export interface CreateScheduledPostInput {
   repeat?: RepeatOption;
   instagram_user_id?: string;
   access_token?: string;
+  status?: 'pending' | 'draft';
 }
 
 export async function getScheduledPosts(): Promise<ScheduledPost[]> {
@@ -61,6 +62,7 @@ export interface UpdateScheduledPostInput {
   hashtags?: string[];
   scheduled_at?: Date;
   repeat?: RepeatOption;
+  status?: 'pending' | 'draft';
 }
 
 /** 予約投稿の内容を更新する（キャプション・ハッシュタグ・日時・くりかえし） */
@@ -72,6 +74,7 @@ export async function updateScheduledPost(
   if (fields.caption !== undefined) payload.caption = fields.caption;
   if (fields.hashtags !== undefined) payload.hashtags = fields.hashtags;
   if (fields.repeat !== undefined) payload.repeat = fields.repeat;
+  if (fields.status !== undefined) payload.status = fields.status;
   if (fields.scheduled_at) payload.scheduled_at = fields.scheduled_at.toISOString();
 
   const { error } = await supabase.from('scheduled_posts').update(payload).eq('id', id);
