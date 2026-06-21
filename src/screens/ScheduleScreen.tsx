@@ -1792,7 +1792,14 @@ export default function ScheduleScreen({ route }: any) {
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
           <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => setEditVisible(false)}>
+            <TouchableOpacity
+              onPress={() => {
+                setEditVisible(false);
+                setEditingPost(null);
+                setEditDuplicateSource(null);
+                setEditPublishDraft(false);
+              }}
+            >
               <Text style={styles.modalCancel}>キャンセル</Text>
             </TouchableOpacity>
             <Text style={styles.modalTitle}>
