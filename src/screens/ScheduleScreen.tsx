@@ -169,6 +169,12 @@ export default function ScheduleScreen({ route }: any) {
   const [posts, setPosts] = useState<ScheduledPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<Filter>('all');
+  const [calView, setCalView] = useState<'list' | 'calendar'>('list');
+  const [calMonth, setCalMonth] = useState(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1);
+  });
+  const [calSelected, setCalSelected] = useState<string | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
@@ -933,6 +939,78 @@ export default function ScheduleScreen({ route }: any) {
 
   const filtered = posts.filter((p) => filter === 'all' || p.status === filter);
 
+  const dayKey = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+  // 日付ごとに予約をまとめる（カレンダー用）
+  const postsByDay: Record<string, ScheduledPost[]> = {};
+  for (const p of posts) {
+    const k = dayKey(new Date(p.scheduled_at));
+    (postsByDay[k] ||= []).push(p);
+  }
+  const calY = calMonth.getFullYear();
+  const calMo = calMonth.getMonth();
+  const calFirstWd = new Date(calY, calMo, 1).getDay();
+  const calDays = new Date(calY, calMo + 1, 0).getDate();
+  const calCells: (number | null)[] = [
+    ...Array(calFirstWd).fill(null),
+    ...Array.from({ length: calDays }, (_, i) => i + 1),
+  ];
+  const todayKey = dayKey(new Date());
+
+  const renderPostCard = (post: ScheduledPost) => (
+    <View key={post.id} style={styles.postCard}>
+      <View style={styles.postHeader}>
+        <View style={styles.postMeta}>
+          <View style={[styles.typeBadge, post.type !== 'feed' && styles.typeBadgeStory]}>
+            <Text style={styles.typeBadgeText}>
+              {post.type === 'feed' ? '📷 フィード' : post.type === 'reel' ? '🎬 リール' : '📖 ストーリー'}
+            </Text>
+          </View>
+          <View
+            style={[
+              styles.statusBadge,
+              post.status === 'published' && styles.statusPublished,
+              post.status === 'failed' && styles.statusFailed,
+            ]}
+          >
+            <Text style={styles.statusText}>
+              {post.status === 'pending' ? '⏳ 予約中' : post.status === 'published' ? '✅ 投稿済' : '❌ 失敗'}
+            </Text>
+          </View>
+          {post.repeat && post.repeat !== 'none' && (
+            <View style={styles.repeatBadge}>
+              <Text style={styles.repeatBadgeText}>🔁 {REPEAT_SHORT[post.repeat]}</Text>
+            </View>
+          )}
+        </View>
+        {post.status === 'pending' && (
+          <View style={styles.cardActions}>
+            <TouchableOpacity onPress={() => openEdit(post)} hitSlop={8}>
+              <Text style={styles.editBtn}>✏️</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => handleDelete(post.id)} hitSlop={8}>
+              <Text style={styles.deleteBtn}>🗑</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
+
+      <Text style={styles.postCaption} numberOfLines={2}>
+        {post.caption}
+      </Text>
+      {post.hashtags?.length > 0 && (
+        <Text style={styles.postHashtags} numberOfLines={1}>
+          {post.hashtags.join(' ')}
+        </Text>
+      )}
+
+      <View style={styles.postFooter}>
+        <Text style={styles.scheduleTime}>🕐 {formatDate(post.scheduled_at)}</Text>
+      </View>
+    </View>
+  );
+
   // 投稿タブのサブ画面（リール／本日の出勤）
   if (mode === 'now' && nowSub === 'reel') {
     return <ReelScreen onBack={() => setNowSub('menu')} />;
@@ -991,84 +1069,114 @@ export default function ScheduleScreen({ route }: any) {
           </Text>
         </View>
 
+        {/* 表示切替：リスト / カレンダー */}
         <View style={styles.filterRow}>
-          {(['all', 'pending', 'published', 'failed'] as Filter[]).map((f) => (
-            <TouchableOpacity
-              key={f}
-              style={[styles.filterTab, filter === f && styles.filterTabActive]}
-              onPress={() => setFilter(f)}
-            >
-              <Text style={[styles.filterText, filter === f && styles.filterTextActive]}>
-                {f === 'all' ? 'すべて' : f === 'pending' ? '予約中' : f === 'published' ? '投稿済' : '失敗'}
-              </Text>
-            </TouchableOpacity>
-          ))}
+          <TouchableOpacity
+            style={[styles.filterTab, calView === 'list' && styles.filterTabActive]}
+            onPress={() => setCalView('list')}
+          >
+            <Text style={[styles.filterText, calView === 'list' && styles.filterTextActive]}>📋 リスト</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.filterTab, calView === 'calendar' && styles.filterTabActive]}
+            onPress={() => setCalView('calendar')}
+          >
+            <Text style={[styles.filterText, calView === 'calendar' && styles.filterTextActive]}>
+              📅 カレンダー
+            </Text>
+          </TouchableOpacity>
         </View>
 
-        {loading ? (
-          <ActivityIndicator color={COLORS.primary} style={{ marginTop: 60 }} />
-        ) : filtered.length === 0 ? (
-          <View style={styles.empty}>
-            <Text style={styles.emptyEmoji}>📭</Text>
-            <Text style={styles.emptyTitle}>予約投稿はありません</Text>
-            <Text style={styles.emptyDesc}>AI生成した投稿を最適な時間に自動投稿できます</Text>
-            <TouchableOpacity style={styles.emptyAddBtn} onPress={openModal}>
-              <Text style={styles.emptyAddBtnText}>＋ 最初の予約を追加する</Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          filtered.map((post) => (
-            <View key={post.id} style={styles.postCard}>
-              <View style={styles.postHeader}>
-                <View style={styles.postMeta}>
-                  <View style={[styles.typeBadge, post.type !== 'feed' && styles.typeBadgeStory]}>
-                    <Text style={styles.typeBadgeText}>
-                      {post.type === 'feed' ? '📷 フィード' : post.type === 'reel' ? '🎬 リール' : '📖 ストーリー'}
-                    </Text>
-                  </View>
-                  <View
-                    style={[
-                      styles.statusBadge,
-                      post.status === 'published' && styles.statusPublished,
-                      post.status === 'failed' && styles.statusFailed,
-                    ]}
-                  >
-                    <Text style={styles.statusText}>
-                      {post.status === 'pending' ? '⏳ 予約中' : post.status === 'published' ? '✅ 投稿済' : '❌ 失敗'}
-                    </Text>
-                  </View>
-                  {post.repeat && post.repeat !== 'none' && (
-                    <View style={styles.repeatBadge}>
-                      <Text style={styles.repeatBadgeText}>🔁 {REPEAT_SHORT[post.repeat]}</Text>
-                    </View>
-                  )}
-                </View>
-                {post.status === 'pending' && (
-                  <View style={styles.cardActions}>
-                    <TouchableOpacity onPress={() => openEdit(post)} hitSlop={8}>
-                      <Text style={styles.editBtn}>✏️</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => handleDelete(post.id)} hitSlop={8}>
-                      <Text style={styles.deleteBtn}>🗑</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-              </View>
-
-              <Text style={styles.postCaption} numberOfLines={2}>
-                {post.caption}
-              </Text>
-              {post.hashtags?.length > 0 && (
-                <Text style={styles.postHashtags} numberOfLines={1}>
-                  {post.hashtags.join(' ')}
-                </Text>
-              )}
-
-              <View style={styles.postFooter}>
-                <Text style={styles.scheduleTime}>🕐 {formatDate(post.scheduled_at)}</Text>
-              </View>
+        {calView === 'list' ? (
+          <>
+            <View style={styles.filterRow}>
+              {(['all', 'pending', 'published', 'failed'] as Filter[]).map((f) => (
+                <TouchableOpacity
+                  key={f}
+                  style={[styles.filterTab, filter === f && styles.filterTabActive]}
+                  onPress={() => setFilter(f)}
+                >
+                  <Text style={[styles.filterText, filter === f && styles.filterTextActive]}>
+                    {f === 'all' ? 'すべて' : f === 'pending' ? '予約中' : f === 'published' ? '投稿済' : '失敗'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </View>
-          ))
+
+            {loading ? (
+              <ActivityIndicator color={COLORS.primary} style={{ marginTop: 60 }} />
+            ) : filtered.length === 0 ? (
+              <View style={styles.empty}>
+                <Text style={styles.emptyEmoji}>📭</Text>
+                <Text style={styles.emptyTitle}>予約投稿はありません</Text>
+                <Text style={styles.emptyDesc}>AI生成した投稿を最適な時間に自動投稿できます</Text>
+                <TouchableOpacity style={styles.emptyAddBtn} onPress={openModal}>
+                  <Text style={styles.emptyAddBtnText}>＋ 最初の予約を追加する</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              filtered.map(renderPostCard)
+            )}
+          </>
+        ) : (
+          <>
+            <View style={styles.calHeader}>
+              <TouchableOpacity onPress={() => setCalMonth(new Date(calY, calMo - 1, 1))} hitSlop={10}>
+                <Text style={styles.calNav}>◀</Text>
+              </TouchableOpacity>
+              <Text style={styles.calTitle}>
+                {calY}年{calMo + 1}月
+              </Text>
+              <TouchableOpacity onPress={() => setCalMonth(new Date(calY, calMo + 1, 1))} hitSlop={10}>
+                <Text style={styles.calNav}>▶</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.calWeekRow}>
+              {['日', '月', '火', '水', '木', '金', '土'].map((w) => (
+                <Text key={w} style={styles.calWeekday}>
+                  {w}
+                </Text>
+              ))}
+            </View>
+            <View style={styles.calGrid}>
+              {calCells.map((cell, i) => {
+                if (cell === null) return <View key={`b${i}`} style={styles.calCell} />;
+                const key = dayKey(new Date(calY, calMo, cell));
+                const cnt = (postsByDay[key] || []).length;
+                return (
+                  <TouchableOpacity
+                    key={key}
+                    style={[
+                      styles.calCell,
+                      key === todayKey && styles.calCellToday,
+                      calSelected === key && styles.calCellSelected,
+                    ]}
+                    onPress={() => setCalSelected(key)}
+                  >
+                    <Text style={styles.calDayNum}>{cell}</Text>
+                    {cnt > 0 && (
+                      <View style={styles.calDot}>
+                        <Text style={styles.calDotText}>{cnt}</Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {calSelected ? (
+              <>
+                <Text style={styles.calSelTitle}>{calSelected.replace(/-/g, '/')} の予約</Text>
+                {(postsByDay[calSelected] || []).length === 0 ? (
+                  <Text style={styles.calHint}>この日の予約はありません</Text>
+                ) : (
+                  (postsByDay[calSelected] || []).map(renderPostCard)
+                )}
+              </>
+            ) : (
+              <Text style={styles.calHint}>日付をタップするとその日の予約が見られます</Text>
+            )}
+          </>
         )}
           </>
         )}
@@ -1665,6 +1773,47 @@ const styles = StyleSheet.create({
     borderColor: COLORS.secondary + '33',
   },
   hintText: { color: COLORS.secondary, fontSize: 12, lineHeight: 18 },
+  calHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.md,
+  },
+  calNav: { color: COLORS.primary, fontSize: 22, fontWeight: '800', paddingHorizontal: SPACING.md },
+  calTitle: { color: COLORS.text, fontSize: 17, fontWeight: '800' },
+  calWeekRow: { flexDirection: 'row' },
+  calWeekday: {
+    flex: 1,
+    textAlign: 'center',
+    color: COLORS.textMuted,
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  calGrid: { flexDirection: 'row', flexWrap: 'wrap' },
+  calCell: {
+    width: `${100 / 7}%`,
+    aspectRatio: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: RADIUS.sm,
+  },
+  calCellToday: { backgroundColor: COLORS.surfaceElevated },
+  calCellSelected: { backgroundColor: COLORS.primary + '33', borderWidth: 1, borderColor: COLORS.primary },
+  calDayNum: { color: COLORS.text, fontSize: 14, fontWeight: '600' },
+  calDot: {
+    marginTop: 2,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  calDotText: { color: '#fff', fontSize: 11, fontWeight: '800' },
+  calSelTitle: { color: COLORS.text, fontSize: 15, fontWeight: '800', marginTop: SPACING.lg, marginBottom: SPACING.sm },
+  calHint: { color: COLORS.textMuted, fontSize: 13, textAlign: 'center', marginTop: SPACING.lg },
   filterRow: {
     flexDirection: 'row',
     backgroundColor: COLORS.surface,
