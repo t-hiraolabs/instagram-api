@@ -891,6 +891,29 @@ export default function ScheduleScreen({ route }: any) {
   };
 
   // 編集
+  // 複製：同じ内容で新しい予約を作る（日時は1週間後／過去なら明日に）
+  const handleDuplicate = async (post: ScheduledPost) => {
+    if (!(await ensureLoggedIn('複製するにはログインが必要です'))) return;
+    let d = new Date(new Date(post.scheduled_at).getTime() + 7 * 24 * 3600 * 1000);
+    if (d <= new Date()) d = new Date(Date.now() + 24 * 3600 * 1000);
+    try {
+      await createScheduledPost({
+        caption: post.caption,
+        hashtags: post.hashtags ?? [],
+        image_url: post.image_url ?? undefined,
+        scheduled_at: d,
+        type: post.type,
+        repeat: post.repeat,
+        instagram_user_id: post.instagram_user_id ?? undefined,
+        access_token: post.access_token ?? undefined,
+      });
+      await fetchPosts();
+      alertMsg('複製しました。日時は ✏️ から変更できます', '複製完了');
+    } catch (e) {
+      alertMsg((e as { message?: string })?.message || '複製に失敗しました', '複製できませんでした');
+    }
+  };
+
   const openEdit = (post: ScheduledPost) => {
     setEditingPost(post);
     setEditCaption(post.caption ?? '');
@@ -984,16 +1007,21 @@ export default function ScheduleScreen({ route }: any) {
             </View>
           )}
         </View>
-        {post.status === 'pending' && (
-          <View style={styles.cardActions}>
-            <TouchableOpacity onPress={() => openEdit(post)} hitSlop={8}>
-              <Text style={styles.editBtn}>✏️</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => handleDelete(post.id)} hitSlop={8}>
-              <Text style={styles.deleteBtn}>🗑</Text>
-            </TouchableOpacity>
-          </View>
-        )}
+        <View style={styles.cardActions}>
+          <TouchableOpacity onPress={() => handleDuplicate(post)} hitSlop={8}>
+            <Text style={styles.editBtn}>📄</Text>
+          </TouchableOpacity>
+          {post.status === 'pending' && (
+            <>
+              <TouchableOpacity onPress={() => openEdit(post)} hitSlop={8}>
+                <Text style={styles.editBtn}>✏️</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => handleDelete(post.id)} hitSlop={8}>
+                <Text style={styles.deleteBtn}>🗑</Text>
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
       </View>
 
       <Text style={styles.postCaption} numberOfLines={2}>
