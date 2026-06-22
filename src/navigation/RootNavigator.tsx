@@ -5,6 +5,7 @@ import { View, Text, StyleSheet } from 'react-native';
 
 import HomeScreen from '../screens/HomeScreen';
 import ScheduleScreen from '../screens/ScheduleScreen';
+import AnalyticsScreen from '../screens/AnalyticsScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import { COLORS } from '../utils/theme';
 
@@ -18,6 +19,7 @@ function TabIcon({ name, focused }: { name: string; focused: boolean }) {
     Post: '📸',
     Reel: '🎬',
     Schedule: '📅',
+    Analytics: '📊',
     Profile: '👤',
   };
   return (
@@ -64,6 +66,14 @@ function TabNavigator() {
         options={{
           tabBarLabel: '予約投稿',
           tabBarIcon: ({ focused }) => <TabIcon name="Schedule" focused={focused} />,
+        }}
+      />
+      <Tab.Screen
+        name="Analytics"
+        component={AnalyticsScreen}
+        options={{
+          tabBarLabel: '分析',
+          tabBarIcon: ({ focused }) => <TabIcon name="Analytics" focused={focused} />,
         }}
       />
       <Tab.Screen
