@@ -102,7 +102,7 @@ export interface AiUsage {
   remaining: number;
 }
 
-const AI_LIMITS = { free: 10, pro: 300 } as const;
+const AI_LIMITS = { free: 10, pro: 100 } as const;
 
 /** 今月のAI生成の使用状況（残り回数など）を取得 */
 export async function getAiUsage(): Promise<AiUsage> {

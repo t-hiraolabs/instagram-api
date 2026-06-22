@@ -7,7 +7,7 @@ const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
 // プランごとの月間AI回数の上限
-const LIMITS: Record<string, number> = { free: 10, pro: 300 };
+const LIMITS: Record<string, number> = { free: 10, pro: 100 };
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
