@@ -10,6 +10,7 @@ import {
   TextInput,
   ActivityIndicator,
   Platform,
+  Linking,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as SecureStore from 'expo-secure-store';
@@ -19,6 +20,7 @@ import { INDUSTRIES } from '../services/aiService';
 import { ACCOUNT_THEMES } from '../utils/accountThemes';
 import { supabase } from '../services/supabaseClient';
 import { getMyPlan } from '../services/scheduleService';
+import { createCheckoutUrl } from '../services/billingService';
 import { connectInstagram, clearInstagramStorage, SK_USER_ID, SK_TOKEN, SK_USERNAME, SK_PICTURE } from '../utils/instagram';
 
 const SK_BRAND = 'brand_settings_v1';
@@ -64,6 +66,7 @@ export default function ProfileScreen() {
   const [brandModalVisible, setBrandModalVisible] = useState(false);
   const [saving, setSaving] = useState(false);
   const [currentPlan, setCurrentPlan] = useState<'free' | 'pro'>('free');
+  const [upgrading, setUpgrading] = useState(false);
 
   // Brand form
   const [draftBrand, setDraftBrand] = useState<BrandSettings>({ ...brandSettings });
@@ -71,6 +74,36 @@ export default function ProfileScreen() {
   useEffect(() => {
     getMyPlan().then(setCurrentPlan).catch(() => {});
   }, []);
+
+  // 決済から戻ってきたとき（?upgrade=success）の処理
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const params = new URLSearchParams(window.location.search);
+    const u = params.get('upgrade');
+    if (u === 'success') {
+      window.alert('🎉 Proへのアップグレードが完了しました！反映に少し時間がかかる場合があります。');
+      setTimeout(() => getMyPlan().then(setCurrentPlan).catch(() => {}), 1500);
+      window.history.replaceState({}, '', window.location.pathname);
+    } else if (u === 'cancel') {
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
+
+  // Proへアップグレード（Stripe Checkoutへ遷移）
+  const handleUpgrade = async () => {
+    if (upgrading) return;
+    setUpgrading(true);
+    try {
+      const url = await createCheckoutUrl();
+      if (Platform.OS === 'web') window.location.href = url;
+      else await Linking.openURL(url);
+    } catch (e) {
+      const msg = (e as { message?: string })?.message || '決済を開始できませんでした';
+      if (Platform.OS === 'web') window.alert(msg);
+      else Alert.alert('エラー', msg);
+      setUpgrading(false);
+    }
+  };
 
   useEffect(() => {
     (async () => {
@@ -256,10 +289,15 @@ export default function ProfileScreen() {
               ))}
               {!isCurrent && plan.id === 'pro' && (
                 <TouchableOpacity
-                  style={[styles.planUpgradeBtn, { backgroundColor: plan.color }]}
-                  onPress={() => Alert.alert('近日公開', `${plan.name}プランは近日公開予定です`)}
+                  style={[styles.planUpgradeBtn, { backgroundColor: plan.color }, upgrading && { opacity: 0.6 }]}
+                  onPress={handleUpgrade}
+                  disabled={upgrading}
                 >
-                  <Text style={styles.planUpgradeBtnText}>アップグレード</Text>
+                  {upgrading ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={styles.planUpgradeBtnText}>アップグレード</Text>
+                  )}
                 </TouchableOpacity>
               )}
             </View>
