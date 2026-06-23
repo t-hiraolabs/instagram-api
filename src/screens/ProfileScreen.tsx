@@ -21,6 +21,7 @@ import { ACCOUNT_THEMES } from '../utils/accountThemes';
 import { supabase } from '../services/supabaseClient';
 import { getMyPlan } from '../services/scheduleService';
 import { createCheckoutUrl } from '../services/billingService';
+import { PLANS, Plan, PLAN_RANK } from '../utils/plans';
 import { connectInstagram, clearInstagramStorage, SK_USER_ID, SK_TOKEN, SK_USERNAME, SK_PICTURE } from '../utils/instagram';
 
 const SK_BRAND = 'brand_settings_v1';
@@ -37,35 +38,13 @@ async function load(key: string): Promise<string | null> {
 
 const TONES = ['明るい・ポジティブ', 'プロフェッショナル', 'カジュアル', '感情的・共感', 'ユーモラス'];
 
-const PLANS = [
-  {
-    id: 'free',
-    name: 'フリー',
-    price: '無料',
-    features: ['AI生成 月10回', '予約投稿 2件まで', '今すぐ投稿 無制限', '写真に文字を合成'],
-    color: COLORS.textMuted,
-  },
-  {
-    id: 'pro',
-    name: 'Pro',
-    price: '¥980/月',
-    features: [
-      'AI生成 月100回',
-      '予約投稿 無制限',
-      'くりかえし投稿（毎日/毎週/毎月/平日）',
-      '複数アカウント連携',
-    ],
-    color: COLORS.secondary,
-  },
-];
-
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const { instagramCredentials, setInstagramCredentials, brandSettings, setBrandSettings } = useAppStore();
 
   const [brandModalVisible, setBrandModalVisible] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [currentPlan, setCurrentPlan] = useState<'free' | 'pro'>('free');
+  const [currentPlan, setCurrentPlan] = useState<Plan>('free');
   const [upgrading, setUpgrading] = useState(false);
 
   // Brand form
@@ -89,12 +68,12 @@ export default function ProfileScreen() {
     }
   }, []);
 
-  // Proへアップグレード（Stripe Checkoutへ遷移）
-  const handleUpgrade = async () => {
+  // アップグレード（Stripe Checkoutへ遷移）。target で 'pro' / 'business' を指定
+  const handleUpgrade = async (target: 'pro' | 'business') => {
     if (upgrading) return;
     setUpgrading(true);
     try {
-      const url = await createCheckoutUrl();
+      const url = await createCheckoutUrl(target);
       if (Platform.OS === 'web') window.location.href = url;
       else await Linking.openURL(url);
     } catch (e) {
@@ -287,10 +266,10 @@ export default function ProfileScreen() {
               {plan.features.map((f) => (
                 <Text key={f} style={styles.planFeature}>✓ {f}</Text>
               ))}
-              {!isCurrent && plan.id === 'pro' && (
+              {plan.paid && PLAN_RANK[plan.id] > PLAN_RANK[currentPlan] && (
                 <TouchableOpacity
                   style={[styles.planUpgradeBtn, { backgroundColor: plan.color }, upgrading && { opacity: 0.6 }]}
-                  onPress={handleUpgrade}
+                  onPress={() => handleUpgrade(plan.id as 'pro' | 'business')}
                   disabled={upgrading}
                 >
                   {upgrading ? (

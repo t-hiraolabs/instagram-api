@@ -9,6 +9,7 @@ import {
   Alert,
   Platform,
   Image,
+  Linking,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Session } from '@supabase/supabase-js';
@@ -18,34 +19,15 @@ import { COLORS, SPACING, RADIUS } from '../utils/theme';
 import AuthScreen from '../screens/AuthScreen';
 import { connectInstagram, clearInstagramStorage } from '../utils/instagram';
 import { getMyPlan } from '../services/scheduleService';
-
-const PLANS = [
-  {
-    id: 'free',
-    name: 'フリー',
-    price: '無料',
-    features: ['AI生成 月10回', '予約投稿 2件まで', '今すぐ投稿 無制限', '写真に文字を合成'],
-    color: COLORS.textMuted,
-  },
-  {
-    id: 'pro',
-    name: 'Pro',
-    price: '¥980/月',
-    features: [
-      'AI生成 月100回',
-      '予約投稿 無制限',
-      'くりかえし投稿（毎日/毎週/毎月/平日）',
-      '複数アカウント連携',
-    ],
-    color: COLORS.secondary,
-  },
-];
+import { PLANS, Plan, PLAN_RANK } from '../utils/plans';
+import { createCheckoutUrl } from '../services/billingService';
 
 export default function AccountBadge() {
   const insets = useSafeAreaInsets();
   const [session, setSession] = useState<Session | null>(null);
   const [visible, setVisible] = useState(false);
-  const [plan, setPlan] = useState<'free' | 'pro'>('free');
+  const [plan, setPlan] = useState<Plan>('free');
+  const [upgrading, setUpgrading] = useState(false);
   const instagramCredentials = useAppStore((s) => s.instagramCredentials);
   const setInstagramCredentials = useAppStore((s) => s.setInstagramCredentials);
   const authVisible = useAppStore((s) => s.loginPromptVisible);
@@ -69,6 +51,21 @@ export default function AccountBadge() {
   const email = session?.user?.email ?? '';
   const initial = (email.trim()[0] ?? '?').toUpperCase();
   const currentPlan = PLANS.find((p) => p.id === plan) ?? PLANS[0];
+
+  const handleUpgrade = async (target: 'pro' | 'business') => {
+    if (upgrading) return;
+    setUpgrading(true);
+    try {
+      const url = await createCheckoutUrl(target);
+      if (Platform.OS === 'web') window.location.href = url;
+      else await Linking.openURL(url);
+    } catch (e) {
+      const msg = (e as { message?: string })?.message || '決済を開始できませんでした';
+      if (Platform.OS === 'web') window.alert(msg);
+      else Alert.alert('エラー', msg);
+      setUpgrading(false);
+    }
+  };
 
   const handleConnectIg = () => {
     setVisible(false);
@@ -228,11 +225,11 @@ export default function AccountBadge() {
                 <Text key={f} style={styles.feature}>✓ {f}</Text>
               ))}
 
-              {/* アップグレード候補（無料のときだけProを表示） */}
-              {PLANS.filter((p) => p.id !== plan && p.id !== 'free').length > 0 && (
+              {/* アップグレード候補（今より上位のプランだけ表示） */}
+              {PLANS.filter((p) => p.paid && PLAN_RANK[p.id] > PLAN_RANK[plan]).length > 0 && (
                 <Text style={styles.sectionTitle}>アップグレード</Text>
               )}
-              {PLANS.filter((p) => p.id !== plan && p.id !== 'free').map((pl) => (
+              {PLANS.filter((p) => p.paid && PLAN_RANK[p.id] > PLAN_RANK[plan]).map((pl) => (
                 <View key={pl.id} style={[styles.upgradeCard, { borderColor: pl.color + '44' }]}>
                   <View style={styles.upgradeHeader}>
                     <Text style={[styles.upgradeName, { color: pl.color }]}>{pl.name}</Text>
@@ -242,10 +239,13 @@ export default function AccountBadge() {
                     <Text key={f} style={styles.feature}>✓ {f}</Text>
                   ))}
                   <TouchableOpacity
-                    style={[styles.upgradeBtn, { backgroundColor: pl.color }]}
-                    onPress={() => Alert.alert('近日公開', `${pl.name}プランは近日公開予定です`)}
+                    style={[styles.upgradeBtn, { backgroundColor: pl.color }, upgrading && { opacity: 0.6 }]}
+                    onPress={() => handleUpgrade(pl.id as 'pro' | 'business')}
+                    disabled={upgrading}
                   >
-                    <Text style={styles.upgradeBtnText}>アップグレード</Text>
+                    <Text style={styles.upgradeBtnText}>
+                      {upgrading ? '処理中…' : 'アップグレード'}
+                    </Text>
                   </TouchableOpacity>
                 </View>
               ))}

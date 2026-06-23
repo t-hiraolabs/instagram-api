@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient';
+import { Plan, AI_LIMITS, asPlan } from '../utils/plans';
 
 export type RepeatOption = 'none' | 'daily' | 'weekly' | 'monthly' | 'weekdays';
 
@@ -81,8 +82,8 @@ export async function updateScheduledPost(
   if (error) throw error;
 }
 
-/** ログイン中ユーザーのプラン（free / pro）を取得 */
-export async function getMyPlan(): Promise<'free' | 'pro'> {
+/** ログイン中ユーザーのプラン（free / pro / business）を取得 */
+export async function getMyPlan(): Promise<Plan> {
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -92,17 +93,15 @@ export async function getMyPlan(): Promise<'free' | 'pro'> {
     .select('plan')
     .eq('id', user.id)
     .maybeSingle();
-  return data?.plan === 'pro' ? 'pro' : 'free';
+  return asPlan(data?.plan);
 }
 
 export interface AiUsage {
-  plan: 'free' | 'pro';
+  plan: Plan;
   used: number;
   limit: number;
   remaining: number;
 }
-
-const AI_LIMITS = { free: 10, pro: 100 } as const;
 
 /** 今月のAI生成の使用状況（残り回数など）を取得 */
 export async function getAiUsage(): Promise<AiUsage> {
@@ -117,7 +116,7 @@ export async function getAiUsage(): Promise<AiUsage> {
     .eq('id', user.id)
     .maybeSingle();
 
-  const plan = data?.plan === 'pro' ? 'pro' : 'free';
+  const plan = asPlan(data?.plan);
   const limit = AI_LIMITS[plan];
 
   // 月が変わっていたら使用回数は0扱い（実際のリセットは次回のAI呼び出し時）

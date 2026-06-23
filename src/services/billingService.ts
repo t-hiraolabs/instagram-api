@@ -1,11 +1,11 @@
-// 決済（Proへのアップグレード）: create-checkout エッジ関数を呼んで決済ページのURLを取得する
+// 決済（Pro/ビジネスへのアップグレード）: create-checkout エッジ関数を呼んで決済ページのURLを取得する
 import { supabase } from './supabaseClient';
 
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
 const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
 
-/** Stripe Checkout のURLを取得する（ログイン必須） */
-export async function createCheckoutUrl(): Promise<string> {
+/** Stripe Checkout のURLを取得する（ログイン必須）。plan で 'pro' / 'business' を指定 */
+export async function createCheckoutUrl(plan: 'pro' | 'business' = 'pro'): Promise<string> {
   const {
     data: { session },
   } = await supabase.auth.getSession();
@@ -20,7 +20,7 @@ export async function createCheckoutUrl(): Promise<string> {
       Authorization: `Bearer ${session.access_token}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({}),
+    body: JSON.stringify({ plan }),
   });
 
   const data = await res.json().catch(() => ({}));

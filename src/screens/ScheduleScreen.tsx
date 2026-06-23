@@ -83,6 +83,7 @@ import {
 import { ensureLoggedIn } from '../utils/requireLogin';
 import { useAppStore } from '../store/appStore';
 import { publishNow } from '../services/publishNow';
+import { Plan, canRecurring } from '../utils/plans';
 
 type Filter = 'all' | 'draft' | 'pending' | 'published' | 'failed';
 
@@ -189,7 +190,7 @@ export default function ScheduleScreen({ route }: any) {
   const [dateText, setDateText] = useState('');
   const [type, setType] = useState<'feed' | 'story'>('feed');
   const [repeat, setRepeat] = useState<RepeatOption>('none');
-  const [plan, setPlan] = useState<'free' | 'pro'>('free');
+  const [plan, setPlan] = useState<Plan>('free');
   const [nowSub, setNowSub] = useState<'menu' | 'reel' | 'roster'>('menu'); // 投稿タブ内の表示
 
   // 編集モーダル用
@@ -369,7 +370,7 @@ export default function ScheduleScreen({ route }: any) {
 
   // くりかえしの選択（Pro限定。無料が選んだら案内を出す）
   const selectRepeat = (r: RepeatOption) => {
-    if (r !== 'none' && plan !== 'pro') {
+    if (r !== 'none' && !canRecurring(plan)) {
       alertMsg(
         'くりかえし投稿はProプラン限定です。Proにアップグレードすると、毎日・毎週・毎月・平日の自動くりかえし投稿が使えます。',
         '⭐ Pro限定の機能です'
@@ -1038,7 +1039,7 @@ export default function ScheduleScreen({ route }: any) {
   };
 
   const editSelectRepeat = (r: RepeatOption) => {
-    if (r !== 'none' && plan !== 'pro') {
+    if (r !== 'none' && !canRecurring(plan)) {
       alertMsg('くりかえし投稿はProプラン限定です', '⭐ Pro限定の機能です');
       return;
     }
@@ -1679,12 +1680,12 @@ export default function ScheduleScreen({ route }: any) {
                 />
 
                 <Text style={styles.fieldLabel}>
-                  くりかえし {plan !== 'pro' && '⭐Pro'}
+                  くりかえし {!canRecurring(plan) && '⭐Pro'}
                 </Text>
                 <View style={styles.repeatRow}>
                   {REPEAT_OPTIONS.map((opt) => {
                     const active = repeat === opt.key;
-                    const locked = opt.key !== 'none' && plan !== 'pro';
+                    const locked = opt.key !== 'none' && !canRecurring(plan);
                     return (
                       <TouchableOpacity
                         key={opt.key}
@@ -1859,11 +1860,11 @@ export default function ScheduleScreen({ route }: any) {
               autoCapitalize="none"
             />
 
-            <Text style={styles.fieldLabel}>くりかえし {plan !== 'pro' && '⭐Pro'}</Text>
+            <Text style={styles.fieldLabel}>くりかえし {!canRecurring(plan) && '⭐Pro'}</Text>
             <View style={styles.repeatRow}>
               {REPEAT_OPTIONS.map((opt) => {
                 const active = editRepeat === opt.key;
-                const locked = opt.key !== 'none' && plan !== 'pro';
+                const locked = opt.key !== 'none' && !canRecurring(plan);
                 return (
                   <TouchableOpacity
                     key={opt.key}

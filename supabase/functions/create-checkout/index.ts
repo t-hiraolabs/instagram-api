@@ -4,8 +4,9 @@ import Stripe from 'https://esm.sh/stripe@16?target=deno';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const STRIPE_SECRET_KEY = Deno.env.get('STRIPE_SECRET_KEY')!;
-// Pro月額の価格ID（Supabaseの環境変数で上書き可。未設定ならサンドボックスの値）
-const PRICE_ID = Deno.env.get('STRIPE_PRICE_ID') ?? 'price_1Tl9BnPkhuUZqJLebufUtrEj';
+// 各プランの価格ID（Supabaseの環境変数で設定。Proは未設定ならサンドボックスの既定値）
+const PRICE_ID_PRO = Deno.env.get('STRIPE_PRICE_ID') ?? 'price_1Tl9BnPkhuUZqJLebufUtrEj';
+const PRICE_ID_BUSINESS = Deno.env.get('STRIPE_PRICE_ID_BUSINESS') ?? '';
 const APP_URL = Deno.env.get('APP_URL') ?? 'https://instagram-api-alpha.vercel.app/';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -40,6 +41,14 @@ Deno.serve(async (req) => {
     const { data: { user }, error: authError } = await supabase.auth.getUser(token);
     if (authError || !user) return json({ error: 'ログインが必要です' }, 401);
 
+    // どのプランを買うか（'pro' / 'business'）
+    const body = await req.json().catch(() => ({}));
+    const targetPlan: 'pro' | 'business' = body?.plan === 'business' ? 'business' : 'pro';
+    const priceId = targetPlan === 'business' ? PRICE_ID_BUSINESS : PRICE_ID_PRO;
+    if (!priceId) {
+      return json({ error: `${targetPlan}プランの価格IDが未設定です（STRIPE_PRICE_ID_BUSINESS）` }, 400);
+    }
+
     const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const { data: profile } = await admin
       .from('profiles')
@@ -47,8 +56,8 @@ Deno.serve(async (req) => {
       .eq('id', user.id)
       .maybeSingle();
 
-    if (profile?.plan === 'pro') {
-      return json({ error: 'すでにProプランです' }, 400);
+    if (profile?.plan === targetPlan) {
+      return json({ error: `すでに${targetPlan === 'business' ? 'ビジネス' : 'Pro'}プランです` }, 400);
     }
 
     // --- Stripe顧客（無ければ作成して保存）---
@@ -66,10 +75,10 @@ Deno.serve(async (req) => {
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
       customer: customerId,
-      line_items: [{ price: PRICE_ID, quantity: 1 }],
+      line_items: [{ price: priceId, quantity: 1 }],
       client_reference_id: user.id,
-      metadata: { user_id: user.id },
-      subscription_data: { metadata: { user_id: user.id } },
+      metadata: { user_id: user.id, plan: targetPlan },
+      subscription_data: { metadata: { user_id: user.id, plan: targetPlan } },
       success_url: `${APP_URL}?upgrade=success`,
       cancel_url: `${APP_URL}?upgrade=cancel`,
       locale: 'ja',

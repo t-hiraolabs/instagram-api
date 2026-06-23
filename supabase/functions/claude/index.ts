@@ -7,7 +7,7 @@ const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
 // プランごとの月間AI回数の上限
-const LIMITS: Record<string, number> = { free: 10, pro: 100 };
+const LIMITS: Record<string, number> = { free: 5, pro: 100, business: 300 };
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -53,7 +53,7 @@ Deno.serve(async (req) => {
     profile = { plan: 'free', ai_used: 0, ai_period_start: new Date().toISOString().slice(0, 10) };
   }
 
-  const plan = profile.plan === 'pro' ? 'pro' : 'free';
+  const plan = profile.plan === 'pro' || profile.plan === 'business' ? profile.plan : 'free';
   const limit = LIMITS[plan];
 
   // 月が変わっていたらカウントをリセット（毎月の上限）

@@ -13,6 +13,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
 import { useAppStore } from '../store/appStore';
 import { getInsightsSummary, InsightsResult, InsightsMedia } from '../services/insightsService';
+import { getMyPlan } from '../services/scheduleService';
+import { Plan, canAnalytics } from '../utils/plans';
 
 function fmt(n: number | null | undefined): string {
   if (n == null) return '—';
@@ -36,10 +38,15 @@ export default function AnalyticsScreen() {
   const insets = useSafeAreaInsets();
   const instagramCredentials = useAppStore((s) => s.instagramCredentials);
 
+  const [plan, setPlan] = useState<Plan>('free');
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<InsightsResult | null>(null);
+
+  useEffect(() => {
+    getMyPlan().then(setPlan).catch(() => {});
+  }, []);
 
   const load = useCallback(async () => {
     if (!instagramCredentials?.accessToken) {
@@ -65,6 +72,21 @@ export default function AnalyticsScreen() {
     await load();
     setRefreshing(false);
   };
+
+  // ビジネスプラン限定の機能
+  if (!canAnalytics(plan)) {
+    return (
+      <View style={[styles.container, styles.center, { paddingTop: insets.top }]}>
+        <Text style={styles.bigEmoji}>📊</Text>
+        <Text style={styles.emptyTitle}>インサイト分析は「ビジネス」プラン限定です</Text>
+        <Text style={styles.emptyDesc}>
+          フォロワー数や投稿の反応（いいね・コメント・リーチ）を分析し、{'\n'}
+          反応の良い投稿の傾向をAI生成にも活かせます。{'\n\n'}
+          「プロフィール」タブから ビジネスプラン（¥1,980/月）にアップグレードすると使えます。
+        </Text>
+      </View>
+    );
+  }
 
   // 未連携
   if (!instagramCredentials?.accessToken) {

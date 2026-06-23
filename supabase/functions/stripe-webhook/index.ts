@@ -16,10 +16,17 @@ const stripe = new Stripe(STRIPE_SECRET_KEY, {
 const cryptoProvider = Stripe.createSubtleCryptoProvider();
 const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-async function setPlanByCustomer(customerId: string, plan: 'free' | 'pro', subId?: string | null) {
+type Plan = 'free' | 'pro' | 'business';
+
+async function setPlanByCustomer(customerId: string, plan: Plan, subId?: string | null) {
   const update: Record<string, unknown> = { plan };
   if (subId !== undefined) update.stripe_subscription_id = subId;
   await admin.from('profiles').update(update).eq('stripe_customer_id', customerId);
+}
+
+// サブスクのメタデータから購入プランを判定（既定はpro）
+function planFromMeta(meta: Record<string, string> | null | undefined): Plan {
+  return meta?.plan === 'business' ? 'business' : 'pro';
 }
 
 Deno.serve(async (req) => {
@@ -48,13 +55,14 @@ Deno.serve(async (req) => {
         const userId = s.client_reference_id || (s.metadata?.user_id ?? null);
         const customerId = typeof s.customer === 'string' ? s.customer : s.customer?.id;
         const subId = typeof s.subscription === 'string' ? s.subscription : s.subscription?.id;
+        const plan = planFromMeta(s.metadata);
         if (userId) {
           await admin
             .from('profiles')
-            .update({ plan: 'pro', stripe_customer_id: customerId, stripe_subscription_id: subId })
+            .update({ plan, stripe_customer_id: customerId, stripe_subscription_id: subId })
             .eq('id', userId);
         } else if (customerId) {
-          await setPlanByCustomer(customerId, 'pro', subId);
+          await setPlanByCustomer(customerId, plan, subId);
         }
         break;
       }
@@ -64,7 +72,9 @@ Deno.serve(async (req) => {
         const sub = event.data.object as Stripe.Subscription;
         const customerId = typeof sub.customer === 'string' ? sub.customer : sub.customer?.id;
         const active = sub.status === 'active' || sub.status === 'trialing';
-        if (customerId) await setPlanByCustomer(customerId, active ? 'pro' : 'free', sub.id);
+        if (customerId) {
+          await setPlanByCustomer(customerId, active ? planFromMeta(sub.metadata) : 'free', sub.id);
+        }
         break;
       }
 
