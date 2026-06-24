@@ -120,6 +120,56 @@ ${input.instruction ? `追加の指示（最優先で従う）: ${input.instruct
   return JSON.parse(clean) as GeneratedPost;
 }
 
+/** 過去の人気投稿（いいね数）を分析し、その傾向をふまえてキャプションを生成（ビジネス限定） */
+export async function generateFromTopPosts(input: {
+  theme: string;
+  topPosts: { caption: string; likes: number; comments: number }[];
+  tone: string;
+  industry?: string;
+  instruction?: string;
+}): Promise<GeneratedPost> {
+  const brandCtx = getBrandContext();
+  const systemPrompt = `あなたは日本のInstagramマーケティングの専門家です。
+このアカウントの「過去に反応が良かった投稿（いいね・コメント数つき）」を分析し、
+なぜ伸びたのか（テーマ・語り口・長さ・絵文字・ハッシュタグの使い方など）を読み取った上で、
+その成功パターンを活かした新しいフィード投稿文を日本語で生成します。
+必ずJSONフォーマットだけで返答してください。余分なテキストは不要です。`;
+
+  const ranked = input.topPosts
+    .slice(0, 5)
+    .map(
+      (p, i) =>
+        `${i + 1}位（❤️${p.likes} / 💬${p.comments}）\n${(p.caption || '（キャプションなし）').slice(0, 280)}`
+    )
+    .join('\n\n---\n\n');
+
+  const prompt = `以下は、このアカウントで過去に反応が良かった投稿です。${brandCtx}
+
+【反応が良かった投稿トップ5】
+${ranked}
+
+これらの傾向（よく反応されるテーマ・トーン・文章の長さ・絵文字や改行の使い方・ハッシュタグの傾向）を分析し、
+その成功パターンを活かして新しいフィード投稿を1つ作ってください。
+
+新しい投稿のテーマ: ${input.theme || '上位投稿の傾向に最も近い、反応が取りやすいテーマで自由に'}
+トーン: ${input.tone}
+${input.industry ? `業種: ${input.industry}` : ''}
+${input.instruction ? `追加の指示（最優先で従う）: ${input.instruction}` : ''}
+
+ハッシュタグは15〜20個、日本語タグと英語タグをバランスよく。
+
+以下のJSONフォーマットで返してください:
+{
+  "caption": "投稿文（絵文字も含めて、改行あり、200〜400文字）",
+  "hashtags": ["#ハッシュタグ1", "#ハッシュタグ2", ...],
+  "suggestions": ["なぜこの構成にしたか/過去の人気投稿から学んだ改善提案1", "提案2", "提案3"]
+}`;
+
+  const raw = await callClaude(prompt, systemPrompt);
+  const clean = raw.replace(/```json|```/g, '').trim();
+  return JSON.parse(clean) as GeneratedPost;
+}
+
 export async function generateStory(input: GenerateStoryInput): Promise<GeneratedStory> {
   const brandCtx = getBrandContext();
   const systemPrompt = `あなたはInstagramストーリーのプロデザイナー兼コピーライターです。
