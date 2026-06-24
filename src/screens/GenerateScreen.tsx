@@ -287,7 +287,7 @@ export default function GenerateScreen() {
           </Text>
           {usage.plan === 'free' && usage.remaining <= 3 && (
             <Text style={styles.usageWarn}>
-              残りわずかです。Proなら月100回、ビジネスなら月300回まで使えます。
+              残りわずかです。Proなら月50回、ビジネスなら月300回まで使えます。
             </Text>
           )}
         </View>
