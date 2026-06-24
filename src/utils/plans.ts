@@ -41,7 +41,7 @@ export const PLANS: PlanInfo[] = [
     name: 'フリー',
     price: '無料',
     paid: false,
-    features: ['AI生成 月5回', '予約投稿 2件まで', '今すぐ投稿 無制限', '写真に文字を合成'],
+    features: ['AI生成 1アカウント5回まで', '予約投稿 2件まで', '今すぐ投稿 無制限', '写真に文字を合成'],
     color: COLORS.textMuted,
   },
   {

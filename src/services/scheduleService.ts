@@ -103,7 +103,7 @@ export interface AiUsage {
   remaining: number;
 }
 
-/** 今月のAI生成の使用状況（残り回数など）を取得 */
+/** AI生成の使用状況（残り回数など）を取得。無料は1アカウント累計、有料は毎月リセット */
 export async function getAiUsage(): Promise<AiUsage> {
   const {
     data: { user },
@@ -119,9 +119,10 @@ export async function getAiUsage(): Promise<AiUsage> {
   const plan = asPlan(data?.plan);
   const limit = AI_LIMITS[plan];
 
-  // 月が変わっていたら使用回数は0扱い（実際のリセットは次回のAI呼び出し時）
+  // 有料プランは月が変わっていたら0扱い（実際のリセットは次回のAI呼び出し時）。
+  // 無料プランは月でリセットせず、1アカウントあたり累計の上限とする。
   let used = data?.ai_used ?? 0;
-  if (data?.ai_period_start) {
+  if (plan !== 'free' && data?.ai_period_start) {
     const start = new Date(`${data.ai_period_start}T00:00:00Z`);
     const now = new Date();
     const sameMonth =

@@ -56,20 +56,22 @@ Deno.serve(async (req) => {
   const plan = profile.plan === 'pro' || profile.plan === 'business' ? profile.plan : 'free';
   const limit = LIMITS[plan];
 
-  // 月が変わっていたらカウントをリセット（毎月の上限）
+  // 有料プランは月が変わったらカウントをリセット（毎月の上限）。
+  // 無料プランは月でリセットせず、1アカウントあたり累計の上限とする。
   const today = new Date();
   const periodStart = new Date(`${profile.ai_period_start}T00:00:00Z`);
   const sameMonth =
     today.getUTCFullYear() === periodStart.getUTCFullYear() &&
     today.getUTCMonth() === periodStart.getUTCMonth();
-  const used = sameMonth ? (profile.ai_used ?? 0) : 0;
-  const newPeriodStart = sameMonth ? profile.ai_period_start : today.toISOString().slice(0, 10);
+  const resets = plan !== 'free' && !sameMonth;
+  const used = resets ? 0 : (profile.ai_used ?? 0);
+  const newPeriodStart = resets ? today.toISOString().slice(0, 10) : profile.ai_period_start;
 
   // 上限に達していたら止める
   if (used >= limit) {
     const msg =
       plan === 'free'
-        ? `今月のAI生成回数の上限（${limit}回）に達しました。Proプランなら月${LIMITS.pro}回まで使えます。`
+        ? `無料プランのAI生成は1アカウント${limit}回までです。Proプランなら月${LIMITS.pro}回使えます。`
         : `今月のAI生成回数の上限（${limit}回）に達しました。来月またご利用いただけます。`;
     return json({ error: msg, code: 'AI_LIMIT', plan, limit, used }, 429);
   }

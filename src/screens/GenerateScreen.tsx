@@ -282,12 +282,13 @@ export default function GenerateScreen() {
       {usage && (
         <View style={styles.usageBox}>
           <Text style={styles.usageText}>
-            今月のAI生成：あと <Text style={styles.usageStrong}>{usage.remaining}</Text> 回
+            {usage.plan === 'free' ? 'AI生成（無料・累計）' : '今月のAI生成'}：あと{' '}
+            <Text style={styles.usageStrong}>{usage.remaining}</Text> 回
             （{usage.used}/{usage.limit}）
           </Text>
           {usage.plan === 'free' && usage.remaining <= 3 && (
             <Text style={styles.usageWarn}>
-              残りわずかです。Proなら月50回、ビジネスなら月300回まで使えます。
+              無料は1アカウント{usage.limit}回までです。Proなら月50回、ビジネスなら月300回まで使えます。
             </Text>
           )}
         </View>
