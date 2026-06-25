@@ -212,7 +212,7 @@ export default function ScheduleScreen() {
   const [dateText, setDateText] = useState('');
   const [type, setType] = useState<'feed' | 'story'>('feed');
   const [repeat, setRepeat] = useState<RepeatOption>('none');
-  const [showSchedule, setShowSchedule] = useState(false); // 「予約する」を押したら日時入力を表示
+  const [scheduleModalVisible, setScheduleModalVisible] = useState(false); // 「予約する」で日時入力を別画面表示
   const [plan, setPlan] = useState<Plan>('free');
   const [nowSub, setNowSub] = useState<'menu' | 'reel' | 'roster'>('menu'); // 投稿タブ内の表示
 
@@ -389,7 +389,7 @@ export default function ScheduleScreen() {
     setStoryTextColor('#FFFFFF');
     setStoryTransform({ ...DEFAULT_TRANSFORM });
     setRepeat('none');
-    setShowSchedule(false);
+    setScheduleModalVisible(false);
     setModalVisible(true);
   };
 
@@ -1031,6 +1031,7 @@ export default function ScheduleScreen() {
         access_token: instagramCredentials?.accessToken || undefined,
       });
       clearDraft();
+      setScheduleModalVisible(false);
       setModalVisible(false);
       await fetchPosts();
     } catch (e) {
@@ -1887,81 +1888,16 @@ export default function ScheduleScreen() {
             </TouchableOpacity>
             <Text style={styles.publishNowHint}>※ すぐにInstagramへ投稿します（履歴に残ります）</Text>
 
-            {/* ② 予約する（押してから日時を入力する） */}
+            {/* ② 予約する（押すと別画面で日時を入力） */}
             <Text style={styles.orDivider}>または、日時を決めて予約する</Text>
-            {!showSchedule ? (
-              <TouchableOpacity
-                style={styles.scheduleSaveBtn}
-                onPress={() => setShowSchedule(true)}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.publishNowText}>📅 予約する</Text>
-              </TouchableOpacity>
-            ) : (
-              <>
-                <Text style={styles.quickLabel}>おすすめ時間帯</Text>
-                <View style={styles.quickDatesGrid}>
-                  {quickDates.map((qd) => (
-                    <TouchableOpacity
-                      key={qd.value}
-                      style={[styles.quickDateBtn, dateText === qd.value && styles.quickDateBtnActive, qd.isOptimal && styles.quickDateBtnOptimal]}
-                      onPress={() => setDateText(qd.value)}
-                    >
-                      {qd.isOptimal && <Text style={styles.quickDateOptimalDot}>●</Text>}
-                      <Text style={[styles.quickDateText, dateText === qd.value && styles.quickDateTextActive]}>
-                        {qd.label}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-                <TextInput
-                  style={[styles.input, { marginTop: SPACING.sm }]}
-                  value={dateText}
-                  onChangeText={setDateText}
-                  placeholder="例: 2026-06-15T18:00"
-                  placeholderTextColor={COLORS.textMuted}
-                  autoCapitalize="none"
-                />
-                <Text style={styles.fieldLabel}>くりかえし {!canRecurring(plan) && '⭐Pro'}</Text>
-                <View style={styles.repeatRow}>
-                  {REPEAT_OPTIONS.map((opt) => {
-                    const active = repeat === opt.key;
-                    const locked = opt.key !== 'none' && !canRecurring(plan);
-                    return (
-                      <TouchableOpacity
-                        key={opt.key}
-                        style={[styles.repeatBtn, active && styles.repeatBtnActive]}
-                        onPress={() => selectRepeat(opt.key)}
-                        activeOpacity={0.85}
-                      >
-                        <Text style={[styles.repeatBtnText, active && styles.repeatBtnTextActive]}>
-                          {opt.label}
-                          {locked ? ' 🔒' : ''}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-                {repeat !== 'none' && (
-                  <Text style={styles.repeatHint}>
-                    🔁 上の日時を1回目として、{REPEAT_SHORT[repeat]}くりかえし自動投稿します
-                  </Text>
-                )}
-                <TouchableOpacity
-                  style={[styles.scheduleSaveBtn, saving && styles.publishNowBtnDisabled]}
-                  onPress={handleSave}
-                  disabled={saving}
-                  activeOpacity={0.85}
-                >
-                  {saving ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <Text style={styles.publishNowText}>📅 この日時で予約する</Text>
-                  )}
-                </TouchableOpacity>
-                <Text style={styles.publishNowHint}>※ 指定した日時に自動で投稿されます</Text>
-              </>
-            )}
+            <TouchableOpacity
+              style={styles.scheduleSaveBtn}
+              onPress={() => setScheduleModalVisible(true)}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.publishNowText}>📅 予約する</Text>
+            </TouchableOpacity>
+            <Text style={styles.publishNowHint}>※ 次の画面で日時を選びます</Text>
 
             {/* ③ 下書き保存（日時は決めずに内容だけ保存） */}
             <Text style={styles.orDivider}>または、あとで決める</Text>
@@ -2109,6 +2045,94 @@ export default function ScheduleScreen() {
                 <ActivityIndicator color="#fff" />
               ) : (
                 <Text style={styles.publishNowText}>💾 変更を保存する</Text>
+              )}
+            </TouchableOpacity>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* 予約日時の入力（別画面） */}
+      <Modal visible={scheduleModalVisible} animationType="slide" presentationStyle="pageSheet">
+        <KeyboardAvoidingView
+          style={styles.modal}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => setScheduleModalVisible(false)}>
+              <Text style={styles.modalCancel}>戻る</Text>
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>予約日時を設定</Text>
+            <View style={{ width: 48 }} />
+          </View>
+
+          <ScrollView style={styles.modalBody} keyboardShouldPersistTaps="handled">
+            <Text style={styles.quickLabel}>おすすめの時間帯から選ぶ</Text>
+            <View style={styles.quickDatesGrid}>
+              {quickDates.map((q) => {
+                const active = dateText === q.value;
+                return (
+                  <TouchableOpacity
+                    key={q.value}
+                    style={[
+                      styles.quickDateBtn,
+                      q.isOptimal && styles.quickDateBtnOptimal,
+                      active && styles.quickDateBtnActive,
+                    ]}
+                    onPress={() => setDateText(q.value)}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={[styles.quickDateText, active && styles.quickDateTextActive]}>
+                      {q.isOptimal && <Text style={styles.quickDateOptimalDot}>● </Text>}
+                      {q.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <Text style={styles.fieldLabel}>日時を直接入力する</Text>
+            <TextInput
+              style={styles.input}
+              value={dateText}
+              onChangeText={setDateText}
+              placeholder="例: 2026-06-15T18:00"
+              placeholderTextColor={COLORS.textMuted}
+              autoCapitalize="none"
+            />
+
+            <Text style={styles.fieldLabel}>くりかえし {!canRecurring(plan) && '⭐Pro'}</Text>
+            <View style={styles.repeatRow}>
+              {REPEAT_OPTIONS.map((opt) => {
+                const active = repeat === opt.key;
+                const locked = opt.key !== 'none' && !canRecurring(plan);
+                return (
+                  <TouchableOpacity
+                    key={opt.key}
+                    style={[styles.repeatBtn, active && styles.repeatBtnActive]}
+                    onPress={() => selectRepeat(opt.key)}
+                  >
+                    <Text style={[styles.repeatBtnText, active && styles.repeatBtnTextActive]}>
+                      {opt.label}
+                      {locked ? ' 🔒' : ''}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            <Text style={styles.repeatHint}>
+              ※ くりかえしを設定すると、指定した間隔で自動的に投稿されます
+            </Text>
+
+            <TouchableOpacity
+              style={[styles.publishNowBtn, saving && styles.publishNowBtnDisabled]}
+              onPress={handleSave}
+              disabled={saving}
+              activeOpacity={0.85}
+            >
+              {saving ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.publishNowText}>📅 この日時で予約する</Text>
               )}
             </TouchableOpacity>
           </ScrollView>
