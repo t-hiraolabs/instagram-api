@@ -27,8 +27,8 @@ import StoryEditor from '../components/StoryEditor';
 import ReelScreen from './ReelScreen';
 import RosterScreen from './RosterScreen';
 import { addTextToVideo, composeImageWithHeadline } from '../utils/createReel';
-import { generateStory, generatePost, generateFromImage, generateFromImages, refineCaption, generateFromTopPosts } from '../services/aiService';
-import { getInsightsSummary, getTopPostsForGeneration } from '../services/insightsService';
+import { generateStory, generatePost, generateFromImage, generateFromImages, refineCaption } from '../services/aiService';
+import { getTopPostsForGeneration } from '../services/insightsService';
 
 // 動画の1フレームを取り出してbase64画像にする（AI見出し生成用・web）
 function extractVideoFrame(blob: Blob): Promise<{ base64: string; mime: string }> {
@@ -84,7 +84,7 @@ import {
 import { ensureLoggedIn } from '../utils/requireLogin';
 import { useAppStore } from '../store/appStore';
 import { publishNow } from '../services/publishNow';
-import { Plan, canRecurring, canAnalytics } from '../utils/plans';
+import { Plan, canRecurring } from '../utils/plans';
 
 type Filter = 'all' | 'draft' | 'pending' | 'published' | 'failed';
 
@@ -673,52 +673,6 @@ export default function ScheduleScreen({ route }: any) {
         industry: brandSettings.industry,
         instruction: aiInstruction.trim() || undefined,
         topPosts,
-      });
-      setCaption(g.caption);
-      setHashtagsText(g.hashtags.join(' '));
-    } catch (e) {
-      alertMsg(e instanceof Error ? e.message : 'AI生成に失敗しました');
-    } finally {
-      setAiLoading(false);
-    }
-  };
-
-  // 過去の人気投稿（いいね数）を分析してキャプションを生成（ビジネス限定）
-  const handleGenerateFromTopPosts = async () => {
-    if (!canAnalytics(plan)) {
-      alertMsg(
-        '「過去の人気投稿から作る」はビジネスプラン限定です。プロフィール画面からアップグレードできます。',
-        '⭐ ビジネス限定の機能です'
-      );
-      return;
-    }
-    if (!instagramCredentials?.accessToken) {
-      alertMsg('先にプロフィール画面でInstagramを連携してください');
-      return;
-    }
-    if (!(await ensureLoggedIn('AI生成を使うにはログインが必要です'))) return;
-    setAiLoading(true);
-    try {
-      const insights = await getInsightsSummary(instagramCredentials.accessToken, 24);
-      const topPosts = insights.media
-        .filter((m) => (m.caption ?? '').trim().length > 0)
-        .sort((a, b) => (b.like_count ?? 0) - (a.like_count ?? 0))
-        .slice(0, 5)
-        .map((m) => ({
-          caption: m.caption ?? '',
-          likes: m.like_count ?? 0,
-          comments: m.comments_count ?? 0,
-        }));
-      if (topPosts.length === 0) {
-        alertMsg('分析できる過去の投稿が見つかりませんでした。投稿が増えてからお試しください。');
-        return;
-      }
-      const g = await generateFromTopPosts({
-        theme: feedTheme.trim(),
-        topPosts,
-        tone: brandSettings.tone || '明るい・ポジティブ',
-        industry: brandSettings.industry,
-        instruction: aiInstruction.trim() || undefined,
       });
       setCaption(g.caption);
       setHashtagsText(g.hashtags.join(' '));
@@ -1717,28 +1671,6 @@ export default function ScheduleScreen({ route }: any) {
                         <ActivityIndicator color="#fff" />
                       ) : (
                         <Text style={styles.aiBtnText}>📷 選んだ写真から作る</Text>
-                      )}
-                    </TouchableOpacity>
-                  </View>
-
-                  {/* 方法C: 過去の人気投稿から（ビジネス限定） */}
-                  <View style={styles.aiMethod}>
-                    <Text style={styles.aiMethodTitle}>
-                      📊 過去の人気投稿から作る {!canAnalytics(plan) && '⭐ビジネス'}
-                    </Text>
-                    <Text style={styles.aiHintText}>
-                      連携中アカウントのいいね数を分析し、反応が良かった投稿の傾向をふまえて作ります（テーマ欄は任意）
-                    </Text>
-                    <TouchableOpacity
-                      style={[styles.aiBtn, aiLoading && styles.publishNowBtnDisabled]}
-                      onPress={handleGenerateFromTopPosts}
-                      disabled={aiLoading}
-                      activeOpacity={0.85}
-                    >
-                      {aiLoading ? (
-                        <ActivityIndicator color="#fff" />
-                      ) : (
-                        <Text style={styles.aiBtnText}>📊 人気投稿の傾向から作る</Text>
                       )}
                     </TouchableOpacity>
                   </View>
