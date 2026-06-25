@@ -38,6 +38,25 @@ function getBrandContext(): string {
   return parts.length > 0 ? `\n\n【ブランド情報】\n${parts.join('\n')}` : '';
 }
 
+export interface TopPost {
+  caption: string;
+  likes: number;
+  comments: number;
+}
+
+/** 過去の人気投稿をプロンプトに差し込む文脈ブロックを作る（空なら空文字） */
+function topPostsContext(topPosts?: TopPost[]): string {
+  if (!topPosts || topPosts.length === 0) return '';
+  const ranked = topPosts
+    .slice(0, 5)
+    .map(
+      (p, i) =>
+        `${i + 1}位（❤️${p.likes} / 💬${p.comments}）${(p.caption || '（キャプションなし）').slice(0, 200)}`
+    )
+    .join('\n');
+  return `\n\n【このアカウントで過去に反応が良かった投稿】\n${ranked}\n\n上記の傾向（よく反応されるテーマ・トーン・文章の長さ・絵文字や改行・ハッシュタグの使い方）を分析し、その成功パターンを今回の生成に反映してください。`;
+}
+
 interface GeneratePostInput {
   theme: string;
   tone: string;
@@ -46,6 +65,7 @@ interface GeneratePostInput {
   language: 'ja' | 'en';
   industry?: string;
   instruction?: string;
+  topPosts?: TopPost[];
 }
 
 interface GeneratedPost {
@@ -97,7 +117,7 @@ export async function generatePost(input: GeneratePostInput): Promise<GeneratedP
 日本のInstagramユーザー文化（ハッシュタグ検索が活発・グローバル平均の3倍、ビジュアル重視、「映え」文化）を理解した最適な文章を作ります。
 必ずJSONフォーマットだけで返答してください。余分なテキストは不要です。`;
 
-  const prompt = `以下の条件でInstagramのフィード投稿を生成してください。${brandCtx}
+  const prompt = `以下の条件でInstagramのフィード投稿を生成してください。${brandCtx}${topPostsContext(input.topPosts)}
 
 テーマ: ${input.theme}
 トーン: ${input.tone}
@@ -277,6 +297,7 @@ export async function generateFromImage(input: {
   tone: string;
   industry?: string;
   instruction?: string;
+  topPosts?: TopPost[];
 }): Promise<GeneratedPost> {
   const brandCtx = getBrandContext();
   const labels = { feed: 'フィード投稿', story: 'ストーリー', reel: 'リール' };
@@ -310,7 +331,7 @@ export async function generateFromImage(input: {
               },
               {
                 type: 'text',
-                text: `この画像からInstagram${labels[input.contentType]}のコンテンツを生成してください。${brandCtx}
+                text: `この画像からInstagram${labels[input.contentType]}のコンテンツを生成してください。${brandCtx}${topPostsContext(input.topPosts)}
 トーン: ${input.tone}
 ${input.industry ? `業種: ${input.industry}` : ''}
 ${input.instruction ? `追加の指示（最優先で従う）: ${input.instruction}` : ''}
@@ -343,6 +364,7 @@ export async function generateFromImages(input: {
   tone: string;
   industry?: string;
   instruction?: string;
+  topPosts?: TopPost[];
 }): Promise<GeneratedPost> {
   const brandCtx = getBrandContext();
   const systemPrompt = `あなたは日本のInstagramマーケティングの専門家です。
@@ -355,7 +377,7 @@ export async function generateFromImages(input: {
   }));
   content.push({
     type: 'text',
-    text: `これら${input.images.length}枚の写真（カルーセル投稿）に合うInstagramフィードのキャプションを1つ作ってください。${brandCtx}
+    text: `これら${input.images.length}枚の写真（カルーセル投稿）に合うInstagramフィードのキャプションを1つ作ってください。${brandCtx}${topPostsContext(input.topPosts)}
 トーン: ${input.tone}
 ${input.industry ? `業種: ${input.industry}` : ''}
 ${input.instruction ? `追加の指示（最優先で従う）: ${input.instruction}` : ''}

@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   Platform,
   Linking,
+  Switch,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as SecureStore from 'expo-secure-store';
@@ -21,7 +22,7 @@ import { ACCOUNT_THEMES } from '../utils/accountThemes';
 import { supabase } from '../services/supabaseClient';
 import { getMyPlan } from '../services/scheduleService';
 import { createCheckoutUrl } from '../services/billingService';
-import { PLANS, Plan, PLAN_RANK } from '../utils/plans';
+import { PLANS, Plan, PLAN_RANK, canAnalytics } from '../utils/plans';
 import { connectInstagram, clearInstagramStorage, SK_USER_ID, SK_TOKEN, SK_USERNAME, SK_PICTURE } from '../utils/instagram';
 
 const SK_BRAND = 'brand_settings_v1';
@@ -403,6 +404,29 @@ export default function ProfileScreen() {
               ))}
             </View>
 
+            <Text style={styles.fieldLabel}>
+              過去の人気投稿を反映 {!canAnalytics(currentPlan) && '⭐ビジネス'}
+            </Text>
+            <View style={styles.insightToggleRow}>
+              <View style={styles.insightToggleTextWrap}>
+                <Text style={styles.insightToggleTitle}>反応が良かった投稿の傾向をAIに反映</Text>
+                <Text style={styles.insightToggleDesc}>
+                  ONにすると、テーマや写真からの生成時に、連携アカウントのいいね数が多い投稿の傾向を自動で分析して文章に反映します。
+                </Text>
+              </View>
+              <Switch
+                value={draftBrand.useTopPostsInsight}
+                disabled={!canAnalytics(currentPlan)}
+                onValueChange={(v) => setDraftBrand((p) => ({ ...p, useTopPostsInsight: v }))}
+                trackColor={{ true: COLORS.primary, false: COLORS.border }}
+              />
+            </View>
+            {!canAnalytics(currentPlan) && (
+              <Text style={styles.insightToggleLocked}>
+                この機能はビジネスプラン限定です。
+              </Text>
+            )}
+
             <View style={styles.brandTip}>
               <Text style={styles.brandTipText}>
                 💡 ブランド設定を入力するとAIが自動的に業種やブランドに合わせた投稿を生成します
@@ -647,6 +671,19 @@ const styles = StyleSheet.create({
   toneBtnActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   toneBtnText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '500' },
   toneBtnTextActive: { color: '#fff' },
+  insightToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.md,
+    padding: SPACING.md,
+    marginBottom: SPACING.sm,
+  },
+  insightToggleTextWrap: { flex: 1 },
+  insightToggleTitle: { color: COLORS.text, fontSize: 14, fontWeight: '600', marginBottom: 2 },
+  insightToggleDesc: { color: COLORS.textSecondary, fontSize: 12, lineHeight: 17 },
+  insightToggleLocked: { color: COLORS.textMuted, fontSize: 12, marginBottom: SPACING.sm },
   brandTip: {
     backgroundColor: COLORS.secondary + '18',
     borderRadius: RADIUS.md,

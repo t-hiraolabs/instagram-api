@@ -22,6 +22,8 @@ export interface BrandSettings {
   targetAudience: string;
   tone: string;
   apiKey: string;
+  /** ビジネス限定: ONのとき、過去の人気投稿の傾向をAI生成に自動で反映する */
+  useTopPostsInsight: boolean;
 }
 
 interface ScheduledPost {
@@ -80,6 +82,7 @@ export const useAppStore = create<AppState>((set) => ({
     targetAudience: '',
     tone: '明るい・ポジティブ',
     apiKey: '',
+    useTopPostsInsight: false,
   },
   setBrandSettings: (settings) =>
     set((state) => ({ brandSettings: { ...state.brandSettings, ...settings } })),

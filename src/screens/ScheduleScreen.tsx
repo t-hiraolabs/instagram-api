@@ -615,6 +615,7 @@ export default function ScheduleScreen({ route }: any) {
     if (!(await ensureLoggedIn('AI生成を使うにはログインが必要です'))) return;
     setAiLoading(true);
     try {
+      const topPosts = await fetchTopPostsIfEnabled();
       const g = await generatePost({
         theme: feedTheme.trim(),
         tone: brandSettings.tone || '明るい・ポジティブ',
@@ -623,6 +624,7 @@ export default function ScheduleScreen({ route }: any) {
         language: 'ja',
         industry: brandSettings.industry,
         instruction: aiInstruction.trim() || undefined,
+        topPosts,
       });
       setCaption(g.caption);
       setHashtagsText(g.hashtags.join(' '));
@@ -657,11 +659,13 @@ export default function ScheduleScreen({ route }: any) {
         alertMsg('写真の読み込みに失敗しました');
         return;
       }
+      const topPosts = await fetchTopPostsIfEnabled();
       const g = await generateFromImages({
         images,
         tone: brandSettings.tone || '明るい・ポジティブ',
         industry: brandSettings.industry,
         instruction: aiInstruction.trim() || undefined,
+        topPosts,
       });
       setCaption(g.caption);
       setHashtagsText(g.hashtags.join(' '));
@@ -669,6 +673,29 @@ export default function ScheduleScreen({ route }: any) {
       alertMsg(e instanceof Error ? e.message : 'AI生成に失敗しました');
     } finally {
       setAiLoading(false);
+    }
+  };
+
+  // 設定がONなら、連携アカウントの過去人気投稿（上位5件）を取得して返す。
+  // OFF・非ビジネス・未連携・失敗時は undefined（通常生成にフォールバック）
+  const fetchTopPostsIfEnabled = async () => {
+    if (!brandSettings.useTopPostsInsight) return undefined;
+    if (!canAnalytics(plan)) return undefined;
+    if (!instagramCredentials?.accessToken) return undefined;
+    try {
+      const insights = await getInsightsSummary(instagramCredentials.accessToken, 24);
+      const top = insights.media
+        .filter((m) => (m.caption ?? '').trim().length > 0)
+        .sort((a, b) => (b.like_count ?? 0) - (a.like_count ?? 0))
+        .slice(0, 5)
+        .map((m) => ({
+          caption: m.caption ?? '',
+          likes: m.like_count ?? 0,
+          comments: m.comments_count ?? 0,
+        }));
+      return top.length > 0 ? top : undefined;
+    } catch {
+      return undefined;
     }
   };
 
