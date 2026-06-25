@@ -26,7 +26,7 @@ export interface CreateScheduledPostInput {
   repeat?: RepeatOption;
   instagram_user_id?: string;
   access_token?: string;
-  status?: 'pending' | 'draft';
+  status?: 'pending' | 'draft' | 'published';
 }
 
 export async function getScheduledPosts(): Promise<ScheduledPost[]> {

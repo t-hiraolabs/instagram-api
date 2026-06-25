@@ -165,9 +165,23 @@ const REPEAT_SHORT: Record<RepeatOption, string> = {
   weekdays: '平日',
 };
 
-export default function ScheduleScreen({ route }: any) {
-  // mode='now' は「投稿」タブ（今すぐ投稿のみ）／ 'schedule' は「予約投稿」タブ（予約のみ）
-  const mode: 'now' | 'schedule' = route?.params?.mode === 'now' ? 'now' : 'schedule';
+// カレンダーで状態を色分けするための定義（予約中=青/投稿済み=緑/下書き=グレー/失敗=赤）
+type PostStatus = 'pending' | 'published' | 'draft' | 'failed';
+const STATUS_ORDER: PostStatus[] = ['pending', 'published', 'draft', 'failed'];
+const STATUS_COLORS: Record<PostStatus, string> = {
+  pending: '#4FC3F7',
+  published: '#4CAF50',
+  draft: '#888888',
+  failed: '#FF5252',
+};
+const STATUS_LABELS: Record<PostStatus, string> = {
+  pending: '予約中',
+  published: '投稿済み',
+  draft: '下書き',
+  failed: '失敗',
+};
+
+export default function ScheduleScreen() {
   const insets = useSafeAreaInsets();
   const draft = useAppStore((s) => s.draft);
   const clearDraft = useAppStore((s) => s.clearDraft);
@@ -930,6 +944,26 @@ export default function ScheduleScreen({ route }: any) {
         instagram_user_id: instagramCredentials.userId,
         access_token: instagramCredentials.accessToken,
       });
+      // 投稿履歴として記録（status:'published'。pendingではないので無料の予約2件制限には当たらない）
+      try {
+        await createScheduledPost({
+          caption: caption.trim(),
+          hashtags: buildHashtags(),
+          image_url: isStory
+            ? storyMedia!.url
+            : type === 'feed' && imageUrls.length > 1
+              ? imageUrls.join('\n')
+              : imageUrl.trim() || undefined,
+          scheduled_at: new Date(),
+          type,
+          status: 'published',
+          instagram_user_id: instagramCredentials.userId,
+          access_token: instagramCredentials.accessToken,
+        });
+        await fetchPosts();
+      } catch {
+        // 履歴の記録に失敗しても投稿自体は成功しているので、続行する
+      }
       clearDraft();
       setModalVisible(false);
       const kind = result.posted_type === 'story' ? 'ストーリー' : 'フィード';
@@ -1274,10 +1308,10 @@ export default function ScheduleScreen({ route }: any) {
   );
 
   // 投稿タブのサブ画面（リール／本日の出勤）
-  if (mode === 'now' && nowSub === 'reel') {
+  if (nowSub === 'reel') {
     return <ReelScreen onBack={() => setNowSub('menu')} />;
   }
-  if (mode === 'now' && nowSub === 'roster') {
+  if (nowSub === 'roster') {
     return <RosterScreen onBack={() => setNowSub('menu')} />;
   }
 
@@ -1288,42 +1322,31 @@ export default function ScheduleScreen({ route }: any) {
         contentContainerStyle={{ paddingTop: insets.top + SPACING.md, paddingBottom: 100 }}
       >
         <View style={styles.header}>
-          <Text style={styles.title}>{mode === 'now' ? '投稿' : '予約投稿'}</Text>
+          <Text style={styles.title}>投稿</Text>
           <TouchableOpacity style={styles.addBtn} onPress={openModal}>
-            <Text style={styles.addBtnText}>
-              {mode === 'now' ? '＋ 投稿を作成' : '＋ 追加'}
-            </Text>
+            <Text style={styles.addBtnText}>＋ 投稿を作成</Text>
           </TouchableOpacity>
         </View>
 
-        {mode === 'now' ? (
-          /* 「投稿」タブ: 何を作るか選ぶ */
-          <View style={styles.empty}>
-            <Text style={styles.emptyEmoji}>📸</Text>
-            <Text style={styles.emptyTitle}>何を投稿しますか？</Text>
-            <Text style={styles.emptyDesc}>
-              作成して、すぐにInstagramへ投稿できます
-            </Text>
-            <TouchableOpacity style={styles.emptyAddBtn} onPress={openModal}>
-              <Text style={styles.emptyAddBtnText}>📷 フィード・ストーリーを作成</Text>
+        {/* 何を作るか選ぶ */}
+        <View style={styles.createMenu}>
+          <Text style={styles.createMenuTitle}>何を投稿しますか？</Text>
+          <View style={styles.createMenuRow}>
+            <TouchableOpacity style={styles.createMenuBtn} onPress={openModal} activeOpacity={0.85}>
+              <Text style={styles.createMenuEmoji}>📷</Text>
+              <Text style={styles.createMenuLabel}>フィード・ストーリー</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.emptyAddBtn, styles.reelChoiceBtn]}
+              style={styles.createMenuBtn}
               onPress={() => setNowSub('reel')}
+              activeOpacity={0.85}
             >
-              <Text style={styles.emptyAddBtnText}>🎬 リールを作成</Text>
+              <Text style={styles.createMenuEmoji}>🎬</Text>
+              <Text style={styles.createMenuLabel}>リール</Text>
             </TouchableOpacity>
-            {/* 「本日の出勤」は機能を練ってから公開予定。準備ができたら下を有効化する
-            <TouchableOpacity
-              style={[styles.emptyAddBtn, styles.rosterChoiceBtn]}
-              onPress={() => setNowSub('roster')}
-            >
-              <Text style={styles.emptyAddBtnText}>🗓 本日の出勤を作成</Text>
-            </TouchableOpacity>
-            */}
           </View>
-        ) : (
-          <>
+        </View>
+
         {/* Japan best time hint */}
         <View style={styles.hintCard}>
           <Text style={styles.hintText}>
@@ -1370,10 +1393,10 @@ export default function ScheduleScreen({ route }: any) {
             ) : filtered.length === 0 ? (
               <View style={styles.empty}>
                 <Text style={styles.emptyEmoji}>📭</Text>
-                <Text style={styles.emptyTitle}>予約投稿はありません</Text>
-                <Text style={styles.emptyDesc}>AI生成した投稿を最適な時間に自動投稿できます</Text>
+                <Text style={styles.emptyTitle}>まだ投稿がありません</Text>
+                <Text style={styles.emptyDesc}>今すぐ投稿も、予約投稿もここに履歴として残ります</Text>
                 <TouchableOpacity style={styles.emptyAddBtn} onPress={openModal}>
-                  <Text style={styles.emptyAddBtnText}>＋ 最初の予約を追加する</Text>
+                  <Text style={styles.emptyAddBtnText}>＋ 最初の投稿を作成する</Text>
                 </TouchableOpacity>
               </View>
             ) : (
@@ -1417,8 +1440,19 @@ export default function ScheduleScreen({ route }: any) {
                   >
                     <Text style={styles.calDayNum}>{cell}</Text>
                     {cnt > 0 && (
-                      <View style={styles.calDot}>
-                        <Text style={styles.calDotText}>{cnt}</Text>
+                      <View style={styles.calDotRow}>
+                        {STATUS_ORDER.map((st) => {
+                          const c = (postsByDay[key] || []).filter((p) => p.status === st).length;
+                          if (c === 0) return null;
+                          return (
+                            <View
+                              key={st}
+                              style={[styles.calStatusDot, { backgroundColor: STATUS_COLORS[st] }]}
+                            >
+                              <Text style={styles.calStatusDotText}>{c}</Text>
+                            </View>
+                          );
+                        })}
                       </View>
                     )}
                   </TouchableOpacity>
@@ -1426,11 +1460,21 @@ export default function ScheduleScreen({ route }: any) {
               })}
             </View>
 
+            {/* 色の凡例 */}
+            <View style={styles.calLegend}>
+              {STATUS_ORDER.map((st) => (
+                <View key={st} style={styles.calLegendItem}>
+                  <View style={[styles.calLegendDot, { backgroundColor: STATUS_COLORS[st] }]} />
+                  <Text style={styles.calLegendText}>{STATUS_LABELS[st]}</Text>
+                </View>
+              ))}
+            </View>
+
             {calSelected ? (
               <>
-                <Text style={styles.calSelTitle}>{calSelected.replace(/-/g, '/')} の予約</Text>
+                <Text style={styles.calSelTitle}>{calSelected.replace(/-/g, '/')} の投稿</Text>
                 {(postsByDay[calSelected] || []).length === 0 ? (
-                  <Text style={styles.calHint}>この日の予約はありません</Text>
+                  <Text style={styles.calHint}>この日の投稿はありません</Text>
                 ) : (
                   (postsByDay[calSelected] || []).map(renderPostCard)
                 )}
@@ -1438,8 +1482,6 @@ export default function ScheduleScreen({ route }: any) {
             ) : (
               <Text style={styles.calHint}>日付をタップするとその日の予約が見られます</Text>
             )}
-          </>
-        )}
           </>
         )}
       </ScrollView>
@@ -1453,20 +1495,8 @@ export default function ScheduleScreen({ route }: any) {
             <TouchableOpacity onPress={() => setModalVisible(false)}>
               <Text style={styles.modalCancel}>キャンセル</Text>
             </TouchableOpacity>
-            <Text style={styles.modalTitle}>
-              {mode === 'now' ? '投稿を作成' : '予約投稿を追加'}
-            </Text>
-            {mode === 'schedule' ? (
-              <TouchableOpacity onPress={handleSave} disabled={saving}>
-                {saving ? (
-                  <ActivityIndicator color={COLORS.primary} />
-                ) : (
-                  <Text style={styles.modalSave}>保存</Text>
-                )}
-              </TouchableOpacity>
-            ) : (
-              <View style={{ width: 48 }} />
-            )}
+            <Text style={styles.modalTitle}>投稿を作成</Text>
+            <View style={{ width: 48 }} />
           </View>
 
           <ScrollView
@@ -1823,68 +1853,6 @@ export default function ScheduleScreen({ route }: any) {
               </>
             ) : null}
 
-            {mode === 'schedule' && (
-              <>
-                <Text style={styles.fieldLabel}>予約日時</Text>
-
-                {/* Quick date buttons */}
-                <Text style={styles.quickLabel}>おすすめ時間帯</Text>
-                <View style={styles.quickDatesGrid}>
-                  {quickDates.map((qd) => (
-                    <TouchableOpacity
-                      key={qd.value}
-                      style={[styles.quickDateBtn, dateText === qd.value && styles.quickDateBtnActive, qd.isOptimal && styles.quickDateBtnOptimal]}
-                      onPress={() => setDateText(qd.value)}
-                    >
-                      {qd.isOptimal && <Text style={styles.quickDateOptimalDot}>●</Text>}
-                      <Text style={[styles.quickDateText, dateText === qd.value && styles.quickDateTextActive]}>
-                        {qd.label}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-
-                <TextInput
-                  style={[styles.input, { marginTop: SPACING.sm }]}
-                  value={dateText}
-                  onChangeText={setDateText}
-                  placeholder="例: 2026-06-15T18:00"
-                  placeholderTextColor={COLORS.textMuted}
-                  autoCapitalize="none"
-                />
-
-                <Text style={styles.fieldLabel}>
-                  くりかえし {!canRecurring(plan) && '⭐Pro'}
-                </Text>
-                <View style={styles.repeatRow}>
-                  {REPEAT_OPTIONS.map((opt) => {
-                    const active = repeat === opt.key;
-                    const locked = opt.key !== 'none' && !canRecurring(plan);
-                    return (
-                      <TouchableOpacity
-                        key={opt.key}
-                        style={[styles.repeatBtn, active && styles.repeatBtnActive]}
-                        onPress={() => selectRepeat(opt.key)}
-                        activeOpacity={0.85}
-                      >
-                        <Text
-                          style={[styles.repeatBtnText, active && styles.repeatBtnTextActive]}
-                        >
-                          {opt.label}
-                          {locked ? ' 🔒' : ''}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-                {repeat !== 'none' && (
-                  <Text style={styles.repeatHint}>
-                    🔁 上の日時を1回目として、{REPEAT_SHORT[repeat]}くりかえし自動投稿します
-                  </Text>
-                )}
-              </>
-            )}
-
             <Text style={styles.sectionDivider}>Instagram</Text>
             {instagramCredentials ? (
               <View style={styles.igConnectedBox}>
@@ -1900,47 +1868,89 @@ export default function ScheduleScreen({ route }: any) {
               </View>
             )}
 
-            {mode === 'now' ? (
-              <>
-                {/* 今すぐ投稿 */}
-                <TouchableOpacity
-                  style={[styles.publishNowBtn, (publishing || !instagramCredentials) && styles.publishNowBtnDisabled]}
-                  onPress={handlePublishNow}
-                  disabled={publishing || !instagramCredentials}
-                  activeOpacity={0.85}
-                >
-                  {publishing ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <Text style={styles.publishNowText}>🚀 今すぐ投稿する</Text>
-                  )}
-                </TouchableOpacity>
-                <Text style={styles.publishNowHint}>
-                  ※ すぐにInstagramへ投稿します
-                </Text>
-              </>
-            ) : (
-              <>
-                {/* 予約を保存 */}
-                <TouchableOpacity
-                  style={[styles.publishNowBtn, saving && styles.publishNowBtnDisabled]}
-                  onPress={handleSave}
-                  disabled={saving}
-                  activeOpacity={0.85}
-                >
-                  {saving ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <Text style={styles.publishNowText}>📅 この内容で予約する</Text>
-                  )}
-                </TouchableOpacity>
-                <Text style={styles.publishNowHint}>
-                  ※ 指定した日時に自動で投稿されます
-                </Text>
-              </>
-            )}
+            <Text style={styles.sectionDivider}>出し方を選ぶ</Text>
 
-            {/* 下書き保存（日時は決めずに内容だけ保存） */}
+            {/* ① 今すぐ投稿 */}
+            <TouchableOpacity
+              style={[styles.publishNowBtn, (publishing || !instagramCredentials) && styles.publishNowBtnDisabled]}
+              onPress={handlePublishNow}
+              disabled={publishing || !instagramCredentials}
+              activeOpacity={0.85}
+            >
+              {publishing ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.publishNowText}>🚀 今すぐ投稿する</Text>
+              )}
+            </TouchableOpacity>
+            <Text style={styles.publishNowHint}>※ すぐにInstagramへ投稿します（履歴に残ります）</Text>
+
+            {/* ② 予約する（日時を決める） */}
+            <Text style={styles.orDivider}>または、日時を決めて予約する</Text>
+            <Text style={styles.quickLabel}>おすすめ時間帯</Text>
+            <View style={styles.quickDatesGrid}>
+              {quickDates.map((qd) => (
+                <TouchableOpacity
+                  key={qd.value}
+                  style={[styles.quickDateBtn, dateText === qd.value && styles.quickDateBtnActive, qd.isOptimal && styles.quickDateBtnOptimal]}
+                  onPress={() => setDateText(qd.value)}
+                >
+                  {qd.isOptimal && <Text style={styles.quickDateOptimalDot}>●</Text>}
+                  <Text style={[styles.quickDateText, dateText === qd.value && styles.quickDateTextActive]}>
+                    {qd.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <TextInput
+              style={[styles.input, { marginTop: SPACING.sm }]}
+              value={dateText}
+              onChangeText={setDateText}
+              placeholder="例: 2026-06-15T18:00"
+              placeholderTextColor={COLORS.textMuted}
+              autoCapitalize="none"
+            />
+            <Text style={styles.fieldLabel}>くりかえし {!canRecurring(plan) && '⭐Pro'}</Text>
+            <View style={styles.repeatRow}>
+              {REPEAT_OPTIONS.map((opt) => {
+                const active = repeat === opt.key;
+                const locked = opt.key !== 'none' && !canRecurring(plan);
+                return (
+                  <TouchableOpacity
+                    key={opt.key}
+                    style={[styles.repeatBtn, active && styles.repeatBtnActive]}
+                    onPress={() => selectRepeat(opt.key)}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={[styles.repeatBtnText, active && styles.repeatBtnTextActive]}>
+                      {opt.label}
+                      {locked ? ' 🔒' : ''}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            {repeat !== 'none' && (
+              <Text style={styles.repeatHint}>
+                🔁 上の日時を1回目として、{REPEAT_SHORT[repeat]}くりかえし自動投稿します
+              </Text>
+            )}
+            <TouchableOpacity
+              style={[styles.scheduleSaveBtn, saving && styles.publishNowBtnDisabled]}
+              onPress={handleSave}
+              disabled={saving}
+              activeOpacity={0.85}
+            >
+              {saving ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.publishNowText}>📅 この日時で予約する</Text>
+              )}
+            </TouchableOpacity>
+            <Text style={styles.publishNowHint}>※ 指定した日時に自動で投稿されます</Text>
+
+            {/* ③ 下書き保存（日時は決めずに内容だけ保存） */}
+            <Text style={styles.orDivider}>または、あとで決める</Text>
             <TouchableOpacity
               style={[styles.draftSaveBtn, savingDraft && styles.publishNowBtnDisabled]}
               onPress={handleSaveDraft}
@@ -1954,7 +1964,7 @@ export default function ScheduleScreen({ route }: any) {
               )}
             </TouchableOpacity>
             <Text style={styles.publishNowHint}>
-              ※ 日時を決めずに保存。「予約投稿」タブの「下書き」から後で予約できます
+              ※ 日時を決めずに保存。「下書き」から後で予約できます
             </Text>
 
             {type === 'feed' && (
@@ -2431,6 +2441,75 @@ const styles = StyleSheet.create({
   templateTags: { color: '#4FC3F7', fontSize: 12, marginTop: 2 },
   templateActions: { alignItems: 'flex-end', gap: SPACING.sm },
   templateUseText: { color: COLORS.primary, fontSize: 14, fontWeight: '800' },
+  createMenu: {
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+    marginBottom: SPACING.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  createMenuTitle: {
+    color: COLORS.text,
+    fontSize: 15,
+    fontWeight: '800',
+    marginBottom: SPACING.sm,
+  },
+  createMenuRow: { flexDirection: 'row', gap: SPACING.sm },
+  createMenuBtn: {
+    flex: 1,
+    backgroundColor: COLORS.surfaceElevated,
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.md,
+    alignItems: 'center',
+    gap: 4,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  createMenuEmoji: { fontSize: 26 },
+  createMenuLabel: { color: COLORS.text, fontSize: 13, fontWeight: '700' },
+  orDivider: {
+    color: COLORS.textMuted,
+    fontSize: 12,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginTop: SPACING.lg,
+    marginBottom: SPACING.sm,
+  },
+  scheduleSaveBtn: {
+    backgroundColor: COLORS.secondary,
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.md,
+    alignItems: 'center',
+    marginTop: SPACING.md,
+  },
+  calDotRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 2,
+    marginTop: 2,
+  },
+  calStatusDot: {
+    minWidth: 14,
+    height: 14,
+    borderRadius: 7,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+  },
+  calStatusDotText: { color: '#fff', fontSize: 9, fontWeight: '800' },
+  calLegend: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: SPACING.md,
+    marginTop: SPACING.md,
+    marginBottom: SPACING.sm,
+  },
+  calLegendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  calLegendDot: { width: 10, height: 10, borderRadius: 5 },
+  calLegendText: { color: COLORS.textMuted, fontSize: 11, fontWeight: '600' },
   typeRow: { flexDirection: 'row', gap: SPACING.sm },
   typeBtn: {
     flex: 1,

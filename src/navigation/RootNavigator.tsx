@@ -53,19 +53,9 @@ function TabNavigator() {
       <Tab.Screen
         name="Post"
         component={ScheduleScreen}
-        initialParams={{ mode: 'now' }}
         options={{
           tabBarLabel: '投稿',
           tabBarIcon: ({ focused }) => <TabIcon name="Post" focused={focused} />,
-        }}
-      />
-      <Tab.Screen
-        name="Schedule"
-        component={ScheduleScreen}
-        initialParams={{ mode: 'schedule' }}
-        options={{
-          tabBarLabel: '予約投稿',
-          tabBarIcon: ({ focused }) => <TabIcon name="Schedule" focused={focused} />,
         }}
       />
       <Tab.Screen
