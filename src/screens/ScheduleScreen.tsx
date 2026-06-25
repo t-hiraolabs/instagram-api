@@ -183,6 +183,7 @@ export default function ScheduleScreen({ route }: any) {
 
   const [caption, setCaption] = useState('');
   const [hashtagsText, setHashtagsText] = useState('');
+  const [newFeedTag, setNewFeedTag] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [imageUrls, setImageUrls] = useState<string[]>([]); // フィードのカルーセル用（複数）
   const [feedPreviews, setFeedPreviews] = useState<string[]>([]); // 選択した写真のサムネ表示用
@@ -815,6 +816,46 @@ export default function ScheduleScreen({ route }: any) {
       .split(/[\s,　]+/)
       .map((h) => h.trim())
       .filter(Boolean);
+
+  // ハッシュタグを1枠ずつ（チップ式）で管理する。canonicalは hashtagsText（スペース区切り）
+  const MAX_TAGS = 30;
+  const feedTags = hashtagsText
+    .split(/[\s,、　]+/)
+    .map((t) => t.trim())
+    .filter(Boolean);
+  const setFeedTags = (tags: string[]) => setHashtagsText(tags.join(' '));
+
+  const addFeedTag = () => {
+    const parsed = newFeedTag
+      .split(/[\s,、　]+/)
+      .map((t) => t.replace(/#/g, '').trim())
+      .filter(Boolean)
+      .map((t) => `#${t}`);
+    if (parsed.length === 0) {
+      setNewFeedTag('');
+      return;
+    }
+    const seen = new Set(feedTags.map((h) => h.toLowerCase()));
+    const merged = [...feedTags];
+    let skipped = false;
+    for (const t of parsed) {
+      if (merged.length >= MAX_TAGS) {
+        skipped = true;
+        break;
+      }
+      if (!seen.has(t.toLowerCase())) {
+        merged.push(t);
+        seen.add(t.toLowerCase());
+      }
+    }
+    setFeedTags(merged);
+    setNewFeedTag('');
+    if (skipped) alertMsg(`ハッシュタグは${MAX_TAGS}個までです`);
+  };
+
+  const removeFeedTag = (index: number) => {
+    setFeedTags(feedTags.filter((_, i) => i !== index));
+  };
 
   // 今すぐInstagramに投稿（テスト/手動投稿）
   const handlePublishNow = async () => {
@@ -1714,14 +1755,41 @@ export default function ScheduleScreen({ route }: any) {
                   multiline
                   numberOfLines={4}
                 />
-                <Text style={styles.fieldLabel}>ハッシュタグ（スペース区切り）</Text>
-                <TextInput
-                  style={styles.input}
-                  value={hashtagsText}
-                  onChangeText={setHashtagsText}
-                  placeholder="#春コーデ #新作 #ファッション"
-                  placeholderTextColor={COLORS.textMuted}
-                />
+                <Text style={styles.fieldLabel}>ハッシュタグ（{feedTags.length}/{MAX_TAGS}）</Text>
+                <View style={styles.tagWrap}>
+                  {feedTags.map((tag, i) => (
+                    <View key={`${tag}-${i}`} style={styles.tagChip}>
+                      <Text style={styles.tagChipText}>{tag}</Text>
+                      <TouchableOpacity
+                        onPress={() => removeFeedTag(i)}
+                        hitSlop={{ top: 8, bottom: 8, left: 4, right: 8 }}
+                      >
+                        <Text style={styles.tagChipRemove}>✕</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                  {feedTags.length === 0 && (
+                    <Text style={styles.tagEmpty}>ハッシュタグはまだありません</Text>
+                  )}
+                </View>
+                <View style={styles.tagAddRow}>
+                  <TextInput
+                    style={styles.tagInput}
+                    value={newFeedTag}
+                    onChangeText={setNewFeedTag}
+                    onSubmitEditing={addFeedTag}
+                    placeholder="#タグを追加（スペースで複数可）"
+                    placeholderTextColor={COLORS.textMuted}
+                    autoCapitalize="none"
+                    returnKeyType="done"
+                  />
+                  <TouchableOpacity style={styles.tagAddBtn} onPress={addFeedTag} activeOpacity={0.85}>
+                    <Text style={styles.tagAddBtnText}>追加</Text>
+                  </TouchableOpacity>
+                </View>
+                {feedTags.length >= MAX_TAGS && (
+                  <Text style={styles.tagWarn}>Instagramのハッシュタグは1投稿{MAX_TAGS}個までです</Text>
+                )}
                 {imageUrl && !imageUploading ? (
                   <Text style={styles.imageReadyText}>
                     ✅ {imageUrls.length > 1 ? `画像${imageUrls.length}枚（カルーセル）の準備ができました` : '画像の準備ができました'}
@@ -2191,6 +2259,40 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   textArea: { minHeight: 100, textAlignVertical: 'top', paddingTop: SPACING.sm },
+  tagWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, marginBottom: SPACING.sm },
+  tagChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: COLORS.surfaceElevated,
+    borderRadius: RADIUS.sm,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+  },
+  tagChipText: { color: '#4FC3F7', fontSize: 13 },
+  tagChipRemove: { color: COLORS.textMuted, fontSize: 13, fontWeight: '700' },
+  tagEmpty: { color: COLORS.textMuted, fontSize: 12 },
+  tagAddRow: { flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.sm },
+  tagInput: {
+    flex: 1,
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    color: COLORS.text,
+    fontSize: 14,
+  },
+  tagAddBtn: {
+    backgroundColor: COLORS.primary,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.md,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  tagAddBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  tagWarn: { color: COLORS.warning, fontSize: 12, marginBottom: SPACING.sm },
   typeRow: { flexDirection: 'row', gap: SPACING.sm },
   typeBtn: {
     flex: 1,
