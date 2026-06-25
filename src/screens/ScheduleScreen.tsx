@@ -181,6 +181,19 @@ const STATUS_LABELS: Record<PostStatus, string> = {
   failed: '失敗',
 };
 
+// web の日付/時間ピッカー（<input type="date|time">）の見た目。RNのStyleSheetは使えないのでCSSで指定
+const webDateInputStyle: React.CSSProperties = {
+  width: '100%',
+  boxSizing: 'border-box',
+  backgroundColor: COLORS.surface,
+  border: `1px solid ${COLORS.border}`,
+  borderRadius: RADIUS.md,
+  padding: '10px 12px',
+  color: COLORS.text,
+  fontSize: 15,
+  colorScheme: 'dark',
+};
+
 export default function ScheduleScreen() {
   const insets = useSafeAreaInsets();
   const draft = useAppStore((s) => s.draft);
@@ -2090,15 +2103,63 @@ export default function ScheduleScreen() {
               })}
             </View>
 
-            <Text style={styles.fieldLabel}>日時を直接入力する</Text>
-            <TextInput
-              style={styles.input}
-              value={dateText}
-              onChangeText={setDateText}
-              placeholder="例: 2026-06-15T18:00"
-              placeholderTextColor={COLORS.textMuted}
-              autoCapitalize="none"
-            />
+            <View style={styles.dateTimeRow}>
+              <View style={styles.dateTimeCol}>
+                <Text style={styles.fieldLabel}>日付</Text>
+                {Platform.OS === 'web' ? (
+                  <input
+                    type="date"
+                    value={dateText.split('T')[0] || ''}
+                    min={todayKey}
+                    onChange={(e: any) => {
+                      const d = e.target.value;
+                      const t = dateText.split('T')[1] || '18:00';
+                      setDateText(d ? `${d}T${t}` : '');
+                    }}
+                    style={webDateInputStyle}
+                  />
+                ) : (
+                  <TextInput
+                    style={styles.input}
+                    value={dateText.split('T')[0] || ''}
+                    onChangeText={(d) => {
+                      const t = dateText.split('T')[1] || '18:00';
+                      setDateText(d ? `${d}T${t}` : '');
+                    }}
+                    placeholder="2026-06-15"
+                    placeholderTextColor={COLORS.textMuted}
+                    autoCapitalize="none"
+                  />
+                )}
+              </View>
+              <View style={styles.dateTimeCol}>
+                <Text style={styles.fieldLabel}>時間</Text>
+                {Platform.OS === 'web' ? (
+                  <input
+                    type="time"
+                    value={dateText.split('T')[1] || ''}
+                    onChange={(e: any) => {
+                      const t = e.target.value;
+                      const d = dateText.split('T')[0] || todayKey;
+                      setDateText(t ? `${d}T${t}` : '');
+                    }}
+                    style={webDateInputStyle}
+                  />
+                ) : (
+                  <TextInput
+                    style={styles.input}
+                    value={dateText.split('T')[1] || ''}
+                    onChangeText={(t) => {
+                      const d = dateText.split('T')[0] || todayKey;
+                      setDateText(t ? `${d}T${t}` : '');
+                    }}
+                    placeholder="18:00"
+                    placeholderTextColor={COLORS.textMuted}
+                    autoCapitalize="none"
+                  />
+                )}
+              </View>
+            </View>
 
             <Text style={styles.fieldLabel}>くりかえし {!canRecurring(plan) && '⭐Pro'}</Text>
             <View style={styles.repeatRow}>
@@ -2409,6 +2470,8 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   textArea: { minHeight: 100, textAlignVertical: 'top', paddingTop: SPACING.sm },
+  dateTimeRow: { flexDirection: 'row', gap: SPACING.sm },
+  dateTimeCol: { flex: 1 },
   tagWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, marginBottom: SPACING.sm },
   tagChip: {
     flexDirection: 'row',
