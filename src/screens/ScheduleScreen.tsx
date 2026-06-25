@@ -28,7 +28,7 @@ import ReelScreen from './ReelScreen';
 import RosterScreen from './RosterScreen';
 import { addTextToVideo, composeImageWithHeadline } from '../utils/createReel';
 import { generateStory, generatePost, generateFromImage, generateFromImages, refineCaption, generateFromTopPosts } from '../services/aiService';
-import { getInsightsSummary } from '../services/insightsService';
+import { getInsightsSummary, getTopPostsForGeneration } from '../services/insightsService';
 
 // 動画の1フレームを取り出してbase64画像にする（AI見出し生成用・web）
 function extractVideoFrame(blob: Blob): Promise<{ base64: string; mime: string }> {
@@ -533,6 +533,7 @@ export default function ScheduleScreen({ route }: any) {
         return;
       }
       const allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+      const topPosts = await getTopPostsForGeneration();
       const g = await generateFromImage({
         imageBase64: base64,
         mimeType: (allowed.includes(mime) ? mime : 'image/jpeg') as 'image/jpeg',
@@ -542,6 +543,7 @@ export default function ScheduleScreen({ route }: any) {
         instruction:
           'ストーリーにのせる短い見出しを1つだけ。8〜14文字、記号や改行・ハッシュタグなし。' +
           (aiInstruction.trim() ? ` ${aiInstruction.trim()}` : ''),
+        topPosts,
       });
       setStoryVideoText((g.caption || '').replace(/[\n#]/g, ' ').trim().slice(0, 24));
     } catch (e) {
@@ -560,11 +562,13 @@ export default function ScheduleScreen({ route }: any) {
     if (!(await ensureLoggedIn('AI生成を使うにはログインが必要です'))) return;
     setAiLoading(true);
     try {
+      const topPosts = await getTopPostsForGeneration();
       const g = await generateStory({
         theme: storyVideoTheme.trim(),
         type: 'announcement',
         details:
           storyVideoTheme.trim() + (aiInstruction.trim() ? ` 指示:${aiInstruction.trim()}` : ''),
+        topPosts,
       });
       setStoryVideoText((g.title || g.bodyText || '').replace(/[\n#]/g, ' ').trim().slice(0, 24));
     } catch (e) {
@@ -588,6 +592,7 @@ export default function ScheduleScreen({ route }: any) {
         alertMsg('動画の読み込みに失敗しました');
         return;
       }
+      const topPosts = await getTopPostsForGeneration();
       const g = await generateFromImage({
         imageBase64: base64,
         mimeType: mime as 'image/jpeg',
@@ -597,6 +602,7 @@ export default function ScheduleScreen({ route }: any) {
         instruction:
           '動画にのせる短い見出しを1つだけ。8〜14文字、記号や改行・ハッシュタグなし。' +
           (aiInstruction.trim() ? ` ${aiInstruction.trim()}` : ''),
+        topPosts,
       });
       setStoryVideoText((g.caption || '').replace(/[\n#]/g, ' ').trim().slice(0, 24));
     } catch (e) {
@@ -615,7 +621,7 @@ export default function ScheduleScreen({ route }: any) {
     if (!(await ensureLoggedIn('AI生成を使うにはログインが必要です'))) return;
     setAiLoading(true);
     try {
-      const topPosts = await fetchTopPostsIfEnabled();
+      const topPosts = await getTopPostsForGeneration();
       const g = await generatePost({
         theme: feedTheme.trim(),
         tone: brandSettings.tone || '明るい・ポジティブ',
@@ -659,7 +665,7 @@ export default function ScheduleScreen({ route }: any) {
         alertMsg('写真の読み込みに失敗しました');
         return;
       }
-      const topPosts = await fetchTopPostsIfEnabled();
+      const topPosts = await getTopPostsForGeneration();
       const g = await generateFromImages({
         images,
         tone: brandSettings.tone || '明るい・ポジティブ',
@@ -673,29 +679,6 @@ export default function ScheduleScreen({ route }: any) {
       alertMsg(e instanceof Error ? e.message : 'AI生成に失敗しました');
     } finally {
       setAiLoading(false);
-    }
-  };
-
-  // 設定がONなら、連携アカウントの過去人気投稿（上位5件）を取得して返す。
-  // OFF・非ビジネス・未連携・失敗時は undefined（通常生成にフォールバック）
-  const fetchTopPostsIfEnabled = async () => {
-    if (!brandSettings.useTopPostsInsight) return undefined;
-    if (!canAnalytics(plan)) return undefined;
-    if (!instagramCredentials?.accessToken) return undefined;
-    try {
-      const insights = await getInsightsSummary(instagramCredentials.accessToken, 24);
-      const top = insights.media
-        .filter((m) => (m.caption ?? '').trim().length > 0)
-        .sort((a, b) => (b.like_count ?? 0) - (a.like_count ?? 0))
-        .slice(0, 5)
-        .map((m) => ({
-          caption: m.caption ?? '',
-          likes: m.like_count ?? 0,
-          comments: m.comments_count ?? 0,
-        }));
-      return top.length > 0 ? top : undefined;
-    } catch {
-      return undefined;
     }
   };
 
@@ -775,10 +758,12 @@ export default function ScheduleScreen({ route }: any) {
     if (!(await ensureLoggedIn('AI生成を使うにはログインが必要です'))) return;
     setAiLoading(true);
     try {
+      const topPosts = await getTopPostsForGeneration();
       const g = await generateStory({
         theme: storyTheme.trim() || storyDetails.trim().slice(0, 20),
         type: 'announcement',
         details: storyDetails.trim() || storyTheme.trim(),
+        topPosts,
       });
       setStoryTitle(g.title);
       setStoryBody(g.bodyText);

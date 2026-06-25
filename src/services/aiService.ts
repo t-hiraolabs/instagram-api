@@ -79,6 +79,7 @@ interface GenerateStoryInput {
   type: 'poll' | 'countdown' | 'quiz' | 'announcement' | 'promotion';
   brandName?: string;
   details: string;
+  topPosts?: TopPost[];
 }
 
 interface GeneratedStory {
@@ -204,7 +205,7 @@ export async function generateStory(input: GenerateStoryInput): Promise<Generate
     promotion: 'プロモーション',
   };
 
-  const prompt = `以下の条件でInstagramストーリーのコンテンツを生成してください。${brandCtx}
+  const prompt = `以下の条件でInstagramストーリーのコンテンツを生成してください。${brandCtx}${topPostsContext(input.topPosts)}
 
 タイプ: ${typeMap[input.type]}
 テーマ: ${input.theme}
@@ -232,13 +233,14 @@ export async function generateReelCaptions(input: {
   count: number;
   industry?: string;
   toneHint?: string;
+  topPosts?: TopPost[];
 }): Promise<string[]> {
   const brandCtx = getBrandContext();
   const systemPrompt = `あなたはInstagramリールの構成作家です。
 日本の個人事業主・中小企業向けに、写真スライドにのせる短いキャプションを作ります。
 必ずJSONフォーマットだけで返答してください。`;
 
-  const prompt = `テーマ「${input.theme}」のInstagramリール用に、スライド${input.count}枚分の短いキャプションを作ってください。${brandCtx}
+  const prompt = `テーマ「${input.theme}」のInstagramリール用に、スライド${input.count}枚分の短いキャプションを作ってください。${brandCtx}${topPostsContext(input.topPosts)}
 ${input.industry ? `業種: ${input.industry}` : ''}
 ${input.toneHint ? `トーン: ${input.toneHint}` : ''}
 

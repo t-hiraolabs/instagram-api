@@ -17,6 +17,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
 import { generatePost, generateFromImage, getSeasonalThemes, INDUSTRIES } from '../services/aiService';
 import { getAiUsage, AiUsage } from '../services/scheduleService';
+import { getTopPostsForGeneration } from '../services/insightsService';
 import { ensureLoggedIn } from '../utils/requireLogin';
 import { useAppStore } from '../store/appStore';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
@@ -100,6 +101,7 @@ export default function GenerateScreen() {
     setResult(null);
     try {
       let generated: GenerationResult;
+      const topPosts = await getTopPostsForGeneration();
 
       if (mode === 'photo') {
         if (!selectedImage?.base64) {
@@ -113,6 +115,7 @@ export default function GenerateScreen() {
           contentType: 'feed',
           tone,
           industry: selectedIndustry,
+          topPosts,
         });
       } else {
         const selectedTheme = customTheme || theme;
@@ -128,6 +131,7 @@ export default function GenerateScreen() {
           includeHashtags: true,
           language: 'ja',
           industry: selectedIndustry,
+          topPosts,
         });
       }
 
