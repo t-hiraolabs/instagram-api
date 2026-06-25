@@ -29,6 +29,12 @@ import RosterScreen from './RosterScreen';
 import { addTextToVideo, composeImageWithHeadline } from '../utils/createReel';
 import { generateStory, generatePost, generateFromImage, generateFromImages, refineCaption } from '../services/aiService';
 import { getTopPostsForGeneration } from '../services/insightsService';
+import {
+  getTemplates,
+  saveTemplate,
+  deleteTemplate,
+  PostTemplate,
+} from '../services/templateService';
 
 // 動画の1フレームを取り出してbase64画像にする（AI見出し生成用・web）
 function extractVideoFrame(blob: Blob): Promise<{ base64: string; mime: string }> {
@@ -195,6 +201,11 @@ export default function ScheduleScreen({ route }: any) {
   const [plan, setPlan] = useState<Plan>('free');
   const [nowSub, setNowSub] = useState<'menu' | 'reel' | 'roster'>('menu'); // 投稿タブ内の表示
 
+  // テンプレート（ひな形）: この端末だけに保存して再利用する
+  const [templates, setTemplates] = useState<PostTemplate[]>([]);
+  const [templatePickerVisible, setTemplatePickerVisible] = useState(false);
+  const [savingTemplate, setSavingTemplate] = useState(false);
+
   // 編集モーダル用
   const [editVisible, setEditVisible] = useState(false);
   const [editingPost, setEditingPost] = useState<ScheduledPost | null>(null);
@@ -302,6 +313,7 @@ export default function ScheduleScreen({ route }: any) {
   useEffect(() => {
     fetchPosts();
     getMyPlan().then(setPlan).catch(() => {});
+    getTemplates().then(setTemplates).catch(() => {});
   }, [fetchPosts]);
 
   // 動画ストーリーのプレビュー：選んだ動画を<video>で表示
@@ -809,6 +821,75 @@ export default function ScheduleScreen({ route }: any) {
 
   const removeFeedTag = (index: number) => {
     setFeedTags(feedTags.filter((_, i) => i !== index));
+  };
+
+  // いまの投稿内容をテンプレート（ひな形）として保存する
+  const handleSaveTemplate = async () => {
+    if (type !== 'feed') {
+      alertMsg('テンプレートはフィード投稿の文章を保存します（ストーリーは未対応）', 'お知らせ');
+      return;
+    }
+    if (!caption.trim() && feedTags.length === 0) {
+      alertMsg('保存するキャプションかハッシュタグを入力してください');
+      return;
+    }
+    const fallbackName =
+      caption.trim().slice(0, 20) || feedTags.join(' ').slice(0, 20) || 'テンプレート';
+    let name = fallbackName;
+    if (Platform.OS === 'web') {
+      const input = window.prompt('テンプレートの名前を入力してください', fallbackName);
+      if (input === null) return; // キャンセル
+      name = input.trim() || fallbackName;
+    }
+    setSavingTemplate(true);
+    try {
+      // カルーセル（複数枚）はテンプレートに含めない。1枚のときだけアップロード済みURLを保存
+      const next = await saveTemplate({
+        name,
+        caption: caption.trim(),
+        hashtags: feedTags,
+        type: 'feed',
+        image_url: imageUrls.length > 1 ? undefined : imageUrl.trim() || undefined,
+      });
+      setTemplates(next);
+      alertMsg('テンプレートに保存しました。次回「テンプレートから選ぶ」で使えます', '保存しました');
+    } catch {
+      alertMsg('テンプレートの保存に失敗しました');
+    } finally {
+      setSavingTemplate(false);
+    }
+  };
+
+  // テンプレートを作成画面に読み込む（編集して再利用できる）
+  const applyTemplate = (t: PostTemplate) => {
+    setType(t.type);
+    setCaption(t.caption);
+    setHashtagsText(t.hashtags.join(' '));
+    if (t.type === 'feed' && t.image_url) {
+      setImageUrl(t.image_url);
+      setImageUrls([t.image_url]);
+      setImagePreview(t.image_url);
+      setFeedPreviews([t.image_url]);
+    }
+    setTemplatePickerVisible(false);
+  };
+
+  const handleDeleteTemplate = (id: string) => {
+    const run = async () => {
+      try {
+        setTemplates(await deleteTemplate(id));
+      } catch {
+        alertMsg('削除に失敗しました');
+      }
+    };
+    if (Platform.OS === 'web') {
+      if (window.confirm('このテンプレートを削除しますか？')) run();
+    } else {
+      Alert.alert('削除', 'テンプレートを削除しますか？', [
+        { text: 'キャンセル', style: 'cancel' },
+        { text: '削除', style: 'destructive', onPress: run },
+      ]);
+    }
   };
 
   // 今すぐInstagramに投稿（テスト/手動投稿）
@@ -1393,6 +1474,18 @@ export default function ScheduleScreen({ route }: any) {
             keyboardShouldPersistTaps="handled"
             scrollEnabled={!storyDragging}
           >
+            {templates.length > 0 && (
+              <TouchableOpacity
+                style={styles.templateOpenBtn}
+                onPress={() => setTemplatePickerVisible(true)}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.templateOpenBtnText}>
+                  📁 テンプレートから選ぶ（{templates.length}）
+                </Text>
+              </TouchableOpacity>
+            )}
+
             <Text style={styles.fieldLabel}>投稿タイプ</Text>
             <View style={styles.typeRow}>
               {(['feed', 'story'] as const).map((t) => (
@@ -1863,6 +1956,27 @@ export default function ScheduleScreen({ route }: any) {
             <Text style={styles.publishNowHint}>
               ※ 日時を決めずに保存。「予約投稿」タブの「下書き」から後で予約できます
             </Text>
+
+            {type === 'feed' && (
+              <>
+                <Text style={styles.sectionDivider}>テンプレート（ひな形）</Text>
+                <TouchableOpacity
+                  style={[styles.templateSaveBtn, savingTemplate && styles.publishNowBtnDisabled]}
+                  onPress={handleSaveTemplate}
+                  disabled={savingTemplate}
+                  activeOpacity={0.85}
+                >
+                  {savingTemplate ? (
+                    <ActivityIndicator color={COLORS.secondary} />
+                  ) : (
+                    <Text style={styles.templateSaveText}>💾 テンプレートとして保存</Text>
+                  )}
+                </TouchableOpacity>
+                <Text style={styles.publishNowHint}>
+                  ※ 文章・ハッシュタグ・画像をこの端末に保存して、次回そのまま使い回せます
+                </Text>
+              </>
+            )}
           </ScrollView>
         </KeyboardAvoidingView>
       </Modal>
@@ -1975,6 +2089,62 @@ export default function ScheduleScreen({ route }: any) {
             </TouchableOpacity>
           </ScrollView>
         </KeyboardAvoidingView>
+      </Modal>
+
+      {/* テンプレート選択モーダル */}
+      <Modal visible={templatePickerVisible} animationType="slide" presentationStyle="pageSheet">
+        <View style={styles.modal}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => setTemplatePickerVisible(false)}>
+              <Text style={styles.modalCancel}>閉じる</Text>
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>テンプレート</Text>
+            <View style={{ width: 48 }} />
+          </View>
+          <ScrollView style={styles.modalBody} keyboardShouldPersistTaps="handled">
+            {templates.length === 0 ? (
+              <View style={styles.empty}>
+                <Text style={styles.emptyEmoji}>📁</Text>
+                <Text style={styles.emptyTitle}>テンプレートはありません</Text>
+                <Text style={styles.emptyDesc}>
+                  投稿作成画面で「テンプレートとして保存」すると、ここに表示されます
+                </Text>
+              </View>
+            ) : (
+              templates.map((t) => (
+                <View key={t.id} style={styles.templateCard}>
+                  <TouchableOpacity
+                    style={{ flex: 1 }}
+                    onPress={() => applyTemplate(t)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.templateName}>
+                      {t.type === 'story' ? '📖' : '📷'} {t.name}
+                    </Text>
+                    {t.caption ? (
+                      <Text style={styles.templateCaption} numberOfLines={2}>
+                        {t.caption}
+                      </Text>
+                    ) : null}
+                    {t.hashtags.length > 0 ? (
+                      <Text style={styles.templateTags} numberOfLines={1}>
+                        {t.hashtags.join(' ')}
+                      </Text>
+                    ) : null}
+                  </TouchableOpacity>
+                  <View style={styles.templateActions}>
+                    <TouchableOpacity onPress={() => applyTemplate(t)} hitSlop={8}>
+                      <Text style={styles.templateUseText}>使う →</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => handleDeleteTemplate(t.id)} hitSlop={8}>
+                      <Text style={styles.deleteBtn}>🗑</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))
+            )}
+          </ScrollView>
+        </View>
       </Modal>
     </View>
   );
@@ -2225,6 +2395,42 @@ const styles = StyleSheet.create({
   },
   tagAddBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
   tagWarn: { color: COLORS.warning, fontSize: 12, marginBottom: SPACING.sm },
+  templateOpenBtn: {
+    backgroundColor: COLORS.surfaceElevated,
+    borderWidth: 1,
+    borderColor: COLORS.secondary + '55',
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.sm,
+    alignItems: 'center',
+    marginBottom: SPACING.md,
+  },
+  templateOpenBtnText: { color: COLORS.secondary, fontSize: 14, fontWeight: '700' },
+  templateSaveBtn: {
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.md,
+    alignItems: 'center',
+    marginTop: SPACING.xs,
+    borderWidth: 1.5,
+    borderColor: COLORS.secondary,
+  },
+  templateSaveText: { color: COLORS.secondary, fontSize: 15, fontWeight: '800' },
+  templateCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+    marginBottom: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  templateName: { color: COLORS.text, fontSize: 15, fontWeight: '800', marginBottom: 2 },
+  templateCaption: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 18 },
+  templateTags: { color: '#4FC3F7', fontSize: 12, marginTop: 2 },
+  templateActions: { alignItems: 'flex-end', gap: SPACING.sm },
+  templateUseText: { color: COLORS.primary, fontSize: 14, fontWeight: '800' },
   typeRow: { flexDirection: 'row', gap: SPACING.sm },
   typeBtn: {
     flex: 1,
