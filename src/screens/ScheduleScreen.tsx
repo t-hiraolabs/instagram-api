@@ -198,7 +198,10 @@ export default function ScheduleScreen() {
   const insets = useSafeAreaInsets();
   const draft = useAppStore((s) => s.draft);
   const clearDraft = useAppStore((s) => s.clearDraft);
-  const instagramCredentials = useAppStore((s) => s.instagramCredentials);
+  const instagramCredentials1 = useAppStore((s) => s.instagramCredentials);
+  const instagramCredentials2 = useAppStore((s) => s.secondInstagramCredentials);
+  const activeAccountSlot = useAppStore((s) => s.activeAccountSlot);
+  const instagramCredentials = activeAccountSlot === 2 ? instagramCredentials2 : instagramCredentials1;
   const brandSettings = useAppStore((s) => s.brandSettings);
 
   const [posts, setPosts] = useState<ScheduledPost[]>([]);

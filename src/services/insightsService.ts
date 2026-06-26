@@ -67,13 +67,14 @@ export async function getInsightsSummary(accessToken: string, limit = 12): Promi
  * 生成系の各画面から呼び、AI生成に成功パターンを差し込むために使う。
  */
 export async function getTopPostsForGeneration(): Promise<TopPost[] | undefined> {
-  const { brandSettings, instagramCredentials } = useAppStore.getState();
+  const { brandSettings, instagramCredentials, secondInstagramCredentials, activeAccountSlot } = useAppStore.getState();
+  const activeCreds = activeAccountSlot === 2 ? secondInstagramCredentials : instagramCredentials;
   if (!brandSettings.useTopPostsInsight) return undefined;
-  if (!instagramCredentials?.accessToken) return undefined;
+  if (!activeCreds?.accessToken) return undefined;
   try {
     const plan = await getMyPlan();
     if (!canAnalytics(plan)) return undefined;
-    const insights = await getInsightsSummary(instagramCredentials.accessToken, 24);
+    const insights = await getInsightsSummary(activeCreds.accessToken, 24);
     const top = insights.media
       .filter((m) => (m.caption ?? '').trim().length > 0)
       .sort((a, b) => (b.like_count ?? 0) - (a.like_count ?? 0))

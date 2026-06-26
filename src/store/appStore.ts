@@ -46,6 +46,9 @@ interface AppState {
   secondInstagramCredentials: InstagramCredentials | null;
   setSecondInstagramCredentials: (creds: InstagramCredentials | null) => void;
 
+  activeAccountSlot: 1 | 2;
+  setActiveAccountSlot: (slot: 1 | 2) => void;
+
   loginPromptVisible: boolean;
   setLoginPromptVisible: (visible: boolean) => void;
 
@@ -76,6 +79,9 @@ export const useAppStore = create<AppState>((set) => ({
 
   secondInstagramCredentials: null,
   setSecondInstagramCredentials: (creds) => set({ secondInstagramCredentials: creds }),
+
+  activeAccountSlot: 1,
+  setActiveAccountSlot: (slot) => set({ activeAccountSlot: slot }),
 
   loginPromptVisible: false,
   setLoginPromptVisible: (visible) => set({ loginPromptVisible: visible }),

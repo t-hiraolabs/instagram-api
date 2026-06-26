@@ -32,6 +32,8 @@ export default function AccountBadge() {
   const setInstagramCredentials = useAppStore((s) => s.setInstagramCredentials);
   const secondInstagramCredentials = useAppStore((s) => s.secondInstagramCredentials);
   const setSecondInstagramCredentials = useAppStore((s) => s.setSecondInstagramCredentials);
+  const activeAccountSlot = useAppStore((s) => s.activeAccountSlot);
+  const setActiveAccountSlot = useAppStore((s) => s.setActiveAccountSlot);
   const authVisible = useAppStore((s) => s.loginPromptVisible);
   const setAuthVisible = useAppStore((s) => s.setLoginPromptVisible);
 
@@ -214,47 +216,51 @@ export default function AccountBadge() {
                 </View>
               </View>
 
-              {/* Instagram連携状態（1つ目） */}
-              <View style={styles.igRow}>
-                <Text style={styles.igLabel}>Instagram①</Text>
-                <View style={styles.igRight}>
-                  <Text style={[styles.igStatus, { color: instagramCredentials ? COLORS.success : COLORS.textMuted }]}>
-                    {instagramCredentials
-                      ? (instagramCredentials.username ? `@${instagramCredentials.username}` : '連携済み')
-                      : '未連携'}
-                  </Text>
-                  {instagramCredentials ? (
-                    <TouchableOpacity style={styles.igDisconnectBtn} onPress={handleDisconnectIg} activeOpacity={0.8}>
-                      <Text style={styles.igDisconnectText}>解除</Text>
-                    </TouchableOpacity>
-                  ) : (
-                    <TouchableOpacity style={styles.igConnectBtn} onPress={handleConnectIg} activeOpacity={0.8}>
-                      <Text style={styles.igConnectText}>連携する</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-              </View>
-
-              {/* Instagram連携状態（2つ目） */}
-              <View style={styles.igRow}>
-                <Text style={styles.igLabel}>Instagram②</Text>
-                <View style={styles.igRight}>
-                  <Text style={[styles.igStatus, { color: secondInstagramCredentials ? COLORS.success : COLORS.textMuted }]}>
-                    {secondInstagramCredentials
-                      ? (secondInstagramCredentials.username ? `@${secondInstagramCredentials.username}` : '連携済み')
-                      : '未連携'}
-                  </Text>
-                  {secondInstagramCredentials ? (
-                    <TouchableOpacity style={styles.igDisconnectBtn} onPress={handleDisconnectIg2} activeOpacity={0.8}>
-                      <Text style={styles.igDisconnectText}>解除</Text>
-                    </TouchableOpacity>
-                  ) : (
-                    <TouchableOpacity style={styles.igConnectBtn} onPress={handleConnectIg2} activeOpacity={0.8}>
-                      <Text style={styles.igConnectText}>連携する</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-              </View>
+              {/* Instagram アカウント切り替え */}
+              <Text style={styles.sectionTitle}>Instagramアカウント</Text>
+              {([
+                { slot: 1 as const, creds: instagramCredentials, onConnect: handleConnectIg, onDisconnect: handleDisconnectIg },
+                { slot: 2 as const, creds: secondInstagramCredentials, onConnect: handleConnectIg2, onDisconnect: handleDisconnectIg2 },
+              ]).map(({ slot, creds, onConnect, onDisconnect }) => {
+                const isActive = activeAccountSlot === slot;
+                return (
+                  <View key={slot} style={[styles.igAccountRow, isActive && styles.igAccountRowActive]}>
+                    <View style={styles.igAccountLeft}>
+                      {isActive && <View style={styles.igActiveDot} />}
+                      <View>
+                        <Text style={[styles.igAccountName, { color: creds ? COLORS.text : COLORS.textMuted }]}>
+                          {creds ? (creds.username ? `@${creds.username}` : '連携済み') : `アカウント${slot}（未連携）`}
+                        </Text>
+                        {isActive && creds && (
+                          <Text style={styles.igActiveLabel}>投稿中のアカウント</Text>
+                        )}
+                      </View>
+                    </View>
+                    <View style={styles.igRight}>
+                      {creds ? (
+                        <>
+                          {!isActive && (
+                            <TouchableOpacity
+                              style={styles.igSwitchBtn}
+                              onPress={() => { setActiveAccountSlot(slot); setVisible(false); }}
+                              activeOpacity={0.8}
+                            >
+                              <Text style={styles.igSwitchText}>切り替え</Text>
+                            </TouchableOpacity>
+                          )}
+                          <TouchableOpacity style={styles.igDisconnectBtn} onPress={onDisconnect} activeOpacity={0.8}>
+                            <Text style={styles.igDisconnectText}>解除</Text>
+                          </TouchableOpacity>
+                        </>
+                      ) : (
+                        <TouchableOpacity style={styles.igConnectBtn} onPress={onConnect} activeOpacity={0.8}>
+                          <Text style={styles.igConnectText}>連携する</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  </View>
+                );
+              })}
 
               {/* 現在のプラン */}
               <Text style={styles.sectionTitle}>現在のプラン</Text>
@@ -407,21 +413,42 @@ const styles = StyleSheet.create({
   avatarText: { color: '#fff', fontSize: 22, fontWeight: '800' },
   email: { color: COLORS.text, fontSize: 15, fontWeight: '700' },
   loggedIn: { color: COLORS.success, fontSize: 12, marginTop: 2 },
-  igRow: {
+  igAccountRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     backgroundColor: COLORS.surface,
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.md,
+    paddingVertical: SPACING.sm + 4,
     marginTop: SPACING.sm,
     borderWidth: 1,
     borderColor: COLORS.border,
   },
-  igLabel: { color: COLORS.textSecondary, fontSize: 14, fontWeight: '600' },
+  igAccountRowActive: {
+    borderColor: COLORS.primary + '88',
+    backgroundColor: COLORS.primary + '10',
+  },
+  igAccountLeft: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, flex: 1 },
+  igActiveDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: COLORS.primary,
+  },
+  igAccountName: { fontSize: 14, fontWeight: '700' },
+  igActiveLabel: { color: COLORS.primary, fontSize: 11, fontWeight: '600', marginTop: 2 },
   igRight: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
-  igStatus: { fontSize: 14, fontWeight: '700' },
+  igSwitchBtn: {
+    backgroundColor: COLORS.surfaceElevated,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 5,
+    borderRadius: RADIUS.full,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as object) : {}),
+  },
+  igSwitchText: { color: COLORS.text, fontSize: 12, fontWeight: '600' },
   igConnectBtn: {
     backgroundColor: COLORS.primary,
     paddingHorizontal: SPACING.md,
