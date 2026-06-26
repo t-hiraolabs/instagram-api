@@ -119,10 +119,21 @@ export default function AnalyticsScreen() {
       }
     >
       <View style={styles.header}>
-        <Text style={styles.title}>📊 分析</Text>
-        {data?.profile?.username ? (
-          <Text style={styles.subtitle}>@{data.profile.username}</Text>
-        ) : null}
+        <View>
+          <Text style={styles.title}>📊 分析</Text>
+          {data?.profile?.username ? (
+            <Text style={styles.subtitle}>@{data.profile.username}</Text>
+          ) : null}
+        </View>
+        <TouchableOpacity
+          style={styles.refreshBtn}
+          onPress={onRefresh}
+          disabled={refreshing || loading}
+        >
+          <Text style={[styles.refreshBtnText, (refreshing || loading) && { opacity: 0.4 }]}>
+            {refreshing || loading ? '更新中...' : '↻ 更新'}
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {loading ? (
@@ -229,9 +240,18 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   center: { justifyContent: 'center', alignItems: 'center', padding: SPACING.xl },
   bigEmoji: { fontSize: 56, marginBottom: SPACING.md },
-  header: { paddingHorizontal: SPACING.md, paddingTop: SPACING.md, paddingBottom: SPACING.sm },
+  header: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingHorizontal: SPACING.md, paddingTop: SPACING.md, paddingBottom: SPACING.sm,
+  },
   title: { fontSize: 26, fontWeight: '800', color: COLORS.text },
   subtitle: { fontSize: 14, color: COLORS.primary, fontWeight: '700', marginTop: 2 },
+  refreshBtn: {
+    paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm,
+    backgroundColor: COLORS.surface, borderRadius: RADIUS.md,
+    borderWidth: 1, borderColor: COLORS.border,
+  },
+  refreshBtnText: { color: COLORS.text, fontSize: 14, fontWeight: '700' },
 
   statRow: { flexDirection: 'row', paddingHorizontal: SPACING.md, gap: SPACING.sm, marginBottom: SPACING.sm },
   statCard: {
