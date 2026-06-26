@@ -31,7 +31,8 @@ import {
   SK_USER_ID_2, SK_TOKEN_2, SK_USERNAME_2, SK_PICTURE_2,
 } from '../utils/instagram';
 
-const SK_BRAND = 'brand_settings_v1';
+const SK_BRAND_1 = 'brand_settings_v1';
+const SK_BRAND_2 = 'brand_settings_v2';
 
 async function save(key: string, value: string) {
   if (Platform.OS === 'web') localStorage.setItem(key, value);
@@ -50,8 +51,14 @@ export default function ProfileScreen() {
   const {
     instagramCredentials, setInstagramCredentials,
     secondInstagramCredentials, setSecondInstagramCredentials,
+    activeAccountSlot,
     brandSettings, setBrandSettings,
+    brandSettings2, setBrandSettings2,
   } = useAppStore();
+
+  const activeBrandSettings = activeAccountSlot === 2 ? brandSettings2 : brandSettings;
+  const setActiveBrandSettings = activeAccountSlot === 2 ? setBrandSettings2 : setBrandSettings;
+  const SK_BRAND = activeAccountSlot === 2 ? SK_BRAND_2 : SK_BRAND_1;
 
   const [brandModalVisible, setBrandModalVisible] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -59,7 +66,7 @@ export default function ProfileScreen() {
   const [upgrading, setUpgrading] = useState(false);
 
   // Brand form
-  const [draftBrand, setDraftBrand] = useState<BrandSettings>({ ...brandSettings });
+  const [draftBrand, setDraftBrand] = useState<BrandSettings>({ ...activeBrandSettings });
 
   useEffect(() => {
     getMyPlan().then(setCurrentPlan).catch(() => {});
@@ -123,12 +130,13 @@ export default function ProfileScreen() {
         });
       }
 
-      const savedBrand = await load(SK_BRAND);
-      if (savedBrand) {
-        try {
-          const parsed = JSON.parse(savedBrand) as BrandSettings;
-          setBrandSettings(parsed);
-        } catch {}
+      const savedBrand1 = await load(SK_BRAND_1);
+      if (savedBrand1) {
+        try { setBrandSettings(JSON.parse(savedBrand1) as BrandSettings); } catch {}
+      }
+      const savedBrand2 = await load(SK_BRAND_2);
+      if (savedBrand2) {
+        try { setBrandSettings2(JSON.parse(savedBrand2) as BrandSettings); } catch {}
       }
     })();
   }, []);
@@ -173,15 +181,15 @@ export default function ProfileScreen() {
   };
 
   const openBrandModal = () => {
-    setDraftBrand({ ...brandSettings });
+    setDraftBrand({ ...activeBrandSettings });
     setBrandModalVisible(true);
   };
 
   const handleSaveBrand = async () => {
     setSaving(true);
     try {
-      setBrandSettings(draftBrand);
-      await save(SK_BRAND, JSON.stringify({ ...brandSettings, ...draftBrand }));
+      setActiveBrandSettings(draftBrand);
+      await save(SK_BRAND, JSON.stringify({ ...activeBrandSettings, ...draftBrand }));
       setBrandModalVisible(false);
       Alert.alert('保存しました ✅', 'ブランド設定を更新しました');
     } catch {
@@ -212,8 +220,8 @@ export default function ProfileScreen() {
 
   const isConnected = !!instagramCredentials;
   const isConnected2 = !!secondInstagramCredentials;
-  const hasBrandSetup = !!(brandSettings.brandName || brandSettings.industry);
-  const industryInfo = INDUSTRIES.find((i) => i.key === brandSettings.industry);
+  const hasBrandSetup = !!(activeBrandSettings.brandName || activeBrandSettings.industry);
+  const industryInfo = INDUSTRIES.find((i) => i.key === activeBrandSettings.industry);
 
   return (
     <View style={styles.wrapper}>
@@ -293,7 +301,9 @@ export default function ProfileScreen() {
         </View>
 
         {/* Brand Settings Card */}
-        <Text style={styles.sectionTitle}>ブランド設定</Text>
+        <Text style={styles.sectionTitle}>
+          ブランド設定{activeAccountSlot === 2 ? '（アカウント②）' : '（アカウント①）'}
+        </Text>
         <TouchableOpacity style={styles.brandCard} onPress={openBrandModal} activeOpacity={0.8}>
           <View style={styles.brandInfo}>
             <Text style={styles.brandEmoji}>
@@ -301,7 +311,7 @@ export default function ProfileScreen() {
             </Text>
             <View style={styles.brandText}>
               <Text style={styles.brandName}>
-                {brandSettings.brandName || 'ブランド名を設定'}
+                {activeBrandSettings.brandName || 'ブランド名を設定'}
               </Text>
               <Text style={styles.brandSub}>
                 {industryInfo ? industryInfo.label : '業種を設定するとAI精度が向上します'}
@@ -311,14 +321,14 @@ export default function ProfileScreen() {
           </View>
           {hasBrandSetup && (
             <View style={styles.brandTags}>
-              {brandSettings.tone && (
+              {activeBrandSettings.tone && (
                 <View style={styles.brandTag}>
-                  <Text style={styles.brandTagText}>{brandSettings.tone}</Text>
+                  <Text style={styles.brandTagText}>{activeBrandSettings.tone}</Text>
                 </View>
               )}
-              {brandSettings.targetAudience && (
+              {activeBrandSettings.targetAudience && (
                 <View style={styles.brandTag}>
-                  <Text style={styles.brandTagText}>{brandSettings.targetAudience}</Text>
+                  <Text style={styles.brandTagText}>{activeBrandSettings.targetAudience}</Text>
                 </View>
               )}
             </View>

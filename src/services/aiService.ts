@@ -27,8 +27,9 @@ function extractError(err: unknown): string {
 }
 
 function getBrandContext(): string {
+  const { brandSettings, brandSettings2, activeAccountSlot } = useAppStore.getState();
   const { brandName, industry, atmosphere, targetAudience, tone } =
-    useAppStore.getState().brandSettings;
+    activeAccountSlot === 2 ? brandSettings2 : brandSettings;
   const parts: string[] = [];
   if (brandName) parts.push(`ブランド名: ${brandName}`);
   if (industry) parts.push(`業種: ${industry}`);
@@ -495,3 +496,46 @@ export const INDUSTRIES = [
   { key: 'ペット・動物関連', label: 'ペット', emoji: '🐾' },
   { key: '音楽・アート・クリエイター', label: '音楽・アート', emoji: '🎵' },
 ];
+
+export interface SuggestedBrandSettings {
+  brandName: string;
+  industry: string;
+  atmosphere: string;
+  targetAudience: string;
+  tone: string;
+}
+
+/**
+ * Instagram投稿キャプションをAIで分析してブランド設定を自動生成する
+ */
+export async function analyzeBrandFromPosts(
+  captions: string[],
+  username: string
+): Promise<SuggestedBrandSettings> {
+  const headers = await getAuthHeaders();
+  const sample = captions.slice(0, 10).join('\n---\n');
+  const prompt = `以下は@${username}のInstagram投稿のキャプションです。
+これらを分析して、このアカウントのブランド情報をJSON形式で返してください。
+
+【投稿サンプル】
+${sample}
+
+以下のJSONのみを返してください（説明文不要）:
+{
+  "brandName": "推測されるブランド名または屋号（不明なら空文字）",
+  "industry": "業種・ジャンル（例: 美容・ネイル・まつ毛、飲食・カフェ・スイーツ など）",
+  "atmosphere": "お店・アカウントの雰囲気やこだわり（50文字以内）",
+  "targetAudience": "ターゲット層（例: 30代女性、子育て中のママ など）",
+  "tone": "投稿のトーン（「明るい・ポジティブ」「プロフェッショナル」「カジュアル」「感情的・共感」「ユーモラス」のいずれか）"
+}`;
+
+  const res = await axios.post(
+    CLAUDE_API_URL,
+    { messages: [{ role: 'user', content: prompt }], max_tokens: 400 },
+    { headers }
+  );
+  const text: string = res.data?.content?.[0]?.text ?? res.data?.text ?? '';
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error('AI応答のパースに失敗しました');
+  return JSON.parse(jsonMatch[0]) as SuggestedBrandSettings;
+}

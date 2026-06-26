@@ -26,6 +26,17 @@ export interface BrandSettings {
   useTopPostsInsight: boolean;
 }
 
+export const DEFAULT_BRAND_SETTINGS: BrandSettings = {
+  brandName: '',
+  industry: '',
+  accountType: 'personal',
+  atmosphere: '',
+  targetAudience: '',
+  tone: '明るい・ポジティブ',
+  apiKey: '',
+  useTopPostsInsight: false,
+};
+
 interface ScheduledPost {
   id: string;
   imageUri: string;
@@ -52,8 +63,17 @@ interface AppState {
   loginPromptVisible: boolean;
   setLoginPromptVisible: (visible: boolean) => void;
 
+  /** アカウント1のブランド設定 */
   brandSettings: BrandSettings;
   setBrandSettings: (settings: Partial<BrandSettings>) => void;
+
+  /** アカウント2のブランド設定 */
+  brandSettings2: BrandSettings;
+  setBrandSettings2: (settings: Partial<BrandSettings>) => void;
+
+  /** 連携完了後のブランド設定確認モーダル */
+  brandConfirmModal: { slot: 1 | 2; draft: BrandSettings } | null;
+  setBrandConfirmModal: (val: { slot: 1 | 2; draft: BrandSettings } | null) => void;
 
   scheduledPosts: ScheduledPost[];
   addScheduledPost: (post: ScheduledPost) => void;
@@ -89,18 +109,16 @@ export const useAppStore = create<AppState>((set) => ({
   loginPromptVisible: false,
   setLoginPromptVisible: (visible) => set({ loginPromptVisible: visible }),
 
-  brandSettings: {
-    brandName: '',
-    industry: '',
-    accountType: 'personal',
-    atmosphere: '',
-    targetAudience: '',
-    tone: '明るい・ポジティブ',
-    apiKey: '',
-    useTopPostsInsight: false,
-  },
+  brandSettings: { ...DEFAULT_BRAND_SETTINGS },
   setBrandSettings: (settings) =>
     set((state) => ({ brandSettings: { ...state.brandSettings, ...settings } })),
+
+  brandSettings2: { ...DEFAULT_BRAND_SETTINGS },
+  setBrandSettings2: (settings) =>
+    set((state) => ({ brandSettings2: { ...state.brandSettings2, ...settings } })),
+
+  brandConfirmModal: null,
+  setBrandConfirmModal: (val) => set({ brandConfirmModal: val }),
 
   scheduledPosts: [],
   addScheduledPost: (post) =>
