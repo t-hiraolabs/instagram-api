@@ -17,7 +17,7 @@ import { supabase } from '../services/supabaseClient';
 import { useAppStore } from '../store/appStore';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
 import AuthScreen from '../screens/AuthScreen';
-import { connectInstagram, clearInstagramStorage } from '../utils/instagram';
+import { connectInstagram, clearInstagramStorage, clearInstagramStorage2 } from '../utils/instagram';
 import { getMyPlan } from '../services/scheduleService';
 import { PLANS, Plan, PLAN_RANK } from '../utils/plans';
 import { createCheckoutUrl } from '../services/billingService';
@@ -30,6 +30,8 @@ export default function AccountBadge() {
   const [upgrading, setUpgrading] = useState(false);
   const instagramCredentials = useAppStore((s) => s.instagramCredentials);
   const setInstagramCredentials = useAppStore((s) => s.setInstagramCredentials);
+  const secondInstagramCredentials = useAppStore((s) => s.secondInstagramCredentials);
+  const setSecondInstagramCredentials = useAppStore((s) => s.setSecondInstagramCredentials);
   const authVisible = useAppStore((s) => s.loginPromptVisible);
   const setAuthVisible = useAppStore((s) => s.setLoginPromptVisible);
 
@@ -69,12 +71,22 @@ export default function AccountBadge() {
 
   const handleConnectIg = () => {
     setVisible(false);
-    connectInstagram();
+    connectInstagram(1);
+  };
+
+  const handleConnectIg2 = () => {
+    setVisible(false);
+    connectInstagram(2);
   };
 
   const doDisconnectIg = async () => {
     await clearInstagramStorage();
     setInstagramCredentials(null);
+  };
+
+  const doDisconnectIg2 = async () => {
+    await clearInstagramStorage2();
+    setSecondInstagramCredentials(null);
   };
 
   const handleDisconnectIg = () => {
@@ -87,6 +99,19 @@ export default function AccountBadge() {
     Alert.alert('連携解除', 'Instagramアカウントの連携を解除しますか？', [
       { text: 'キャンセル', style: 'cancel' },
       { text: '解除', style: 'destructive', onPress: doDisconnectIg },
+    ]);
+  };
+
+  const handleDisconnectIg2 = () => {
+    if (Platform.OS === 'web') {
+      if (window.confirm('2つ目のInstagramアカウントの連携を解除しますか？')) {
+        doDisconnectIg2();
+      }
+      return;
+    }
+    Alert.alert('連携解除', '2つ目のInstagramアカウントの連携を解除しますか？', [
+      { text: 'キャンセル', style: 'cancel' },
+      { text: '解除', style: 'destructive', onPress: doDisconnectIg2 },
     ]);
   };
 
@@ -189,9 +214,9 @@ export default function AccountBadge() {
                 </View>
               </View>
 
-              {/* Instagram連携状態 */}
+              {/* Instagram連携状態（1つ目） */}
               <View style={styles.igRow}>
-                <Text style={styles.igLabel}>Instagram</Text>
+                <Text style={styles.igLabel}>Instagram①</Text>
                 <View style={styles.igRight}>
                   <Text style={[styles.igStatus, { color: instagramCredentials ? COLORS.success : COLORS.textMuted }]}>
                     {instagramCredentials
@@ -204,6 +229,27 @@ export default function AccountBadge() {
                     </TouchableOpacity>
                   ) : (
                     <TouchableOpacity style={styles.igConnectBtn} onPress={handleConnectIg} activeOpacity={0.8}>
+                      <Text style={styles.igConnectText}>連携する</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+
+              {/* Instagram連携状態（2つ目） */}
+              <View style={styles.igRow}>
+                <Text style={styles.igLabel}>Instagram②</Text>
+                <View style={styles.igRight}>
+                  <Text style={[styles.igStatus, { color: secondInstagramCredentials ? COLORS.success : COLORS.textMuted }]}>
+                    {secondInstagramCredentials
+                      ? (secondInstagramCredentials.username ? `@${secondInstagramCredentials.username}` : '連携済み')
+                      : '未連携'}
+                  </Text>
+                  {secondInstagramCredentials ? (
+                    <TouchableOpacity style={styles.igDisconnectBtn} onPress={handleDisconnectIg2} activeOpacity={0.8}>
+                      <Text style={styles.igDisconnectText}>解除</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity style={styles.igConnectBtn} onPress={handleConnectIg2} activeOpacity={0.8}>
                       <Text style={styles.igConnectText}>連携する</Text>
                     </TouchableOpacity>
                   )}
