@@ -16,7 +16,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as SecureStore from 'expo-secure-store';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
-import { useAppStore, InstagramCredentials, BrandSettings } from '../store/appStore';
+import { useAppStore, InstagramCredentials, BrandSettings, DEFAULT_BRAND_SETTINGS } from '../store/appStore';
 import { INDUSTRIES } from '../services/aiService';
 import { loadBrandSettingsFromDb, saveBrandSettingsToDb } from '../services/brandSettingsService';
 import { ACCOUNT_THEMES } from '../utils/accountThemes';
@@ -45,6 +45,11 @@ async function load(key: string): Promise<string | null> {
   return SecureStore.getItemAsync(key);
 }
 
+async function remove(key: string) {
+  if (Platform.OS === 'web') localStorage.removeItem(key);
+  else await SecureStore.deleteItemAsync(key);
+}
+
 const TONES = ['明るい・ポジティブ', 'プロフェッショナル', 'カジュアル', '感情的・共感', 'ユーモラス'];
 
 export default function ProfileScreen() {
@@ -53,12 +58,13 @@ export default function ProfileScreen() {
     instagramCredentials, setInstagramCredentials,
     secondInstagramCredentials, setSecondInstagramCredentials,
     activeAccountSlot,
-    brandSettings, setBrandSettings,
-    brandSettings2, setBrandSettings2,
+    brandSettings, setBrandSettings, resetBrandSettings,
+    brandSettings2, setBrandSettings2, resetBrandSettings2,
   } = useAppStore();
 
   const activeBrandSettings = activeAccountSlot === 2 ? brandSettings2 : brandSettings;
   const setActiveBrandSettings = activeAccountSlot === 2 ? setBrandSettings2 : setBrandSettings;
+  const resetActiveBrandSettings = activeAccountSlot === 2 ? resetBrandSettings2 : resetBrandSettings;
   const SK_BRAND = activeAccountSlot === 2 ? SK_BRAND_2 : SK_BRAND_1;
 
   const [brandModalVisible, setBrandModalVisible] = useState(false);
@@ -211,6 +217,38 @@ export default function ProfileScreen() {
     } finally {
       setSaving(false);
     }
+  };
+
+  // 表示中アカウントのブランド設定をすべて初期状態に戻す（ローカル・Supabaseの保存データも削除）
+  const doResetBrand = async () => {
+    setSaving(true);
+    try {
+      resetActiveBrandSettings();
+      setDraftBrand({ ...DEFAULT_BRAND_SETTINGS });
+      await remove(SK_BRAND);
+      // Supabaseも初期値で上書きしておく（次回読み込みで古い設定が復活しないように）
+      await saveBrandSettingsToDb({ ...DEFAULT_BRAND_SETTINGS }, activeAccountSlot).catch(() => {});
+      setBrandModalVisible(false);
+      if (Platform.OS === 'web') window.alert('ブランド設定をリセットしました');
+      else Alert.alert('リセットしました ✅', 'ブランド設定を初期状態に戻しました');
+    } catch {
+      if (Platform.OS === 'web') window.alert('リセットに失敗しました');
+      else Alert.alert('エラー', 'リセットに失敗しました');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleResetBrand = () => {
+    const msg = 'ブランド設定をすべて初期状態に戻します。よろしいですか？（保存した内容は消えます）';
+    if (Platform.OS === 'web') {
+      if (window.confirm(msg)) doResetBrand();
+      return;
+    }
+    Alert.alert('ブランド設定をリセット', msg, [
+      { text: 'キャンセル', style: 'cancel' },
+      { text: 'リセット', style: 'destructive', onPress: doResetBrand },
+    ]);
   };
 
   const handleLogout = () => {
@@ -529,6 +567,18 @@ export default function ProfileScreen() {
                 💡 ブランド設定を入力するとAIが自動的に業種やブランドに合わせた投稿を生成します
               </Text>
             </View>
+
+            <TouchableOpacity
+              style={styles.resetBrandBtn}
+              onPress={handleResetBrand}
+              disabled={saving}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.resetBrandText}>🗑 ブランド設定をリセット</Text>
+            </TouchableOpacity>
+            <Text style={styles.resetBrandHint}>
+              ※ すべての項目を初期状態に戻します（この端末の保存データも削除されます）
+            </Text>
           </View>
         </ScrollView>
       </Modal>
@@ -706,6 +756,21 @@ const styles = StyleSheet.create({
   modalTitle: { color: COLORS.text, fontSize: 17, fontWeight: '700' },
   modalCancel: { color: COLORS.textMuted, fontSize: 16 },
   modalSave: { color: COLORS.primary, fontSize: 16, fontWeight: '700' },
+  resetBrandBtn: {
+    marginTop: SPACING.lg,
+    borderWidth: 1,
+    borderColor: COLORS.error,
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.md,
+    alignItems: 'center',
+  },
+  resetBrandText: { color: COLORS.error, fontSize: 15, fontWeight: '700' },
+  resetBrandHint: {
+    color: COLORS.textMuted,
+    fontSize: 12,
+    marginTop: SPACING.sm,
+    textAlign: 'center',
+  },
   modalBody: { paddingHorizontal: SPACING.md, paddingTop: SPACING.md, paddingBottom: SPACING.xxl },
   oauthBtn: {
     backgroundColor: COLORS.primary,

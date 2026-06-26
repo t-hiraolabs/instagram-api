@@ -66,10 +66,12 @@ interface AppState {
   /** アカウント1のブランド設定 */
   brandSettings: BrandSettings;
   setBrandSettings: (settings: Partial<BrandSettings>) => void;
+  resetBrandSettings: () => void;
 
   /** アカウント2のブランド設定 */
   brandSettings2: BrandSettings;
   setBrandSettings2: (settings: Partial<BrandSettings>) => void;
+  resetBrandSettings2: () => void;
 
   /** 連携完了後のブランド設定確認モーダル */
   brandConfirmModal: { slot: 1 | 2; draft: BrandSettings } | null;
@@ -112,10 +114,12 @@ export const useAppStore = create<AppState>((set) => ({
   brandSettings: { ...DEFAULT_BRAND_SETTINGS },
   setBrandSettings: (settings) =>
     set((state) => ({ brandSettings: { ...state.brandSettings, ...settings } })),
+  resetBrandSettings: () => set({ brandSettings: { ...DEFAULT_BRAND_SETTINGS } }),
 
   brandSettings2: { ...DEFAULT_BRAND_SETTINGS },
   setBrandSettings2: (settings) =>
     set((state) => ({ brandSettings2: { ...state.brandSettings2, ...settings } })),
+  resetBrandSettings2: () => set({ brandSettings2: { ...DEFAULT_BRAND_SETTINGS } }),
 
   brandConfirmModal: null,
   setBrandConfirmModal: (val) => set({ brandConfirmModal: val }),
