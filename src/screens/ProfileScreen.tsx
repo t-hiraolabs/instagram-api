@@ -23,7 +23,13 @@ import { supabase } from '../services/supabaseClient';
 import { getMyPlan } from '../services/scheduleService';
 import { createCheckoutUrl } from '../services/billingService';
 import { PLANS, Plan, PLAN_RANK, canAnalytics } from '../utils/plans';
-import { connectInstagram, clearInstagramStorage, SK_USER_ID, SK_TOKEN, SK_USERNAME, SK_PICTURE } from '../utils/instagram';
+import {
+  connectInstagram,
+  clearInstagramStorage,
+  clearInstagramStorage2,
+  SK_USER_ID, SK_TOKEN, SK_USERNAME, SK_PICTURE,
+  SK_USER_ID_2, SK_TOKEN_2, SK_USERNAME_2, SK_PICTURE_2,
+} from '../utils/instagram';
 
 const SK_BRAND = 'brand_settings_v1';
 
@@ -41,7 +47,11 @@ const TONES = ['明るい・ポジティブ', 'プロフェッショナル', '�
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
-  const { instagramCredentials, setInstagramCredentials, brandSettings, setBrandSettings } = useAppStore();
+  const {
+    instagramCredentials, setInstagramCredentials,
+    secondInstagramCredentials, setSecondInstagramCredentials,
+    brandSettings, setBrandSettings,
+  } = useAppStore();
 
   const [brandModalVisible, setBrandModalVisible] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -100,6 +110,19 @@ export default function ProfileScreen() {
         });
       }
 
+      const savedUserId2 = await load(SK_USER_ID_2);
+      const savedToken2 = await load(SK_TOKEN_2);
+      const savedUsername2 = await load(SK_USERNAME_2);
+      const savedPicture2 = await load(SK_PICTURE_2);
+      if (savedUserId2 && savedToken2) {
+        setSecondInstagramCredentials({
+          userId: savedUserId2,
+          accessToken: savedToken2,
+          username: savedUsername2 ?? undefined,
+          profilePictureUrl: savedPicture2 ?? undefined,
+        });
+      }
+
       const savedBrand = await load(SK_BRAND);
       if (savedBrand) {
         try {
@@ -110,13 +133,17 @@ export default function ProfileScreen() {
     })();
   }, []);
 
-  const handleInstagramLogin = () => {
-    connectInstagram();
-  };
+  const handleInstagramLogin = () => connectInstagram(1);
+  const handleInstagramLogin2 = () => connectInstagram(2);
 
   const doDisconnect = async () => {
     await clearInstagramStorage();
     setInstagramCredentials(null);
+  };
+
+  const doDisconnect2 = async () => {
+    await clearInstagramStorage2();
+    setSecondInstagramCredentials(null);
   };
 
   const handleDisconnect = () => {
@@ -129,6 +156,19 @@ export default function ProfileScreen() {
     Alert.alert('連携解除', 'Instagramアカウントの連携を解除しますか？', [
       { text: 'キャンセル', style: 'cancel' },
       { text: '解除', style: 'destructive', onPress: doDisconnect },
+    ]);
+  };
+
+  const handleDisconnect2 = () => {
+    if (Platform.OS === 'web') {
+      if (window.confirm('2つ目のInstagramアカウントの連携を解除しますか？')) {
+        doDisconnect2();
+      }
+      return;
+    }
+    Alert.alert('連携解除', '2つ目のInstagramアカウントの連携を解除しますか？', [
+      { text: 'キャンセル', style: 'cancel' },
+      { text: '解除', style: 'destructive', onPress: doDisconnect2 },
     ]);
   };
 
@@ -171,6 +211,7 @@ export default function ProfileScreen() {
   };
 
   const isConnected = !!instagramCredentials;
+  const isConnected2 = !!secondInstagramCredentials;
   const hasBrandSetup = !!(brandSettings.brandName || brandSettings.industry);
   const industryInfo = INDUSTRIES.find((i) => i.key === brandSettings.industry);
 
@@ -218,6 +259,38 @@ export default function ProfileScreen() {
             <Text style={styles.connectedBadgeText}>✅ 予約自動投稿が利用できます</Text>
           </View>
         )}
+
+        {/* Second Instagram account card */}
+        <Text style={styles.sectionTitle}>2つ目のアカウント</Text>
+        <View style={[styles.accountCard, isConnected2 && styles.accountCardConnected]}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>{isConnected2 ? '📷' : '➕'}</Text>
+          </View>
+          <View style={styles.accountInfo}>
+            {isConnected2 ? (
+              <>
+                <Text style={styles.accountName}>
+                  {secondInstagramCredentials!.username ? `@${secondInstagramCredentials!.username}` : 'Instagram連携済み'}
+                </Text>
+                <Text style={styles.accountSub}>ID: {secondInstagramCredentials!.userId}</Text>
+              </>
+            ) : (
+              <>
+                <Text style={styles.accountName}>未連携</Text>
+                <Text style={styles.accountSub}>2つ目のInstagramアカウントを連携</Text>
+              </>
+            )}
+          </View>
+          {isConnected2 ? (
+            <TouchableOpacity style={styles.disconnectBtn} onPress={handleDisconnect2}>
+              <Text style={styles.disconnectBtnText}>解除</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity style={styles.connectBtn} onPress={handleInstagramLogin2}>
+              <Text style={styles.connectBtnText}>連携する</Text>
+            </TouchableOpacity>
+          )}
+        </View>
 
         {/* Brand Settings Card */}
         <Text style={styles.sectionTitle}>ブランド設定</Text>
