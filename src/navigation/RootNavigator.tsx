@@ -6,6 +6,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import HomeScreen from '../screens/HomeScreen';
 import ScheduleScreen from '../screens/ScheduleScreen';
 import AnalyticsScreen from '../screens/AnalyticsScreen';
+import DMScreen from '../screens/DMScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import { COLORS } from '../utils/theme';
 
@@ -20,6 +21,7 @@ function TabIcon({ name, focused }: { name: string; focused: boolean }) {
     Reel: '🎬',
     Schedule: '📅',
     Analytics: '📊',
+    DM: '💬',
     Profile: '👤',
   };
   return (
@@ -64,6 +66,14 @@ function TabNavigator() {
         options={{
           tabBarLabel: '分析',
           tabBarIcon: ({ focused }) => <TabIcon name="Analytics" focused={focused} />,
+        }}
+      />
+      <Tab.Screen
+        name="DM"
+        component={DMScreen}
+        options={{
+          tabBarLabel: 'DM',
+          tabBarIcon: ({ focused }) => <TabIcon name="DM" focused={focused} />,
         }}
       />
       <Tab.Screen
