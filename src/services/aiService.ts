@@ -531,7 +531,7 @@ ${sample}
 
   const res = await axios.post(
     CLAUDE_API_URL,
-    { messages: [{ role: 'user', content: prompt }], max_tokens: 400 },
+    { model: MODEL, messages: [{ role: 'user', content: prompt }], max_tokens: 400 },
     { headers }
   );
   const text: string = res.data?.content?.[0]?.text ?? res.data?.text ?? '';

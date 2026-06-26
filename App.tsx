@@ -30,6 +30,23 @@ function saveCredential(key: string, value: string) {
 }
 
 /** 連携後にブランド設定を自動分析してモーダルを出す */
+async function fetchCaptionsFromInstagram(accessToken: string): Promise<string[]> {
+  // まずinsightsエンドポイントを試し、失敗したら直接Graph APIにフォールバック
+  try {
+    const insights = await getInsightsSummary(accessToken, 20);
+    const captions = insights.media.map((m) => m.caption ?? '').filter((c) => c.trim().length > 0);
+    if (captions.length > 0) return captions;
+  } catch {
+    // ビジネスアカウント以外では失敗するため無視
+  }
+  // フォールバック: 基本メディアAPIで取得
+  const res = await axios.get(
+    `https://graph.instagram.com/me/media?fields=caption&limit=20&access_token=${accessToken}`
+  );
+  const items: Array<{ caption?: string }> = res.data?.data ?? [];
+  return items.map((m) => m.caption ?? '').filter((c) => c.trim().length > 0);
+}
+
 async function runBrandAnalysis(
   accessToken: string,
   username: string,
@@ -37,10 +54,7 @@ async function runBrandAnalysis(
   setBrandConfirmModal: (v: { slot: 1 | 2; draft: BrandSettings } | null) => void
 ) {
   try {
-    const insights = await getInsightsSummary(accessToken, 20);
-    const captions = insights.media
-      .map((m) => m.caption ?? '')
-      .filter((c) => c.trim().length > 0);
+    const captions = await fetchCaptionsFromInstagram(accessToken);
     if (captions.length === 0) return;
     const suggested = await analyzeBrandFromPosts(captions, username);
     setBrandConfirmModal({
@@ -54,8 +68,8 @@ async function runBrandAnalysis(
         tone: suggested.tone ?? '明るい・ポジティブ',
       },
     });
-  } catch {
-    // 分析失敗はサイレントに無視（連携自体は成功しているため）
+  } catch (e) {
+    console.warn('[BrandAnalysis] failed:', e);
   }
 }
 
