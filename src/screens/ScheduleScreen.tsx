@@ -237,6 +237,9 @@ export default function ScheduleScreen() {
   const [templatePickerVisible, setTemplatePickerVisible] = useState(false);
   const [savingTemplate, setSavingTemplate] = useState(false);
 
+  // 詳細モーダル用
+  const [detailPost, setDetailPost] = useState<ScheduledPost | null>(null);
+
   // 編集モーダル用
   const [editVisible, setEditVisible] = useState(false);
   const [editingPost, setEditingPost] = useState<ScheduledPost | null>(null);
@@ -1278,7 +1281,7 @@ export default function ScheduleScreen() {
   const todayKey = dayKey(new Date());
 
   const renderPostCard = (post: ScheduledPost) => (
-    <View key={post.id} style={styles.postCard}>
+    <TouchableOpacity key={post.id} style={styles.postCard} onPress={() => setDetailPost(post)} activeOpacity={0.85}>
       <View style={styles.postHeader}>
         <View style={styles.postMeta}>
           <View style={[styles.typeBadge, post.type !== 'feed' && styles.typeBadgeStory]}>
@@ -1319,15 +1322,13 @@ export default function ScheduleScreen() {
             <Text style={styles.editBtn}>📄</Text>
           </TouchableOpacity>
           {(post.status === 'pending' || post.status === 'draft') && (
-            <>
-              <TouchableOpacity onPress={() => openEdit(post)} hitSlop={8}>
-                <Text style={styles.editBtn}>✏️</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => handleDelete(post.id)} hitSlop={8}>
-                <Text style={styles.deleteBtn}>🗑</Text>
-              </TouchableOpacity>
-            </>
+            <TouchableOpacity onPress={() => openEdit(post)} hitSlop={8}>
+              <Text style={styles.editBtn}>✏️</Text>
+            </TouchableOpacity>
           )}
+          <TouchableOpacity onPress={() => handleDelete(post.id)} hitSlop={8}>
+            <Text style={styles.deleteBtn}>🗑</Text>
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -1345,7 +1346,7 @@ export default function ScheduleScreen() {
           {post.status === 'draft' ? '🕐 日時未定（📅で予約）' : `🕐 ${formatDate(post.scheduled_at)}`}
         </Text>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 
   // 投稿タブのサブ画面（リール／本日の出勤）
@@ -1526,6 +1527,76 @@ export default function ScheduleScreen() {
           </>
         )}
       </ScrollView>
+
+      {/* 詳細モーダル */}
+      <Modal visible={!!detailPost} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setDetailPost(null)}>
+        {detailPost && (
+          <View style={{ flex: 1, backgroundColor: COLORS.background }}>
+            <View style={styles.modalHeader}>
+              <TouchableOpacity onPress={() => setDetailPost(null)}>
+                <Text style={styles.modalCancel}>閉じる</Text>
+              </TouchableOpacity>
+              <Text style={styles.modalTitle}>投稿詳細</Text>
+              <TouchableOpacity onPress={() => { setDetailPost(null); openDuplicate(detailPost); }}>
+                <Text style={[styles.modalCancel, { color: COLORS.primary }]}>📄 複製</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.modalBody} contentContainerStyle={{ paddingBottom: 40 }}>
+              {/* 画像 */}
+              {detailPost.image_url && (
+                <Image
+                  source={{ uri: detailPost.image_url.split('\n')[0] }}
+                  style={{ width: '100%', aspectRatio: 1, borderRadius: RADIUS.md, marginBottom: SPACING.md }}
+                  resizeMode="cover"
+                />
+              )}
+              {/* ステータス・タイプ */}
+              <View style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.md, flexWrap: 'wrap' }}>
+                <View style={[styles.typeBadge, detailPost.type !== 'feed' && styles.typeBadgeStory]}>
+                  <Text style={styles.typeBadgeText}>
+                    {detailPost.type === 'feed' ? '📷 フィード' : detailPost.type === 'reel' ? '🎬 リール' : '📖 ストーリー'}
+                  </Text>
+                </View>
+                <View style={[styles.statusBadge, detailPost.status === 'published' && styles.statusPublished, detailPost.status === 'failed' && styles.statusFailed]}>
+                  <Text style={styles.statusText}>
+                    {detailPost.status === 'draft' ? '📝 下書き' : detailPost.status === 'pending' ? '⏳ 予約中' : detailPost.status === 'published' ? '✅ 投稿済' : '❌ 失敗'}
+                  </Text>
+                </View>
+              </View>
+              {/* 日時 */}
+              <Text style={[styles.fieldLabel, { marginBottom: 4 }]}>日時</Text>
+              <Text style={{ color: COLORS.text, fontSize: 15, marginBottom: SPACING.md }}>
+                {detailPost.status === 'draft' ? '未定' : formatDate(detailPost.scheduled_at)}
+              </Text>
+              {/* キャプション */}
+              <Text style={[styles.fieldLabel, { marginBottom: 4 }]}>キャプション</Text>
+              <Text style={{ color: COLORS.text, fontSize: 15, lineHeight: 22, marginBottom: SPACING.md }}>
+                {detailPost.caption || '（なし）'}
+              </Text>
+              {/* ハッシュタグ */}
+              {detailPost.hashtags?.length > 0 && (
+                <>
+                  <Text style={[styles.fieldLabel, { marginBottom: 4 }]}>ハッシュタグ</Text>
+                  <Text style={{ color: COLORS.primary, fontSize: 13, lineHeight: 20, marginBottom: SPACING.md }}>
+                    {detailPost.hashtags.join(' ')}
+                  </Text>
+                </>
+              )}
+              {/* 削除ボタン */}
+              <TouchableOpacity
+                style={[styles.modalSaveBtn, { backgroundColor: COLORS.error ?? '#FF3B30', marginTop: SPACING.lg }]}
+                onPress={() => {
+                  const run = () => { setDetailPost(null); handleDelete(detailPost.id); };
+                  if (Platform.OS === 'web') { if (window.confirm('この投稿を削除しますか？')) run(); }
+                  else Alert.alert('削除', 'この投稿を削除しますか？', [{ text: 'キャンセル', style: 'cancel' }, { text: '削除', style: 'destructive', onPress: run }]);
+                }}
+              >
+                <Text style={styles.modalSaveBtnText}>🗑 削除する</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        )}
+      </Modal>
 
       <Modal visible={modalVisible} animationType="slide" presentationStyle="pageSheet">
         <KeyboardAvoidingView
@@ -2724,6 +2795,12 @@ const styles = StyleSheet.create({
     marginTop: SPACING.xs,
   },
   igWarnText: { color: COLORS.warning, fontSize: 13, fontWeight: '600' },
+  modalSaveBtn: {
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.md,
+    alignItems: 'center' as const,
+  },
+  modalSaveBtnText: { color: '#fff', fontSize: 15, fontWeight: '800' as const },
   publishNowBtn: {
     backgroundColor: COLORS.primary,
     borderRadius: RADIUS.md,
