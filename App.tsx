@@ -27,8 +27,9 @@ function saveCredential(key: string, value: string) {
 function OAuthHandler() {
   const setInstagramCredentials = useAppStore((s) => s.setInstagramCredentials);
   const setSecondInstagramCredentials = useAppStore((s) => s.setSecondInstagramCredentials);
+  const setActiveAccountSlot = useAppStore((s) => s.setActiveAccountSlot);
 
-  // アプリ起動時に保存済みのInstagram連携情報をストアへ読み込む（更新しても連携を維持）
+  // アプリ起動時に保存済みのInstagram連携情報・アクティブスロットをストアへ読み込む
   useEffect(() => {
     loadInstagramCredentials().then((creds) => {
       if (creds) setInstagramCredentials(creds);
@@ -36,7 +37,11 @@ function OAuthHandler() {
     loadInstagramCredentials2().then((creds) => {
       if (creds) setSecondInstagramCredentials(creds);
     });
-  }, [setInstagramCredentials, setSecondInstagramCredentials]);
+    if (Platform.OS === 'web') {
+      const saved = localStorage.getItem('active_account_slot');
+      if (saved === '2') setActiveAccountSlot(2);
+    }
+  }, [setInstagramCredentials, setSecondInstagramCredentials, setActiveAccountSlot]);
 
   useEffect(() => {
     if (Platform.OS !== 'web') return;

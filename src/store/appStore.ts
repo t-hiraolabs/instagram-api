@@ -81,7 +81,10 @@ export const useAppStore = create<AppState>((set) => ({
   setSecondInstagramCredentials: (creds) => set({ secondInstagramCredentials: creds }),
 
   activeAccountSlot: 1,
-  setActiveAccountSlot: (slot) => set({ activeAccountSlot: slot }),
+  setActiveAccountSlot: (slot) => {
+    if (typeof localStorage !== 'undefined') localStorage.setItem('active_account_slot', String(slot));
+    set({ activeAccountSlot: slot });
+  },
 
   loginPromptVisible: false,
   setLoginPromptVisible: (visible) => set({ loginPromptVisible: visible }),

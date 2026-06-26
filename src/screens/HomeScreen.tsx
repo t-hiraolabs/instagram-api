@@ -59,7 +59,8 @@ function getBestPostingTime(): { label: string; color: string; description: stri
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
-  const { brandSettings, instagramCredentials } = useAppStore();
+  const { brandSettings, instagramCredentials: creds1, secondInstagramCredentials: creds2, activeAccountSlot } = useAppStore();
+  const instagramCredentials = activeAccountSlot === 2 ? creds2 : creds1;
   const greeting = useMemo(() => getGreeting(), []);
   const postingTime = useMemo(() => getBestPostingTime(), []);
   const month = new Date().getMonth() + 1;
