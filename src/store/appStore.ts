@@ -41,6 +41,9 @@ interface AppState {
   instagramCredentials: InstagramCredentials | null;
   setInstagramCredentials: (creds: InstagramCredentials | null) => void;
 
+  secondInstagramCredentials: InstagramCredentials | null;
+  setSecondInstagramCredentials: (creds: InstagramCredentials | null) => void;
+
   loginPromptVisible: boolean;
   setLoginPromptVisible: (visible: boolean) => void;
 
@@ -68,6 +71,9 @@ export const useAppStore = create<AppState>((set) => ({
 
   instagramCredentials: null,
   setInstagramCredentials: (creds) => set({ instagramCredentials: creds }),
+
+  secondInstagramCredentials: null,
+  setSecondInstagramCredentials: (creds) => set({ secondInstagramCredentials: creds }),
 
   loginPromptVisible: false,
   setLoginPromptVisible: (visible) => set({ loginPromptVisible: visible }),

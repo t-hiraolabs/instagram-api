@@ -12,8 +12,16 @@ export const SK_TOKEN = 'instagram_access_token';
 export const SK_USERNAME = 'instagram_username';
 export const SK_PICTURE = 'instagram_profile_picture';
 
-/** Instagramビジネスログインの認証画面へ遷移する */
-export function connectInstagram() {
+export const SK_USER_ID_2 = 'instagram_user_id_2';
+export const SK_TOKEN_2 = 'instagram_access_token_2';
+export const SK_USERNAME_2 = 'instagram_username_2';
+export const SK_PICTURE_2 = 'instagram_profile_picture_2';
+
+export const SK_CONNECTING_SLOT = 'instagram_connecting_slot';
+
+/** Instagramビジネスログインの認証画面へ遷移する (slot: 1 or 2) */
+export function connectInstagram(slot: 1 | 2 = 1) {
+  if (Platform.OS === 'web') localStorage.setItem(SK_CONNECTING_SLOT, String(slot));
   const url =
     `https://www.instagram.com/oauth/authorize?` +
     `force_reauth=true` +
@@ -28,6 +36,11 @@ export function connectInstagram() {
 async function getItem(key: string): Promise<string | null> {
   if (Platform.OS === 'web') return localStorage.getItem(key);
   return SecureStore.getItemAsync(key);
+}
+
+async function removeItem(key: string) {
+  if (Platform.OS === 'web') localStorage.removeItem(key);
+  else await SecureStore.deleteItemAsync(key);
 }
 
 /** 保存済みのInstagram連携情報を読み込む（アプリ起動時に使う） */
@@ -45,14 +58,33 @@ export async function loadInstagramCredentials(): Promise<InstagramCredentials |
   };
 }
 
+/** 保存済みの2つ目のInstagram連携情報を読み込む */
+export async function loadInstagramCredentials2(): Promise<InstagramCredentials | null> {
+  const userId = await getItem(SK_USER_ID_2);
+  const accessToken = await getItem(SK_TOKEN_2);
+  if (!userId || !accessToken) return null;
+  const username = await getItem(SK_USERNAME_2);
+  const profilePictureUrl = await getItem(SK_PICTURE_2);
+  return {
+    userId,
+    accessToken,
+    username: username ?? undefined,
+    profilePictureUrl: profilePictureUrl ?? undefined,
+  };
+}
+
 /** 保存されたInstagram連携情報を消す */
 export async function clearInstagramStorage() {
-  const remove = async (key: string) => {
-    if (Platform.OS === 'web') localStorage.removeItem(key);
-    else await SecureStore.deleteItemAsync(key);
-  };
-  await remove(SK_USER_ID);
-  await remove(SK_TOKEN);
-  await remove(SK_USERNAME);
-  await remove(SK_PICTURE);
+  await removeItem(SK_USER_ID);
+  await removeItem(SK_TOKEN);
+  await removeItem(SK_USERNAME);
+  await removeItem(SK_PICTURE);
+}
+
+/** 保存された2つ目のInstagram連携情報を消す */
+export async function clearInstagramStorage2() {
+  await removeItem(SK_USER_ID_2);
+  await removeItem(SK_TOKEN_2);
+  await removeItem(SK_USERNAME_2);
+  await removeItem(SK_PICTURE_2);
 }
