@@ -12,7 +12,6 @@ import { COLORS } from './src/utils/theme';
 import {
   loadInstagramCredentials,
   loadInstagramCredentials2,
-  SK_CONNECTING_SLOT,
 } from './src/utils/instagram';
 import axios from 'axios';
 
@@ -46,13 +45,12 @@ function OAuthHandler() {
     const code = params.get('code');
     if (!code) return;
 
-    // URLからcodeを削除
-    window.history.replaceState({}, '', window.location.pathname);
+    // state パラメータからスロット番号を読み取る
+    const state = params.get('state') ?? '';
+    const slot: 1 | 2 = state === 'slot2' ? 2 : 1;
 
-    // どのスロットに保存するか判定
-    const slotRaw = localStorage.getItem(SK_CONNECTING_SLOT);
-    const slot = slotRaw === '2' ? 2 : 1;
-    localStorage.removeItem(SK_CONNECTING_SLOT);
+    // URLからcode/stateを削除
+    window.history.replaceState({}, '', window.location.pathname);
 
     (async () => {
       try {

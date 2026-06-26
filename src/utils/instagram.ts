@@ -19,18 +19,18 @@ export const SK_TOKEN_2 = 'instagram_access_token_2';
 export const SK_USERNAME_2 = 'instagram_username_2';
 export const SK_PICTURE_2 = 'instagram_profile_picture_2';
 
-export const SK_CONNECTING_SLOT = 'instagram_connecting_slot';
-
 /** Instagramビジネスログインの認証画面へ遷移する (slot: 1 or 2) */
 export function connectInstagram(slot: 1 | 2 = 1) {
-  if (Platform.OS === 'web') localStorage.setItem(SK_CONNECTING_SLOT, String(slot));
+  // state パラメータにスロット番号を埋め込む（リダイレクト後に読み取る）
+  const state = `slot${slot}`;
   const url =
     `https://www.instagram.com/oauth/authorize?` +
     `force_reauth=true` +
     `&client_id=${INSTAGRAM_APP_ID}` +
     `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
     `&response_type=code` +
-    `&scope=${encodeURIComponent(SCOPES)}`;
+    `&scope=${encodeURIComponent(SCOPES)}` +
+    `&state=${encodeURIComponent(state)}`;
   if (Platform.OS === 'web') window.location.href = url;
   else Linking.openURL(url);
 }
