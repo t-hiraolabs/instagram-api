@@ -1146,19 +1146,41 @@ export default function ScheduleScreen() {
     }
   };
 
-  // 編集
-  // 複製：編集画面を開いてから保存（保存時に新規作成）
+  // 複製：投稿作成モーダルに内容を引き継いで開く
   const openDuplicate = (post: ScheduledPost) => {
-    let d = new Date(new Date(post.scheduled_at).getTime() + 7 * 24 * 3600 * 1000);
-    if (d <= new Date()) d = new Date(Date.now() + 24 * 3600 * 1000);
-    setEditingPost(null);
-    setEditPublishDraft(false);
-    setEditDuplicateSource(post);
-    setEditCaption(post.caption ?? '');
-    setEditHashtags((post.hashtags ?? []).join(' '));
-    setEditDate(toLocalInput(d.toISOString()));
-    setEditRepeat(post.repeat ?? 'none');
-    setEditVisible(true);
+    const urls = post.image_url?.includes('\n')
+      ? post.image_url.split('\n').filter(Boolean)
+      : post.image_url ? [post.image_url] : [];
+    setCaption(post.caption ?? '');
+    setHashtagsText((post.hashtags ?? []).join(' '));
+    setType((post.type === 'reel' ? 'feed' : post.type) as 'feed' | 'story');
+    setImageUrl(urls[0] ?? '');
+    setImageUrls(urls);
+    setFeedPreviews(urls);
+    setImagePreview(urls[0] ?? '');
+    setDateText('');
+    setStoryRawUri('');
+    setStoryMode('image');
+    setStoryMediaType('');
+    setStoryImageUri('');
+    setStoryVideoUri('');
+    setStoryVideoBlob(null);
+    setStoryVideoText('');
+    setStoryVideoTheme('');
+    setStoryVideoTextXY({ x: 0.5, y: 0.85 });
+    setStoryVideoTextScale(1);
+    setStoryTheme('');
+    setFeedTheme('');
+    setAiInstruction('');
+    setStoryDetails('');
+    setStoryTitle('');
+    setStoryBody('');
+    setStoryCta('');
+    setStoryTextColor('#FFFFFF');
+    setStoryTransform({ ...DEFAULT_TRANSFORM });
+    setRepeat('none');
+    setScheduleModalVisible(false);
+    setModalVisible(true);
   };
 
   const openEdit = (post: ScheduledPost) => {
