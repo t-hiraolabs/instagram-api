@@ -34,6 +34,7 @@ export default function AccountBadge() {
   const setSecondInstagramCredentials = useAppStore((s) => s.setSecondInstagramCredentials);
   const activeAccountSlot = useAppStore((s) => s.activeAccountSlot);
   const setActiveAccountSlot = useAppStore((s) => s.setActiveAccountSlot);
+  const activeCredentials = activeAccountSlot === 2 ? secondInstagramCredentials : instagramCredentials;
   const authVisible = useAppStore((s) => s.loginPromptVisible);
   const setAuthVisible = useAppStore((s) => s.setLoginPromptVisible);
 
@@ -170,13 +171,13 @@ export default function AccountBadge() {
   return (
     <>
       {/* 連携済みなら、アカウントアイコンの左に隠れてInstagramのプロフィール写真を表示 */}
-      {instagramCredentials?.profilePictureUrl ? (
+      {activeCredentials?.profilePictureUrl ? (
         <TouchableOpacity
           style={[styles.igBadge, { top: insets.top + SPACING.sm + 3, right: SPACING.md + 26 }]}
           onPress={() => setVisible(true)}
           activeOpacity={0.8}
         >
-          <Image source={{ uri: instagramCredentials.profilePictureUrl }} style={styles.igBadgeImg} />
+          <Image source={{ uri: activeCredentials!.profilePictureUrl }} style={styles.igBadgeImg} />
         </TouchableOpacity>
       ) : null}
 

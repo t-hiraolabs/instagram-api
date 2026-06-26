@@ -332,14 +332,14 @@ export default function ScheduleScreen() {
 
   const fetchPosts = useCallback(async () => {
     try {
-      const data = await getScheduledPosts();
+      const data = await getScheduledPosts(instagramCredentials?.userId);
       setPosts(data);
     } catch {
       Alert.alert('エラー', 'Supabaseの設定を確認してください。');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [instagramCredentials?.userId]);
 
   useEffect(() => {
     fetchPosts();

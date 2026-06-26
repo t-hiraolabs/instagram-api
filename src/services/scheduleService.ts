@@ -29,12 +29,17 @@ export interface CreateScheduledPostInput {
   status?: 'pending' | 'draft' | 'published';
 }
 
-export async function getScheduledPosts(): Promise<ScheduledPost[]> {
-  const { data, error } = await supabase
+export async function getScheduledPosts(instagramUserId?: string): Promise<ScheduledPost[]> {
+  let query = supabase
     .from('scheduled_posts')
     .select('*')
     .order('scheduled_at', { ascending: true });
 
+  if (instagramUserId) {
+    query = query.eq('instagram_user_id', instagramUserId);
+  }
+
+  const { data, error } = await query;
   if (error) throw error;
   return data ?? [];
 }
