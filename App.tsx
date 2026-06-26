@@ -17,6 +17,7 @@ import {
   loadInstagramCredentials2,
 } from './src/utils/instagram';
 import { getInsightsSummary } from './src/services/insightsService';
+import { loadBrandSettingsFromDb, saveBrandSettingsToDb } from './src/services/brandSettingsService';
 import { analyzeBrandFromPosts } from './src/services/aiService';
 import axios from 'axios';
 
@@ -93,6 +94,7 @@ function BrandConfirmModal() {
     if (Platform.OS === 'web') localStorage.setItem(SK, JSON.stringify(draft));
     if (brandConfirmModal.slot === 2) setBrandSettings2(draft);
     else setBrandSettings(draft);
+    saveBrandSettingsToDb(draft, brandConfirmModal.slot).catch(() => {});
     setBrandConfirmModal(null);
     Alert.alert('ブランド設定を保存しました ✅', 'プロフィール画面からいつでも編集できます');
   };
@@ -171,13 +173,27 @@ function OAuthHandler() {
     if (Platform.OS === 'web') {
       const saved = localStorage.getItem('active_account_slot');
       if (saved === '2') setActiveAccountSlot(2);
-      try {
-        const b1 = localStorage.getItem('brand_settings_v1');
-        if (b1) setBrandSettings(JSON.parse(b1) as BrandSettings);
-        const b2 = localStorage.getItem('brand_settings_v2');
-        if (b2) setBrandSettings2(JSON.parse(b2) as BrandSettings);
-      } catch {}
     }
+    // Supabaseからブランド設定を読み込み（デバイス間同期）
+    Promise.all([
+      loadBrandSettingsFromDb(1).catch(() => null),
+      loadBrandSettingsFromDb(2).catch(() => null),
+    ]).then(([b1, b2]) => {
+      if (b1) setBrandSettings(b1);
+      else if (Platform.OS === 'web') {
+        try {
+          const raw = localStorage.getItem('brand_settings_v1');
+          if (raw) setBrandSettings(JSON.parse(raw) as BrandSettings);
+        } catch {}
+      }
+      if (b2) setBrandSettings2(b2);
+      else if (Platform.OS === 'web') {
+        try {
+          const raw = localStorage.getItem('brand_settings_v2');
+          if (raw) setBrandSettings2(JSON.parse(raw) as BrandSettings);
+        } catch {}
+      }
+    });
   }, [setInstagramCredentials, setSecondInstagramCredentials, setActiveAccountSlot, setBrandSettings, setBrandSettings2]);
 
   useEffect(() => {

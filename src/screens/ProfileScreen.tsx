@@ -18,6 +18,7 @@ import * as SecureStore from 'expo-secure-store';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
 import { useAppStore, InstagramCredentials, BrandSettings } from '../store/appStore';
 import { INDUSTRIES } from '../services/aiService';
+import { loadBrandSettingsFromDb, saveBrandSettingsToDb } from '../services/brandSettingsService';
 import { ACCOUNT_THEMES } from '../utils/accountThemes';
 import { supabase } from '../services/supabaseClient';
 import { getMyPlan } from '../services/scheduleService';
@@ -130,13 +131,24 @@ export default function ProfileScreen() {
         });
       }
 
-      const savedBrand1 = await load(SK_BRAND_1);
-      if (savedBrand1) {
-        try { setBrandSettings(JSON.parse(savedBrand1) as BrandSettings); } catch {}
+      // Supabaseから読み込み（デバイス間同期）、失敗時はlocalStorageにフォールバック
+      const [db1, db2] = await Promise.all([
+        loadBrandSettingsFromDb(1).catch(() => null),
+        loadBrandSettingsFromDb(2).catch(() => null),
+      ]);
+      if (db1) {
+        setBrandSettings(db1);
+        if (Platform.OS === 'web') localStorage.setItem(SK_BRAND_1, JSON.stringify(db1));
+      } else {
+        const savedBrand1 = await load(SK_BRAND_1);
+        if (savedBrand1) { try { setBrandSettings(JSON.parse(savedBrand1) as BrandSettings); } catch {} }
       }
-      const savedBrand2 = await load(SK_BRAND_2);
-      if (savedBrand2) {
-        try { setBrandSettings2(JSON.parse(savedBrand2) as BrandSettings); } catch {}
+      if (db2) {
+        setBrandSettings2(db2);
+        if (Platform.OS === 'web') localStorage.setItem(SK_BRAND_2, JSON.stringify(db2));
+      } else {
+        const savedBrand2 = await load(SK_BRAND_2);
+        if (savedBrand2) { try { setBrandSettings2(JSON.parse(savedBrand2) as BrandSettings); } catch {} }
       }
     })();
   }, []);
@@ -189,7 +201,9 @@ export default function ProfileScreen() {
     setSaving(true);
     try {
       setActiveBrandSettings(draftBrand);
-      await save(SK_BRAND, JSON.stringify({ ...activeBrandSettings, ...draftBrand }));
+      // ローカルとSupabase両方に保存（デバイス間同期）
+      await save(SK_BRAND, JSON.stringify(draftBrand));
+      await saveBrandSettingsToDb(draftBrand, activeAccountSlot).catch(() => {});
       setBrandModalVisible(false);
       Alert.alert('保存しました ✅', 'ブランド設定を更新しました');
     } catch {
