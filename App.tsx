@@ -268,7 +268,6 @@ function AuthGate() {
     <>
       <OAuthHandler />
       <RootNavigator />
-      <AccountBadge />
       <BrandConfirmModal />
     </>
   );

@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
 import { useAppStore } from '../store/appStore';
+import AccountBadge from '../components/AccountBadge';
 import { getSeasonalThemes } from '../services/aiService';
 import { getAiUsage, AiUsage } from '../services/scheduleService';
 
@@ -78,6 +79,7 @@ export default function HomeScreen() {
     : null;
 
   return (
+    <View style={{ flex: 1 }}>
     <ScrollView
       style={styles.container}
       contentContainerStyle={{ paddingTop: insets.top + SPACING.md, paddingBottom: 100 }}
@@ -210,6 +212,8 @@ export default function HomeScreen() {
         <Text style={styles.tipText}>{todayTip.tip}</Text>
       </View>
     </ScrollView>
+    <AccountBadge />
+    </View>
   );
 }
 
