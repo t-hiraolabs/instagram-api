@@ -1582,16 +1582,28 @@ export default function ScheduleScreen() {
                   </Text>
                 </>
               )}
+              {/* 削除に関する注意 */}
+              {detailPost.status === 'published' && (
+                <View style={{ backgroundColor: COLORS.surface, borderRadius: RADIUS.md, padding: SPACING.md, marginTop: SPACING.lg, borderWidth: 1, borderColor: COLORS.border }}>
+                  <Text style={{ color: COLORS.textSecondary, fontSize: 13, lineHeight: 19 }}>
+                    ⚠️ Instagram APIの仕様上、アプリから Instagram 上の投稿を削除することはできません。{'\n'}
+                    Instagram 本体から手動で削除してください。{'\n'}
+                    下の「削除」はアプリ内の履歴のみを削除します。
+                  </Text>
+                </View>
+              )}
               {/* 削除ボタン */}
               <TouchableOpacity
-                style={[styles.modalSaveBtn, { backgroundColor: COLORS.error ?? '#FF3B30', marginTop: SPACING.lg }]}
+                style={[styles.modalSaveBtn, { backgroundColor: COLORS.error ?? '#FF3B30', marginTop: SPACING.md }]}
                 onPress={() => {
                   const run = () => { setDetailPost(null); handleDelete(detailPost.id); };
                   if (Platform.OS === 'web') { if (window.confirm('この投稿を削除しますか？')) run(); }
                   else Alert.alert('削除', 'この投稿を削除しますか？', [{ text: 'キャンセル', style: 'cancel' }, { text: '削除', style: 'destructive', onPress: run }]);
                 }}
               >
-                <Text style={styles.modalSaveBtnText}>🗑 削除する</Text>
+                <Text style={styles.modalSaveBtnText}>
+                  {detailPost.status === 'published' ? '🗑 履歴から削除する' : '🗑 削除する'}
+                </Text>
               </TouchableOpacity>
             </ScrollView>
           </View>
