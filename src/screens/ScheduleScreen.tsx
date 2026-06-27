@@ -1582,7 +1582,7 @@ export default function ScheduleScreen() {
             {/* キャプション（広めの入力欄） */}
             <Text style={styles.fieldLabel}>キャプション</Text>
             <TextInput
-              style={[styles.input, { height: 220, textAlignVertical: 'top', fontSize: 15, lineHeight: 22 }]}
+              style={[styles.input, { height: 440, textAlignVertical: 'top', fontSize: 15, lineHeight: 22 }]}
               value={caption}
               onChangeText={setCaption}
               placeholder="キャプションを入力"
@@ -1648,6 +1648,19 @@ export default function ScheduleScreen() {
             >
               {savingDraft ? <ActivityIndicator color={COLORS.textSecondary} /> : <Text style={styles.draftSaveBtnText}>📝 下書き保存</Text>}
             </TouchableOpacity>
+
+            <Text style={[styles.sectionDivider, { marginTop: SPACING.lg }]}>テンプレート</Text>
+            <TouchableOpacity
+              style={[styles.templateSaveBtn, savingTemplate && styles.publishNowBtnDisabled]}
+              onPress={handleSaveTemplate}
+              disabled={savingTemplate}
+              activeOpacity={0.85}
+            >
+              {savingTemplate ? <ActivityIndicator color={COLORS.secondary} /> : <Text style={styles.templateSaveText}>💾 テンプレートとして保存</Text>}
+            </TouchableOpacity>
+            <Text style={styles.publishNowHint}>
+              ※ 文章・ハッシュタグ・画像をこの端末に保存して、次回そのまま使い回せます
+            </Text>
           </ScrollView>
         </KeyboardAvoidingView>
       </Modal>
