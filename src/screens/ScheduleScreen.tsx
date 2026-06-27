@@ -1556,6 +1556,29 @@ export default function ScheduleScreen() {
               </ScrollView>
             )}
 
+            {/* AIへの指示 */}
+            <Text style={styles.fieldLabel}>AIへの指示（任意）</Text>
+            <TextInput
+              style={[styles.input, styles.aiInstructionInput]}
+              value={aiInstruction}
+              onChangeText={setAiInstruction}
+              placeholder={'例: もっとカジュアルに\n絵文字多めで\n短く3行で'}
+              placeholderTextColor={COLORS.textMuted}
+              multiline
+            />
+            <TouchableOpacity
+              style={[styles.aiBtnGhost, { marginBottom: SPACING.md }, aiLoading && styles.publishNowBtnDisabled]}
+              onPress={handleRefineCaption}
+              disabled={aiLoading}
+              activeOpacity={0.85}
+            >
+              {aiLoading ? (
+                <ActivityIndicator color={COLORS.secondary} />
+              ) : (
+                <Text style={styles.aiBtnGhostText}>✏️ 指示で書き直す</Text>
+              )}
+            </TouchableOpacity>
+
             {/* キャプション（広めの入力欄） */}
             <Text style={styles.fieldLabel}>キャプション</Text>
             <TextInput
@@ -1963,22 +1986,6 @@ export default function ScheduleScreen() {
                     multiline
                   />
 
-                  {/* 書き直し（生成後のみ表示・指示欄の下） */}
-                  {caption.trim() ? (
-                    <TouchableOpacity
-                      style={[styles.aiBtnGhost, aiLoading && styles.publishNowBtnDisabled]}
-                      onPress={handleRefineCaption}
-                      disabled={aiLoading}
-                      activeOpacity={0.85}
-                    >
-                      {aiLoading ? (
-                        <ActivityIndicator color={COLORS.secondary} />
-                      ) : (
-                        <Text style={styles.aiBtnGhostText}>✏️ 今の文章を指示で書き直す</Text>
-                      )}
-                    </TouchableOpacity>
-                  ) : null}
-
                   {/* 方法A: テーマから */}
                   <View style={styles.aiMethod}>
                     <Text style={styles.aiMethodTitle}>📝 テーマから作る</Text>
@@ -2023,6 +2030,17 @@ export default function ScheduleScreen() {
                     </TouchableOpacity>
                   </View>
                 </View>
+
+                {/* 生成済みのとき結果画面へ戻るボタン */}
+                {caption.trim() ? (
+                  <TouchableOpacity
+                    style={[styles.aiBtn, { marginTop: SPACING.md }]}
+                    onPress={() => { setModalVisible(false); setResultVisible(true); }}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.aiBtnText}>✨ 生成結果を見る・投稿する</Text>
+                  </TouchableOpacity>
+                ) : null}
 
               </>
             ) : null}
