@@ -685,6 +685,7 @@ export default function ScheduleScreen() {
       });
       setCaption(g.caption);
       setHashtagsText(g.hashtags.join(' '));
+      setModalVisible(false);
       setResultVisible(true);
     } catch (e) {
       alertMsg(e instanceof Error ? e.message : 'AI生成に失敗しました');
@@ -727,6 +728,7 @@ export default function ScheduleScreen() {
       });
       setCaption(g.caption);
       setHashtagsText(g.hashtags.join(' '));
+      setModalVisible(false);
       setResultVisible(true);
     } catch (e) {
       alertMsg(e instanceof Error ? e.message : 'AI生成に失敗しました');
@@ -1534,10 +1536,10 @@ export default function ScheduleScreen() {
       </ScrollView>
 
       {/* AI生成結果モーダル */}
-      <Modal visible={resultVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setResultVisible(false)}>
+      <Modal visible={resultVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => { setResultVisible(false); setModalVisible(true); }}>
         <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.background }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => setResultVisible(false)}>
+            <TouchableOpacity onPress={() => { setResultVisible(false); setModalVisible(true); }}>
               <Text style={styles.modalCancel}>‹ 戻る</Text>
             </TouchableOpacity>
             <Text style={styles.modalTitle}>✨ 生成結果</Text>
@@ -2022,138 +2024,70 @@ export default function ScheduleScreen() {
                   </View>
                 </View>
 
-                <Text style={styles.sectionDivider}>投稿内容</Text>
-                <Text style={styles.fieldLabel}>キャプション</Text>
-                <TextInput
-                  style={[styles.input, styles.textArea]}
-                  value={caption}
-                  onChangeText={setCaption}
-                  placeholder="投稿のキャプションを入力"
-                  placeholderTextColor={COLORS.textMuted}
-                  multiline
-                  numberOfLines={4}
-                />
-                <Text style={styles.fieldLabel}>ハッシュタグ（{feedTags.length}/{MAX_TAGS}）</Text>
-                <View style={styles.tagWrap}>
-                  {feedTags.map((tag, i) => (
-                    <View key={`${tag}-${i}`} style={styles.tagChip}>
-                      <Text style={styles.tagChipText}>{tag}</Text>
-                      <TouchableOpacity
-                        onPress={() => removeFeedTag(i)}
-                        hitSlop={{ top: 8, bottom: 8, left: 4, right: 8 }}
-                      >
-                        <Text style={styles.tagChipRemove}>✕</Text>
-                      </TouchableOpacity>
-                    </View>
-                  ))}
-                  {feedTags.length === 0 && (
-                    <Text style={styles.tagEmpty}>ハッシュタグはまだありません</Text>
-                  )}
-                </View>
-                <View style={styles.tagAddRow}>
-                  <TextInput
-                    style={styles.tagInput}
-                    value={newFeedTag}
-                    onChangeText={setNewFeedTag}
-                    onSubmitEditing={addFeedTag}
-                    placeholder="#タグを追加（スペースで複数可）"
-                    placeholderTextColor={COLORS.textMuted}
-                    autoCapitalize="none"
-                    returnKeyType="done"
-                  />
-                  <TouchableOpacity style={styles.tagAddBtn} onPress={addFeedTag} activeOpacity={0.85}>
-                    <Text style={styles.tagAddBtnText}>追加</Text>
-                  </TouchableOpacity>
-                </View>
-                {feedTags.length >= MAX_TAGS && (
-                  <Text style={styles.tagWarn}>Instagramのハッシュタグは1投稿{MAX_TAGS}個までです</Text>
-                )}
-                {imageUrl && !imageUploading ? (
-                  <Text style={styles.imageReadyText}>
-                    ✅ {imageUrls.length > 1 ? `画像${imageUrls.length}枚（カルーセル）の準備ができました` : '画像の準備ができました'}
-                  </Text>
-                ) : null}
               </>
             ) : null}
 
-            <Text style={styles.sectionDivider}>Instagram</Text>
-            {instagramCredentials ? (
-              <View style={styles.igConnectedBox}>
-                <Text style={styles.igConnectedText}>
-                  ✅ {instagramCredentials.username ? `@${instagramCredentials.username}` : '連携済み'} に投稿します
-                </Text>
-              </View>
-            ) : (
-              <View style={styles.igWarnBox}>
-                <Text style={styles.igWarnText}>
-                  ⚠️ 未連携です。右上のアイコンからInstagramを連携してください
-                </Text>
-              </View>
-            )}
-
-            <Text style={styles.sectionDivider}>出し方を選ぶ</Text>
-
-            {/* ① 今すぐ投稿 */}
-            <TouchableOpacity
-              style={[styles.publishNowBtn, (publishing || !instagramCredentials) && styles.publishNowBtnDisabled]}
-              onPress={handlePublishNow}
-              disabled={publishing || !instagramCredentials}
-              activeOpacity={0.85}
-            >
-              {publishing ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.publishNowText}>🚀 今すぐ投稿する</Text>
-              )}
-            </TouchableOpacity>
-            <Text style={styles.publishNowHint}>※ すぐにInstagramへ投稿します（履歴に残ります）</Text>
-
-            {/* ② 予約する（押すと別画面で日時を入力） */}
-            <Text style={styles.orDivider}>または、日時を決めて予約する</Text>
-            <TouchableOpacity
-              style={styles.scheduleSaveBtn}
-              onPress={() => setScheduleModalVisible(true)}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.publishNowText}>📅 予約する</Text>
-            </TouchableOpacity>
-            <Text style={styles.publishNowHint}>※ 次の画面で日時を選びます</Text>
-
-            {/* ③ 下書き保存（日時は決めずに内容だけ保存） */}
-            <Text style={styles.orDivider}>または、あとで決める</Text>
-            <TouchableOpacity
-              style={[styles.draftSaveBtn, savingDraft && styles.publishNowBtnDisabled]}
-              onPress={handleSaveDraft}
-              disabled={savingDraft}
-              activeOpacity={0.85}
-            >
-              {savingDraft ? (
-                <ActivityIndicator color={COLORS.primary} />
-              ) : (
-                <Text style={styles.draftSaveText}>📝 下書きに保存</Text>
-              )}
-            </TouchableOpacity>
-            <Text style={styles.publishNowHint}>
-              ※ 日時を決めずに保存。「下書き」から後で予約できます
-            </Text>
-
-            {type === 'feed' && (
+            {type !== 'feed' && (
               <>
-                <Text style={styles.sectionDivider}>テンプレート（ひな形）</Text>
+                <Text style={styles.sectionDivider}>Instagram</Text>
+                {instagramCredentials ? (
+                  <View style={styles.igConnectedBox}>
+                    <Text style={styles.igConnectedText}>
+                      ✅ {instagramCredentials.username ? `@${instagramCredentials.username}` : '連携済み'} に投稿します
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={styles.igWarnBox}>
+                    <Text style={styles.igWarnText}>
+                      ⚠️ 未連携です。右上のアイコンからInstagramを連携してください
+                    </Text>
+                  </View>
+                )}
+
+                <Text style={styles.sectionDivider}>出し方を選ぶ</Text>
+
+                {/* ① 今すぐ投稿 */}
                 <TouchableOpacity
-                  style={[styles.templateSaveBtn, savingTemplate && styles.publishNowBtnDisabled]}
-                  onPress={handleSaveTemplate}
-                  disabled={savingTemplate}
+                  style={[styles.publishNowBtn, (publishing || !instagramCredentials) && styles.publishNowBtnDisabled]}
+                  onPress={handlePublishNow}
+                  disabled={publishing || !instagramCredentials}
                   activeOpacity={0.85}
                 >
-                  {savingTemplate ? (
-                    <ActivityIndicator color={COLORS.secondary} />
+                  {publishing ? (
+                    <ActivityIndicator color="#fff" />
                   ) : (
-                    <Text style={styles.templateSaveText}>💾 テンプレートとして保存</Text>
+                    <Text style={styles.publishNowText}>🚀 今すぐ投稿する</Text>
+                  )}
+                </TouchableOpacity>
+                <Text style={styles.publishNowHint}>※ すぐにInstagramへ投稿します（履歴に残ります）</Text>
+
+                {/* ② 予約する */}
+                <Text style={styles.orDivider}>または、日時を決めて予約する</Text>
+                <TouchableOpacity
+                  style={styles.scheduleSaveBtn}
+                  onPress={() => setScheduleModalVisible(true)}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.publishNowText}>📅 予約する</Text>
+                </TouchableOpacity>
+                <Text style={styles.publishNowHint}>※ 次の画面で日時を選びます</Text>
+
+                {/* ③ 下書き保存 */}
+                <Text style={styles.orDivider}>または、あとで決める</Text>
+                <TouchableOpacity
+                  style={[styles.draftSaveBtn, savingDraft && styles.publishNowBtnDisabled]}
+                  onPress={handleSaveDraft}
+                  disabled={savingDraft}
+                  activeOpacity={0.85}
+                >
+                  {savingDraft ? (
+                    <ActivityIndicator color={COLORS.primary} />
+                  ) : (
+                    <Text style={styles.draftSaveText}>📝 下書きに保存</Text>
                   )}
                 </TouchableOpacity>
                 <Text style={styles.publishNowHint}>
-                  ※ 文章・ハッシュタグ・画像をこの端末に保存して、次回そのまま使い回せます
+                  ※ 日時を決めずに保存。「下書き」から後で予約できます
                 </Text>
               </>
             )}
