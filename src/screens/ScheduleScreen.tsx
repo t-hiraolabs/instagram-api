@@ -13,8 +13,6 @@ import {
   Platform,
   Image,
   PanResponder,
-  Clipboard,
-  Linking,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -930,22 +928,6 @@ export default function ScheduleScreen() {
     );
   };
 
-  const handleManualPost = () => {
-    const text = [caption.trim(), feedTags.join(' ')].filter(Boolean).join('\n\n');
-    Clipboard.setString(text);
-    Alert.alert(
-      'コピーしました',
-      'キャプションとハッシュタグをコピーしました。Instagramアプリを開いて貼り付けてください。',
-      [
-        { text: 'キャンセル', style: 'cancel' },
-        {
-          text: 'Instagramを開く',
-          onPress: () => Linking.openURL('instagram://app').catch(() => Linking.openURL('https://www.instagram.com')),
-        },
-      ],
-    );
-  };
-
   // テンプレートを作成画面に読み込む（編集して再利用できる）
   const applyTemplate = (t: PostTemplate) => {
     setType(t.type);
@@ -1708,17 +1690,6 @@ export default function ScheduleScreen() {
               ※ 文章・ハッシュタグ・画像をこの端末に保存して、次回そのまま使い回せます
             </Text>
 
-            <Text style={[styles.sectionDivider, { marginTop: SPACING.lg }]}>手動投稿</Text>
-            <TouchableOpacity
-              style={[styles.aiBtnGhost, { marginBottom: SPACING.sm }]}
-              onPress={handleManualPost}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.aiBtnGhostText}>📋 キャプションをコピーしてInstagramで投稿</Text>
-            </TouchableOpacity>
-            <Text style={styles.publishNowHint}>
-              ※ キャプション＋ハッシュタグをコピーしてInstagramアプリを開きます
-            </Text>
           </ScrollView>
         </KeyboardAvoidingView>
       </Modal>
@@ -2102,16 +2073,16 @@ export default function ScheduleScreen() {
                   </View>
                 </View>
 
-                {/* 生成済みのとき結果画面へ戻るボタン */}
-                {caption.trim() ? (
-                  <TouchableOpacity
-                    style={[styles.aiBtn, { marginTop: SPACING.md }]}
-                    onPress={() => { setModalVisible(false); setResultVisible(true); }}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={styles.aiBtnText}>✨ 生成結果を見る・投稿する</Text>
-                  </TouchableOpacity>
-                ) : null}
+                {/* 生成結果画面へ（生成済みなら結果を見る、未生成なら手動入力） */}
+                <TouchableOpacity
+                  style={[styles.aiBtn, { marginTop: SPACING.md, backgroundColor: caption.trim() ? COLORS.primary : COLORS.secondary }]}
+                  onPress={() => { setModalVisible(false); setResultVisible(true); }}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.aiBtnText}>
+                    {caption.trim() ? '✨ 生成結果を見る・投稿する' : '✍️ 手動で作成・投稿する'}
+                  </Text>
+                </TouchableOpacity>
 
               </>
             ) : null}
