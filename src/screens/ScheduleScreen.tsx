@@ -240,6 +240,9 @@ export default function ScheduleScreen() {
   // 詳細モーダル用
   const [detailPost, setDetailPost] = useState<ScheduledPost | null>(null);
 
+  // AI生成結果画面用
+  const [resultVisible, setResultVisible] = useState(false);
+
   // 編集モーダル用
   const [editVisible, setEditVisible] = useState(false);
   const [editingPost, setEditingPost] = useState<ScheduledPost | null>(null);
@@ -682,6 +685,7 @@ export default function ScheduleScreen() {
       });
       setCaption(g.caption);
       setHashtagsText(g.hashtags.join(' '));
+      setResultVisible(true);
     } catch (e) {
       alertMsg(e instanceof Error ? e.message : 'AI生成に失敗しました');
     } finally {
@@ -723,6 +727,7 @@ export default function ScheduleScreen() {
       });
       setCaption(g.caption);
       setHashtagsText(g.hashtags.join(' '));
+      setResultVisible(true);
     } catch (e) {
       alertMsg(e instanceof Error ? e.message : 'AI生成に失敗しました');
     } finally {
@@ -1527,6 +1532,100 @@ export default function ScheduleScreen() {
           </>
         )}
       </ScrollView>
+
+      {/* AI生成結果モーダル */}
+      <Modal visible={resultVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setResultVisible(false)}>
+        <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.background }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => setResultVisible(false)}>
+              <Text style={styles.modalCancel}>‹ 戻る</Text>
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>✨ 生成結果</Text>
+            <View style={{ width: 48 }} />
+          </View>
+
+          <ScrollView style={styles.modalBody} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 40 }}>
+            {/* 画像プレビュー */}
+            {feedPreviews.length > 0 && (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: SPACING.md }}>
+                {feedPreviews.map((uri, i) => (
+                  <Image key={i} source={{ uri }} style={{ width: 120, height: 120, borderRadius: RADIUS.md, marginRight: SPACING.sm }} resizeMode="cover" />
+                ))}
+              </ScrollView>
+            )}
+
+            {/* キャプション（広めの入力欄） */}
+            <Text style={styles.fieldLabel}>キャプション</Text>
+            <TextInput
+              style={[styles.input, { height: 220, textAlignVertical: 'top', fontSize: 15, lineHeight: 22 }]}
+              value={caption}
+              onChangeText={setCaption}
+              placeholder="キャプションを入力"
+              placeholderTextColor={COLORS.textMuted}
+              multiline
+            />
+
+            {/* ハッシュタグ */}
+            <Text style={[styles.fieldLabel, { marginTop: SPACING.md }]}>ハッシュタグ（{feedTags.length}/{MAX_TAGS}）</Text>
+            <View style={styles.tagWrap}>
+              {feedTags.map((tag, i) => (
+                <View key={`${tag}-${i}`} style={styles.tagChip}>
+                  <Text style={styles.tagChipText}>{tag}</Text>
+                  <TouchableOpacity onPress={() => removeFeedTag(i)} hitSlop={{ top: 8, bottom: 8, left: 4, right: 8 }}>
+                    <Text style={styles.tagChipRemove}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+              {feedTags.length === 0 && <Text style={styles.tagEmpty}>ハッシュタグなし</Text>}
+            </View>
+            <View style={styles.tagAddRow}>
+              <TextInput
+                style={styles.tagInput}
+                value={newFeedTag}
+                onChangeText={setNewFeedTag}
+                onSubmitEditing={addFeedTag}
+                placeholder="#タグを追加"
+                placeholderTextColor={COLORS.textMuted}
+                autoCapitalize="none"
+                returnKeyType="done"
+              />
+              <TouchableOpacity style={styles.tagAddBtn} onPress={addFeedTag}>
+                <Text style={styles.tagAddBtnText}>追加</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* 投稿方法 */}
+            <Text style={[styles.sectionDivider, { marginTop: SPACING.lg }]}>投稿方法を選ぶ</Text>
+
+            <TouchableOpacity
+              style={[styles.publishNowBtn, { marginTop: SPACING.sm }, (publishing || !imageUrl) && styles.publishNowBtnDisabled]}
+              onPress={async () => { await handlePublishNow(); setResultVisible(false); }}
+              disabled={publishing || !imageUrl}
+              activeOpacity={0.85}
+            >
+              {publishing ? <ActivityIndicator color="#fff" /> : <Text style={styles.publishNowText}>⚡ 今すぐ投稿する</Text>}
+            </TouchableOpacity>
+            {!imageUrl && <Text style={styles.aiHintText}>※ 写真を選ぶと今すぐ投稿できます</Text>}
+
+            <TouchableOpacity
+              style={[styles.aiBtn, { marginTop: SPACING.sm, backgroundColor: '#F77737' }]}
+              onPress={() => { setResultVisible(false); setScheduleModalVisible(true); }}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.aiBtnText}>📅 予約する</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.draftSaveBtn, { marginTop: SPACING.sm }]}
+              onPress={async () => { await handleSaveDraft(); setResultVisible(false); }}
+              disabled={savingDraft}
+              activeOpacity={0.85}
+            >
+              {savingDraft ? <ActivityIndicator color={COLORS.textSecondary} /> : <Text style={styles.draftSaveBtnText}>📝 下書き保存</Text>}
+            </TouchableOpacity>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </Modal>
 
       {/* 詳細モーダル */}
       <Modal visible={!!detailPost} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setDetailPost(null)}>
