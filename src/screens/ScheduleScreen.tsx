@@ -229,6 +229,7 @@ export default function ScheduleScreen() {
   const [type, setType] = useState<'feed' | 'story'>('feed');
   const [repeat, setRepeat] = useState<RepeatOption>('none');
   const [scheduleModalVisible, setScheduleModalVisible] = useState(false); // 「予約する」で日時入力を別画面表示
+  const scheduleFromResult = useRef(false); // 結果画面から予約モーダルを開いたか
   const [plan, setPlan] = useState<Plan>('free');
   const [nowSub, setNowSub] = useState<'menu' | 'reel' | 'roster'>('menu'); // 投稿タブ内の表示
 
@@ -1083,7 +1084,9 @@ export default function ScheduleScreen() {
         access_token: instagramCredentials?.accessToken || undefined,
       });
       clearDraft();
+      scheduleFromResult.current = false;
       setScheduleModalVisible(false);
+      setResultVisible(false);
       setModalVisible(false);
       await fetchPosts();
     } catch (e) {
@@ -1216,7 +1219,12 @@ export default function ScheduleScreen() {
     setStoryTransform({ ...DEFAULT_TRANSFORM });
     setRepeat('none');
     setScheduleModalVisible(false);
-    setModalVisible(true);
+    if (scheduleFromResult.current) {
+      scheduleFromResult.current = false;
+      setResultVisible(true);
+    } else {
+      setModalVisible(true);
+    }
   };
 
   const openEdit = (post: ScheduledPost) => {
@@ -1662,7 +1670,7 @@ export default function ScheduleScreen() {
 
             <TouchableOpacity
               style={[styles.aiBtn, { marginTop: SPACING.sm, backgroundColor: '#F77737' }]}
-              onPress={() => { setResultVisible(false); setScheduleModalVisible(true); }}
+              onPress={() => { scheduleFromResult.current = true; setScheduleModalVisible(true); }}
               activeOpacity={0.85}
             >
               <Text style={styles.aiBtnText}>📅 予約する</Text>
@@ -1670,7 +1678,7 @@ export default function ScheduleScreen() {
 
             <TouchableOpacity
               style={[styles.draftSaveBtn, { marginTop: SPACING.sm }]}
-              onPress={async () => { await handleSaveDraft(); setResultVisible(false); }}
+              onPress={async () => { await handleSaveDraft(); }}
               disabled={savingDraft}
               activeOpacity={0.85}
             >
