@@ -13,6 +13,8 @@ import {
   Platform,
   Image,
   PanResponder,
+  Clipboard,
+  Linking,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -902,6 +904,48 @@ export default function ScheduleScreen() {
     }
   };
 
+  const handleResultClose = () => {
+    if (!caption.trim() && feedTags.length === 0) {
+      setResultVisible(false);
+      return;
+    }
+    Alert.alert(
+      '下書きを保存しますか？',
+      'キャプションとハッシュタグを下書きとして保存できます。',
+      [
+        { text: 'キャンセル', style: 'cancel' },
+        {
+          text: '保存しない',
+          style: 'destructive',
+          onPress: () => { setResultVisible(false); },
+        },
+        {
+          text: '下書き保存',
+          onPress: async () => {
+            await handleSaveDraft();
+            setResultVisible(false);
+          },
+        },
+      ],
+    );
+  };
+
+  const handleManualPost = () => {
+    const text = [caption.trim(), feedTags.join(' ')].filter(Boolean).join('\n\n');
+    Clipboard.setString(text);
+    Alert.alert(
+      'コピーしました',
+      'キャプションとハッシュタグをコピーしました。Instagramアプリを開いて貼り付けてください。',
+      [
+        { text: 'キャンセル', style: 'cancel' },
+        {
+          text: 'Instagramを開く',
+          onPress: () => Linking.openURL('instagram://app').catch(() => Linking.openURL('https://www.instagram.com')),
+        },
+      ],
+    );
+  };
+
   // テンプレートを作成画面に読み込む（編集して再利用できる）
   const applyTemplate = (t: PostTemplate) => {
     setType(t.type);
@@ -1536,14 +1580,16 @@ export default function ScheduleScreen() {
       </ScrollView>
 
       {/* AI生成結果モーダル */}
-      <Modal visible={resultVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => { setResultVisible(false); setModalVisible(true); }}>
+      <Modal visible={resultVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => handleResultClose()}>
         <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.background }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={styles.modalHeader}>
             <TouchableOpacity onPress={() => { setResultVisible(false); setModalVisible(true); }}>
               <Text style={styles.modalCancel}>‹ 戻る</Text>
             </TouchableOpacity>
             <Text style={styles.modalTitle}>✨ 生成結果</Text>
-            <View style={{ width: 48 }} />
+            <TouchableOpacity onPress={handleResultClose}>
+              <Text style={[styles.modalCancel, { color: COLORS.error }]}>閉じる</Text>
+            </TouchableOpacity>
           </View>
 
           <ScrollView style={styles.modalBody} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 40 }}>
@@ -1660,6 +1706,18 @@ export default function ScheduleScreen() {
             </TouchableOpacity>
             <Text style={styles.publishNowHint}>
               ※ 文章・ハッシュタグ・画像をこの端末に保存して、次回そのまま使い回せます
+            </Text>
+
+            <Text style={[styles.sectionDivider, { marginTop: SPACING.lg }]}>手動投稿</Text>
+            <TouchableOpacity
+              style={[styles.aiBtnGhost, { marginBottom: SPACING.sm }]}
+              onPress={handleManualPost}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.aiBtnGhostText}>📋 キャプションをコピーしてInstagramで投稿</Text>
+            </TouchableOpacity>
+            <Text style={styles.publishNowHint}>
+              ※ キャプション＋ハッシュタグをコピーしてInstagramアプリを開きます
             </Text>
           </ScrollView>
         </KeyboardAvoidingView>
