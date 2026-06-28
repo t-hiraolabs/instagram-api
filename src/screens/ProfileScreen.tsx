@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -24,6 +24,7 @@ import { supabase } from '../services/supabaseClient';
 import { getMyPlan } from '../services/scheduleService';
 import { createCheckoutUrl } from '../services/billingService';
 import { PLANS, Plan, PLAN_RANK, canAnalytics } from '../utils/plans';
+import { registerPush, unregisterPush, isPushSupported, isPushEnabled } from '../services/pushService';
 import {
   connectInstagram,
   clearInstagramStorage,
@@ -251,6 +252,31 @@ export default function ProfileScreen() {
     ]);
   };
 
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushLoading, setPushLoading] = useState(false);
+
+  useEffect(() => {
+    isPushEnabled().then(setPushEnabled);
+  }, []);
+
+  const handleTogglePush = useCallback(async (value: boolean) => {
+    setPushLoading(true);
+    try {
+      if (value) {
+        const ok = await registerPush();
+        if (!ok) {
+          Alert.alert('通知を許可してください', 'ブラウザの設定から通知を許可してください。');
+        }
+        setPushEnabled(ok);
+      } else {
+        await unregisterPush();
+        setPushEnabled(false);
+      }
+    } finally {
+      setPushLoading(false);
+    }
+  }, []);
+
   const handleLogout = () => {
     if (Platform.OS === 'web') {
       if (window.confirm('ログアウトしますか？')) {
@@ -434,6 +460,25 @@ export default function ProfileScreen() {
             <Text style={styles.helpArrow}>›</Text>
           </TouchableOpacity>
         ))}
+
+        {isPushSupported() && (
+          <View style={styles.notifRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.notifLabel}>🔔 プッシュ通知</Text>
+              <Text style={styles.notifDesc}>予約投稿の完了・失敗を通知します</Text>
+            </View>
+            {pushLoading ? (
+              <ActivityIndicator color={COLORS.primary} />
+            ) : (
+              <Switch
+                value={pushEnabled}
+                onValueChange={handleTogglePush}
+                trackColor={{ false: COLORS.border, true: COLORS.primary }}
+                thumbColor="#fff"
+              />
+            )}
+          </View>
+        )}
 
         <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.8}>
           <Text style={styles.logoutBtnText}>ログアウト</Text>
@@ -733,6 +778,18 @@ const styles = StyleSheet.create({
   helpEmoji: { fontSize: 20 },
   helpLabel: { flex: 1, color: COLORS.text, fontSize: 14 },
   helpArrow: { color: COLORS.textMuted, fontSize: 20 },
+  notifRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.md,
+    padding: SPACING.md,
+    marginBottom: SPACING.sm,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  notifLabel: { color: COLORS.text, fontSize: 15, fontWeight: '700', marginBottom: 2 },
+  notifDesc: { color: COLORS.textSecondary, fontSize: 12 },
   logoutBtn: {
     marginTop: SPACING.xl,
     paddingVertical: SPACING.md,

@@ -1,5 +1,5 @@
 {
-  "buildCommand": "npx expo export --platform web",
+  "buildCommand": "npx expo export --platform web && cp web/service-worker.js dist/service-worker.js",
   "outputDirectory": "dist",
   "installCommand": "npm install"
 }

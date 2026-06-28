@@ -6,6 +6,24 @@ const supabase = createClient(
 );
 
 const INSTAGRAM_API = 'https://graph.instagram.com';
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
+const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
+async function sendPushToUser(userId: string | undefined, payload: { title: string; body: string }) {
+  if (!userId) return;
+  try {
+    await fetch(`${SUPABASE_URL}/functions/v1/send-push`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SERVICE_ROLE_KEY}`,
+      },
+      body: JSON.stringify({ user_id: userId, ...payload }),
+    });
+  } catch {
+    // 通知失敗は無視（投稿自体には影響させない）
+  }
+}
 
 async function publishPost(post: {
   id: string;
@@ -189,8 +207,16 @@ async function processDuePosts() {
       try {
         await publishPost(post);
         await supabase.from('scheduled_posts').update({ status: 'published' }).eq('id', post.id);
+        await sendPushToUser(post.user_id, {
+          title: '投稿が完了しました ✅',
+          body: post.caption ? post.caption.slice(0, 60) + (post.caption.length > 60 ? '…' : '') : 'Instagramへの投稿が完了しました',
+        });
       } catch (_err) {
         await supabase.from('scheduled_posts').update({ status: 'failed' }).eq('id', post.id);
+        await sendPushToUser(post.user_id, {
+          title: '投稿に失敗しました ⚠️',
+          body: '予約投稿の処理中にエラーが発生しました。投稿タブから確認してください。',
+        });
       }
     }
   }
