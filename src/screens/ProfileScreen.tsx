@@ -522,6 +522,7 @@ export default function ProfileScreen() {
           { label: 'ハッシュタグについて', emoji: '#️⃣', action: () => Alert.alert('ハッシュタグ', '日本のInstagramではハッシュタグ検索がグローバル平均の3倍！15〜20個のタグを使い、人気タグとニッチタグをバランスよく組み合わせましょう。') },
           { label: '最適な投稿時間', emoji: '⏰', action: () => Alert.alert('投稿時間', '平日: 12〜13時 / 18〜21時\n休日: 11〜13時 / 19〜21時\n\nこの時間帯は日本のInstagramユーザーのアクティブ率が最も高くなります。') },
           { label: 'お問い合わせ', emoji: '💬', action: () => Alert.alert('お問い合わせ', 'support@aimark.jp までご連絡ください') },
+          { label: 'プライバシーポリシー', emoji: '🔒', action: () => { if (Platform.OS === 'web') { window.open('/privacy', '_blank'); } else { Alert.alert('プライバシーポリシー', 'https://instagram-api-alpha.vercel.app/privacy'); } } },
         ].map((item) => (
           <TouchableOpacity key={item.label} style={styles.helpRow} onPress={item.action} activeOpacity={0.7}>
             <Text style={styles.helpEmoji}>{item.emoji}</Text>
