@@ -254,6 +254,8 @@ export default function ProfileScreen() {
 
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushLoading, setPushLoading] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
 
   useEffect(() => {
     isPushEnabled().then(setPushEnabled);
@@ -461,27 +463,56 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         ))}
 
-        <Text style={styles.sectionTitle}>通知</Text>
-        {isPushSupported() ? (
-          <View style={styles.notifRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.notifLabel}>🔔 プッシュ通知</Text>
-              <Text style={styles.notifDesc}>予約投稿の完了・失敗を通知します</Text>
-            </View>
-            {pushLoading ? (
-              <ActivityIndicator color={COLORS.primary} />
-            ) : (
-              <Switch
-                value={pushEnabled}
-                onValueChange={handleTogglePush}
-                trackColor={{ false: COLORS.border, true: COLORS.primary }}
-                thumbColor="#fff"
-              />
+        {/* 設定セクション */}
+        <Text style={styles.sectionTitle}>設定</Text>
+        <TouchableOpacity
+          style={styles.helpRow}
+          onPress={() => setSettingsOpen((v) => !v)}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.helpEmoji}>⚙️</Text>
+          <Text style={styles.helpLabel}>設定</Text>
+          <Text style={styles.helpArrow}>{settingsOpen ? '∨' : '›'}</Text>
+        </TouchableOpacity>
+
+        {settingsOpen && (
+          <View style={styles.settingsInner}>
+            <TouchableOpacity
+              style={styles.helpRow}
+              onPress={() => setNotifOpen((v) => !v)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.helpEmoji}>🔔</Text>
+              <Text style={styles.helpLabel}>通知</Text>
+              <Text style={styles.helpArrow}>{notifOpen ? '∨' : '›'}</Text>
+            </TouchableOpacity>
+
+            {notifOpen && (
+              <View style={styles.settingsInner}>
+                {isPushSupported() ? (
+                  <View style={styles.notifRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.notifLabel}>プッシュ通知</Text>
+                      <Text style={styles.notifDesc}>予約投稿の完了・失敗を通知します</Text>
+                    </View>
+                    {pushLoading ? (
+                      <ActivityIndicator color={COLORS.primary} />
+                    ) : (
+                      <Switch
+                        value={pushEnabled}
+                        onValueChange={handleTogglePush}
+                        trackColor={{ false: COLORS.border, true: COLORS.primary }}
+                        thumbColor="#fff"
+                      />
+                    )}
+                  </View>
+                ) : (
+                  <View style={styles.notifRow}>
+                    <Text style={styles.notifDesc}>このブラウザはプッシュ通知に対応していません</Text>
+                  </View>
+                )}
+              </View>
             )}
-          </View>
-        ) : (
-          <View style={styles.notifRow}>
-            <Text style={styles.notifDesc}>このブラウザはプッシュ通知に対応していません</Text>
           </View>
         )}
 
@@ -783,12 +814,20 @@ const styles = StyleSheet.create({
   helpEmoji: { fontSize: 20 },
   helpLabel: { flex: 1, color: COLORS.text, fontSize: 14 },
   helpArrow: { color: COLORS.textMuted, fontSize: 20 },
+  settingsInner: {
+    marginLeft: SPACING.md,
+    borderLeftWidth: 2,
+    borderLeftColor: COLORS.border,
+    paddingLeft: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
   notifRow: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: COLORS.surface,
     borderRadius: RADIUS.md,
     padding: SPACING.md,
+    marginTop: SPACING.sm,
     marginBottom: SPACING.sm,
     borderWidth: 1,
     borderColor: COLORS.border,
