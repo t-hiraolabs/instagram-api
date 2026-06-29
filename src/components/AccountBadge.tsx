@@ -40,20 +40,15 @@ export default function AccountBadge() {
   const setAuthVisible = useAppStore((s) => s.setLoginPromptVisible);
 
   useEffect(() => {
-    let hadSession = false;
-    supabase.auth.getSession().then(({ data }) => {
-      hadSession = !!data.session;
-      setSession(data.session);
-    });
+    supabase.auth.getSession().then(({ data }) => setSession(data.session));
     const { data: listener } = supabase.auth.onAuthStateChange((event, newSession) => {
+      // ログインフォームから実際にログインした時だけページを更新する。
+      // （Instagram連携からの戻りや初回読み込みでは更新しない＝自動ブランド分析を中断しない）
+      const cameFromLoginForm = useAppStore.getState().loginPromptVisible;
       setSession(newSession);
       if (newSession) setAuthVisible(false); // ログイン成功したらログイン画面を閉じる
-      // 未ログイン → ログインに切り替わったらページを更新して最新状態を反映
-      if (event === 'SIGNED_IN' && newSession && !hadSession) {
-        hadSession = true;
+      if (event === 'SIGNED_IN' && newSession && cameFromLoginForm) {
         if (Platform.OS === 'web') window.location.reload();
-      } else if (event === 'SIGNED_OUT') {
-        hadSession = false;
       }
     });
     return () => listener.subscription.unsubscribe();
