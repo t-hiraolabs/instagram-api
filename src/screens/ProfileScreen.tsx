@@ -254,8 +254,8 @@ export default function ProfileScreen() {
 
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushLoading, setPushLoading] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [notifOpen, setNotifOpen] = useState(false);
+  const [settingsVisible, setSettingsVisible] = useState(false);
+  const [notifVisible, setNotifVisible] = useState(false);
 
   useEffect(() => {
     isPushEnabled().then(setPushEnabled);
@@ -465,56 +465,11 @@ export default function ProfileScreen() {
 
         {/* 設定セクション */}
         <Text style={styles.sectionTitle}>設定</Text>
-        <TouchableOpacity
-          style={styles.helpRow}
-          onPress={() => setSettingsOpen((v) => !v)}
-          activeOpacity={0.7}
-        >
+        <TouchableOpacity style={styles.helpRow} onPress={() => setSettingsVisible(true)} activeOpacity={0.7}>
           <Text style={styles.helpEmoji}>⚙️</Text>
           <Text style={styles.helpLabel}>設定</Text>
-          <Text style={styles.helpArrow}>{settingsOpen ? '∨' : '›'}</Text>
+          <Text style={styles.helpArrow}>›</Text>
         </TouchableOpacity>
-
-        {settingsOpen && (
-          <View style={styles.settingsInner}>
-            <TouchableOpacity
-              style={styles.helpRow}
-              onPress={() => setNotifOpen((v) => !v)}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.helpEmoji}>🔔</Text>
-              <Text style={styles.helpLabel}>通知</Text>
-              <Text style={styles.helpArrow}>{notifOpen ? '∨' : '›'}</Text>
-            </TouchableOpacity>
-
-            {notifOpen && (
-              <View style={styles.settingsInner}>
-                {isPushSupported() ? (
-                  <View style={styles.notifRow}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.notifLabel}>プッシュ通知</Text>
-                      <Text style={styles.notifDesc}>予約投稿の完了・失敗を通知します</Text>
-                    </View>
-                    {pushLoading ? (
-                      <ActivityIndicator color={COLORS.primary} />
-                    ) : (
-                      <Switch
-                        value={pushEnabled}
-                        onValueChange={handleTogglePush}
-                        trackColor={{ false: COLORS.border, true: COLORS.primary }}
-                        thumbColor="#fff"
-                      />
-                    )}
-                  </View>
-                ) : (
-                  <View style={styles.notifRow}>
-                    <Text style={styles.notifDesc}>このブラウザはプッシュ通知に対応していません</Text>
-                  </View>
-                )}
-              </View>
-            )}
-          </View>
-        )}
 
         <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.8}>
           <Text style={styles.logoutBtnText}>ログアウト</Text>
@@ -522,6 +477,68 @@ export default function ProfileScreen() {
 
         <Text style={styles.version}>InstaAI v1.0.0 — 日本の個人事業主向け</Text>
       </ScrollView>
+
+      {/* 設定画面 */}
+      <Modal visible={settingsVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setSettingsVisible(false)}>
+        <View style={{ flex: 1, backgroundColor: COLORS.background }}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => setSettingsVisible(false)}>
+              <Text style={styles.modalCancel}>‹ 戻る</Text>
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>設定</Text>
+            <View style={{ width: 48 }} />
+          </View>
+          <ScrollView>
+            <Text style={[styles.sectionTitle, { marginTop: SPACING.md }]}>設定項目</Text>
+            <TouchableOpacity
+              style={styles.helpRow}
+              onPress={() => { setNotifVisible(true); }}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.helpEmoji}>🔔</Text>
+              <Text style={styles.helpLabel}>通知</Text>
+              <Text style={styles.helpArrow}>›</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* 通知設定画面 */}
+      <Modal visible={notifVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setNotifVisible(false)}>
+        <View style={{ flex: 1, backgroundColor: COLORS.background }}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => setNotifVisible(false)}>
+              <Text style={styles.modalCancel}>‹ 戻る</Text>
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>通知</Text>
+            <View style={{ width: 48 }} />
+          </View>
+          <ScrollView contentContainerStyle={{ padding: SPACING.md }}>
+            {isPushSupported() ? (
+              <View style={styles.notifRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.notifLabel}>プッシュ通知</Text>
+                  <Text style={styles.notifDesc}>予約投稿の完了・失敗を通知します</Text>
+                </View>
+                {pushLoading ? (
+                  <ActivityIndicator color={COLORS.primary} />
+                ) : (
+                  <Switch
+                    value={pushEnabled}
+                    onValueChange={handleTogglePush}
+                    trackColor={{ false: COLORS.border, true: COLORS.primary }}
+                    thumbColor="#fff"
+                  />
+                )}
+              </View>
+            ) : (
+              <View style={styles.notifRow}>
+                <Text style={styles.notifDesc}>このブラウザはプッシュ通知に対応していません</Text>
+              </View>
+            )}
+          </ScrollView>
+        </View>
+      </Modal>
 
       {/* Brand Settings Modal */}
       <Modal visible={brandModalVisible} animationType="slide" presentationStyle="pageSheet">
@@ -814,13 +831,6 @@ const styles = StyleSheet.create({
   helpEmoji: { fontSize: 20 },
   helpLabel: { flex: 1, color: COLORS.text, fontSize: 14 },
   helpArrow: { color: COLORS.textMuted, fontSize: 20 },
-  settingsInner: {
-    marginLeft: SPACING.md,
-    borderLeftWidth: 2,
-    borderLeftColor: COLORS.border,
-    paddingLeft: SPACING.sm,
-    marginBottom: SPACING.sm,
-  },
   notifRow: {
     flexDirection: 'row',
     alignItems: 'center',
