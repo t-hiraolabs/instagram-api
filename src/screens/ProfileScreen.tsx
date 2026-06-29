@@ -24,6 +24,7 @@ import { loadBrandSettingsFromDb, saveBrandSettingsToDb } from '../services/bran
 import { ACCOUNT_THEMES } from '../utils/accountThemes';
 import { supabase } from '../services/supabaseClient';
 import { getMyPlan } from '../services/scheduleService';
+import { ensureLoggedIn } from '../utils/requireLogin';
 import { createCheckoutUrl } from '../services/billingService';
 import { PLANS, Plan, PLAN_RANK, canAnalytics } from '../utils/plans';
 import { registerPush, unregisterPush, isPushSupported, isPushEnabled } from '../services/pushService';
@@ -227,8 +228,14 @@ export default function ProfileScreen() {
     })();
   }, []);
 
-  const handleInstagramLogin = () => connectInstagram(1);
-  const handleInstagramLogin2 = () => connectInstagram(2);
+  const handleInstagramLogin = async () => {
+    if (!(await ensureLoggedIn('Instagram連携にはログインが必要です'))) return;
+    connectInstagram(1);
+  };
+  const handleInstagramLogin2 = async () => {
+    if (!(await ensureLoggedIn('Instagram連携にはログインが必要です'))) return;
+    connectInstagram(2);
+  };
 
   const doDisconnect = async () => {
     await clearInstagramStorage();
