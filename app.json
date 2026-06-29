@@ -4,11 +4,12 @@
     "slug": "aimark-app",
     "version": "1.0.0",
     "orientation": "portrait",
+    "icon": "./assets/icon.png",
     "platforms": ["ios", "android", "web"],
     "web": {
       "bundler": "metro",
       "output": "single",
-      "favicon": null
+      "favicon": "./assets/icon.png"
     },
     "assetBundlePatterns": ["**/*"]
   }
