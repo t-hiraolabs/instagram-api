@@ -90,7 +90,11 @@ function TabNavigator() {
 
 export default function RootNavigator() {
   return (
-    <NavigationContainer>
+    <NavigationContainer
+      documentTitle={{
+        formatter: () => 'AImark アイマーク',
+      }}
+    >
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         <Stack.Screen name="Main" component={TabNavigator} />
       </Stack.Navigator>
