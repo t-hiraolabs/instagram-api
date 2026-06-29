@@ -1,8 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
+  Animated,
+  Dimensions,
   ScrollView,
   StyleSheet,
   Alert,
@@ -52,6 +54,71 @@ async function remove(key: string) {
 }
 
 const TONES = ['明るい・ポジティブ', 'プロフェッショナル', 'カジュアル', '感情的・共感', 'ユーモラス'];
+
+const SCREEN_WIDTH = Dimensions.get('window').width;
+
+function SlideScreen({ visible, onBack, title, children }: {
+  visible: boolean;
+  onBack: () => void;
+  title: string;
+  children: React.ReactNode;
+}) {
+  const translateX = useRef(new Animated.Value(SCREEN_WIDTH)).current;
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    if (visible) {
+      setMounted(true);
+      Animated.timing(translateX, {
+        toValue: 0,
+        duration: 280,
+        useNativeDriver: true,
+      }).start();
+    } else {
+      Animated.timing(translateX, {
+        toValue: SCREEN_WIDTH,
+        duration: 250,
+        useNativeDriver: true,
+      }).start(() => setMounted(false));
+    }
+  }, [visible]);
+
+  if (!mounted) return null;
+
+  return (
+    <Animated.View style={[slideStyles.container, { transform: [{ translateX }] }]}>
+      <View style={slideStyles.header}>
+        <TouchableOpacity onPress={onBack} hitSlop={8}>
+          <Text style={slideStyles.back}>‹ 戻る</Text>
+        </TouchableOpacity>
+        <Text style={slideStyles.title}>{title}</Text>
+        <View style={{ width: 60 }} />
+      </View>
+      {children}
+    </Animated.View>
+  );
+}
+
+const slideStyles = StyleSheet.create({
+  container: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: COLORS.background,
+    zIndex: 100,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACING.md,
+    paddingTop: SPACING.xl,
+    paddingBottom: SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  back: { color: COLORS.primary, fontSize: 17, fontWeight: '700' },
+  title: { color: COLORS.text, fontSize: 17, fontWeight: '800' },
+});
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
@@ -478,69 +545,47 @@ export default function ProfileScreen() {
         <Text style={styles.version}>InstaAI v1.0.0 — 日本の個人事業主向け</Text>
       </ScrollView>
 
-      {/* 設定画面 */}
-      <Modal visible={settingsVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setSettingsVisible(false)}>
-        <View style={{ flex: 1, backgroundColor: COLORS.background }}>
-          <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => setSettingsVisible(false)}>
-              <Text style={styles.modalCancel}>‹ 戻る</Text>
-            </TouchableOpacity>
-            <Text style={styles.modalTitle}>設定</Text>
-            <View style={{ width: 48 }} />
-          </View>
-          <ScrollView>
-            <Text style={[styles.sectionTitle, { marginTop: SPACING.md }]}>設定項目</Text>
-            <TouchableOpacity
-              style={styles.helpRow}
-              onPress={() => { setNotifVisible(true); }}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.helpEmoji}>🔔</Text>
-              <Text style={styles.helpLabel}>通知</Text>
-              <Text style={styles.helpArrow}>›</Text>
-            </TouchableOpacity>
-          </ScrollView>
-        </View>
-      </Modal>
+      {/* 設定画面（右スライド） */}
+      <SlideScreen visible={settingsVisible} onBack={() => setSettingsVisible(false)} title="設定">
+        <ScrollView>
+          <Text style={[styles.sectionTitle, { marginTop: SPACING.md }]}>設定項目</Text>
+          <TouchableOpacity style={styles.helpRow} onPress={() => setNotifVisible(true)} activeOpacity={0.7}>
+            <Text style={styles.helpEmoji}>🔔</Text>
+            <Text style={styles.helpLabel}>通知</Text>
+            <Text style={styles.helpArrow}>›</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </SlideScreen>
 
-      {/* 通知設定画面 */}
-      <Modal visible={notifVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setNotifVisible(false)}>
-        <View style={{ flex: 1, backgroundColor: COLORS.background }}>
-          <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => setNotifVisible(false)}>
-              <Text style={styles.modalCancel}>‹ 戻る</Text>
-            </TouchableOpacity>
-            <Text style={styles.modalTitle}>通知</Text>
-            <View style={{ width: 48 }} />
-          </View>
-          <ScrollView contentContainerStyle={{ padding: SPACING.md }}>
-            {isPushSupported() ? (
-              <View style={styles.notifRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.notifLabel}>プッシュ通知</Text>
-                  <Text style={styles.notifDesc}>予約投稿の完了・失敗を通知します</Text>
-                </View>
-                {pushLoading ? (
-                  <ActivityIndicator color={COLORS.primary} />
-                ) : (
-                  <Switch
-                    value={pushEnabled}
-                    onValueChange={handleTogglePush}
-                    trackColor={{ false: COLORS.border, true: COLORS.primary }}
-                    thumbColor="#fff"
-                  />
-                )}
+      {/* 通知設定画面（右スライド） */}
+      <SlideScreen visible={notifVisible} onBack={() => setNotifVisible(false)} title="通知">
+        <ScrollView contentContainerStyle={{ padding: SPACING.md }}>
+          {isPushSupported() ? (
+            <View style={styles.notifRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.notifLabel}>プッシュ通知</Text>
+                <Text style={styles.notifDesc}>予約投稿の完了・失敗を通知します</Text>
               </View>
-            ) : (
-              <View style={styles.notifRow}>
-                <Text style={styles.notifDesc}>このブラウザはプッシュ通知に対応していません</Text>
-              </View>
-            )}
-          </ScrollView>
-        </View>
-      </Modal>
+              {pushLoading ? (
+                <ActivityIndicator color={COLORS.primary} />
+              ) : (
+                <Switch
+                  value={pushEnabled}
+                  onValueChange={handleTogglePush}
+                  trackColor={{ false: COLORS.border, true: COLORS.primary }}
+                  thumbColor="#fff"
+                />
+              )}
+            </View>
+          ) : (
+            <View style={styles.notifRow}>
+              <Text style={styles.notifDesc}>このブラウザはプッシュ通知に対応していません</Text>
+            </View>
+          )}
+        </ScrollView>
+      </SlideScreen>
 
-      {/* Brand Settings Modal */}
+            {/* Brand Settings Modal */}
       <Modal visible={brandModalVisible} animationType="slide" presentationStyle="pageSheet">
         <ScrollView style={styles.modal} keyboardShouldPersistTaps="handled">
           <View style={styles.modalHeader}>
