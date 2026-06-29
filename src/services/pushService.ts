@@ -30,7 +30,11 @@ export async function registerPush(): Promise<boolean> {
   const auth = sub.getKey('auth');
   if (!key || !auth) return false;
 
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return false;
+
   const { error } = await supabase.from('push_subscriptions').upsert({
+    user_id: user.id,
     endpoint: sub.endpoint,
     p256dh: btoa(String.fromCharCode(...new Uint8Array(key))),
     auth: btoa(String.fromCharCode(...new Uint8Array(auth))),
