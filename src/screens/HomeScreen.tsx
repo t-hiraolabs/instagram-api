@@ -12,7 +12,6 @@ import { useNavigation } from '@react-navigation/native';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
 import { useAppStore } from '../store/appStore';
 import AccountBadge from '../components/AccountBadge';
-import { getSeasonalThemes } from '../services/aiService';
 import { getAiUsage, AiUsage } from '../services/scheduleService';
 
 const QUICK_ACTIONS = [
@@ -63,13 +62,6 @@ export default function HomeScreen() {
   const navigation = useNavigation<any>();
   const { brandSettings, instagramCredentials: creds1, secondInstagramCredentials: creds2, activeAccountSlot } = useAppStore();
   const instagramCredentials = activeAccountSlot === 2 ? creds2 : creds1;
-  const greeting = useMemo(() => getGreeting(), []);
-  const postingTime = useMemo(() => getBestPostingTime(), []);
-  const month = new Date().getMonth() + 1;
-  const seasonalEvents = useMemo(() => getSeasonalThemes(month), [month]);
-  const tipIndex = useMemo(() => new Date().getDate() % JAPAN_TIPS.length, []);
-  const todayTip = JAPAN_TIPS[tipIndex];
-
   const [usage, setUsage] = useState<AiUsage | null>(null);
   useEffect(() => {
     getAiUsage().then(setUsage).catch(() => {});
@@ -105,30 +97,6 @@ export default function HomeScreen() {
             )}
           </View>
         </View>
-        {!instagramCredentials && (
-          <View style={[styles.badge, styles.badgeInactive]}>
-            <Text style={styles.badgeText}>PRO</Text>
-          </View>
-        )}
-      </View>
-
-      {/* Best Posting Time Banner */}
-      <View style={[styles.timeBanner, { borderColor: postingTime.color + '66' }]}>
-        <View style={styles.timeBannerLeft}>
-          <Text style={styles.timeBannerIcon}>⏰</Text>
-          <View>
-            <Text style={[styles.timeBannerLabel, { color: postingTime.color }]}>
-              {postingTime.label}
-            </Text>
-            <Text style={styles.timeBannerDesc}>{postingTime.description}</Text>
-          </View>
-        </View>
-        <TouchableOpacity
-          style={[styles.postNowBtn, { backgroundColor: postingTime.color }]}
-          onPress={() => navigation.navigate('Post')}
-        >
-          <Text style={styles.postNowBtnText}>投稿作成</Text>
-        </TouchableOpacity>
       </View>
 
       {/* Stats */}
@@ -166,34 +134,6 @@ export default function HomeScreen() {
         ))}
       </View>
 
-      {/* Seasonal Events */}
-      {seasonalEvents.length > 0 && (
-        <>
-          <Text style={styles.sectionTitle}>🗓 今月のイベント活用</Text>
-          {seasonalEvents.map((ev) => (
-            <TouchableOpacity
-              key={ev.event}
-              style={styles.seasonCard}
-              onPress={() => navigation.navigate('Post')}
-              activeOpacity={0.8}
-            >
-              <View style={styles.seasonHeader}>
-                <Text style={styles.seasonEmoji}>{ev.emoji}</Text>
-                <Text style={styles.seasonEvent}>{ev.event}</Text>
-                <Text style={styles.seasonArrow}>›</Text>
-              </View>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                {ev.themes.map((t) => (
-                  <View key={t} style={styles.themeChip}>
-                    <Text style={styles.themeChipText}>{t}</Text>
-                  </View>
-                ))}
-              </ScrollView>
-            </TouchableOpacity>
-          ))}
-        </>
-      )}
-
       {/* Industry Setup Prompt */}
       {!brandSettings.industry && (
         <TouchableOpacity
@@ -210,16 +150,6 @@ export default function HomeScreen() {
         </TouchableOpacity>
       )}
 
-      {/* Today's Tip */}
-      <View style={styles.tipCard}>
-        <View style={styles.tipHeader}>
-          <Text style={styles.tipCategory}>💡 本日のヒント</Text>
-          <View style={styles.tipCategoryBadge}>
-            <Text style={styles.tipCategoryText}>{todayTip.category}</Text>
-          </View>
-        </View>
-        <Text style={styles.tipText}>{todayTip.tip}</Text>
-      </View>
     </ScrollView>
     <AccountBadge />
     </View>
