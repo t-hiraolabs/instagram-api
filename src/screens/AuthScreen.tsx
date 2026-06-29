@@ -70,6 +70,7 @@ export default function AuthScreen() {
     >
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
         <Text style={styles.logo}>AImark</Text>
+        <Text style={[styles.subtitle, { fontSize: 13, marginTop: -6, marginBottom: 4, opacity: 0.7 }]}>アイマーク</Text>
         <Text style={styles.subtitle}>
           {mode === 'login' ? 'ログインして始めましょう' : 'アカウントを作成しましょう'}
         </Text>

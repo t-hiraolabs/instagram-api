@@ -89,6 +89,7 @@ export default function HomeScreen() {
       <View style={styles.header}>
         <View>
           <Text style={styles.title}>AImark</Text>
+          <Text style={{ fontSize: 11, color: COLORS.textMuted, marginTop: -2, marginBottom: 2 }}>アイマーク</Text>
           {brandSettings.brandName ? (
             <Text style={styles.greeting}>{brandSettings.brandName}</Text>
           ) : null}
