@@ -26,6 +26,7 @@ export default function AccountBadge() {
   const insets = useSafeAreaInsets();
   const [session, setSession] = useState<Session | null>(null);
   const [visible, setVisible] = useState(false);
+  const [igPrompt, setIgPrompt] = useState(false);
   const [plan, setPlan] = useState<Plan>('free');
   const [upgrading, setUpgrading] = useState(false);
   const instagramCredentials = useAppStore((s) => s.instagramCredentials);
@@ -52,6 +53,26 @@ export default function AccountBadge() {
     if (session) getMyPlan().then(setPlan).catch(() => {});
     else setPlan('free');
   }, [session]);
+
+  // ログイン済みでInstagram未連携なら、連携を促すモーダルを一度だけ表示する
+  useEffect(() => {
+    if (!session) return;
+    if (instagramCredentials || secondInstagramCredentials) return;
+    const SEEN_KEY = 'ig_connect_prompt_seen';
+    if (Platform.OS === 'web' && localStorage.getItem(SEEN_KEY)) return;
+    setIgPrompt(true);
+  }, [session, instagramCredentials, secondInstagramCredentials]);
+
+  const dismissIgPrompt = () => {
+    if (Platform.OS === 'web') localStorage.setItem('ig_connect_prompt_seen', '1');
+    setIgPrompt(false);
+  };
+
+  const handleConnectFromPrompt = () => {
+    if (Platform.OS === 'web') localStorage.setItem('ig_connect_prompt_seen', '1');
+    setIgPrompt(false);
+    connectInstagram(1);
+  };
 
   const email = session?.user?.email ?? '';
   const initial = (email.trim()[0] ?? '?').toUpperCase();
@@ -170,6 +191,25 @@ export default function AccountBadge() {
   // --- ログイン時：右上にアカウントアイコンを表示 ---
   return (
     <>
+      {/* 新規ログイン後：Instagram連携を促すモーダル */}
+      <Modal visible={igPrompt} transparent animationType="fade" onRequestClose={dismissIgPrompt}>
+        <View style={styles.promptOverlay}>
+          <View style={styles.promptCard}>
+            <Text style={styles.promptIcon}>📸</Text>
+            <Text style={styles.promptTitle}>Instagramアカウントを連携しましょう</Text>
+            <Text style={styles.promptDesc}>
+              連携すると、AIによる投稿作成・予約投稿・分析・DM管理が使えるようになります。
+            </Text>
+            <TouchableOpacity style={styles.promptConnectBtn} onPress={handleConnectFromPrompt} activeOpacity={0.85}>
+              <Text style={styles.promptConnectText}>Instagramを連携する</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.promptLaterBtn} onPress={dismissIgPrompt} activeOpacity={0.7}>
+              <Text style={styles.promptLaterText}>あとで</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       {/* 連携済みなら、アカウントアイコンの左に隠れてInstagramのプロフィール写真を表示 */}
       {activeCredentials?.profilePictureUrl ? (
         <TouchableOpacity
@@ -361,6 +401,53 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   loginPillText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  promptOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: SPACING.lg,
+  },
+  promptCard: {
+    width: '100%',
+    maxWidth: 380,
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.xl,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  promptIcon: { fontSize: 44, marginBottom: SPACING.md },
+  promptTitle: {
+    color: COLORS.text,
+    fontSize: 18,
+    fontWeight: '800',
+    textAlign: 'center',
+    marginBottom: SPACING.sm,
+  },
+  promptDesc: {
+    color: COLORS.textSecondary,
+    fontSize: 14,
+    lineHeight: 21,
+    textAlign: 'center',
+    marginBottom: SPACING.lg,
+  },
+  promptConnectBtn: {
+    width: '100%',
+    backgroundColor: COLORS.primary,
+    borderRadius: RADIUS.full,
+    paddingVertical: SPACING.md,
+    alignItems: 'center',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as object) : {}),
+  },
+  promptConnectText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  promptLaterBtn: {
+    marginTop: SPACING.md,
+    paddingVertical: SPACING.sm,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as object) : {}),
+  },
+  promptLaterText: { color: COLORS.textMuted, fontSize: 14, fontWeight: '600' },
   authWrap: { flex: 1, backgroundColor: COLORS.background },
   authClose: {
     position: 'absolute',
