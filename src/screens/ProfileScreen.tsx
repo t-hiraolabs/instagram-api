@@ -381,7 +381,7 @@ export default function ProfileScreen() {
         {/* Instagram account card */}
         <View style={[styles.accountCard, isConnected && styles.accountCardConnected]}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{isConnected ? '📷' : '🧑'}</Text>
+            <Text style={styles.avatarText}>{isConnected ? '📷' : '👤'}</Text>
           </View>
           <View style={styles.accountInfo}>
             {isConnected ? (
