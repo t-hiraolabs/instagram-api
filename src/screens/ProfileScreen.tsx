@@ -323,9 +323,18 @@ export default function ProfileScreen() {
   const [pushLoading, setPushLoading] = useState(false);
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [notifVisible, setNotifVisible] = useState(false);
+  const [loggedIn, setLoggedIn] = useState(false);
 
   useEffect(() => {
     isPushEnabled().then(setPushEnabled);
+  }, []);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setLoggedIn(!!data.session));
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setLoggedIn(!!session);
+    });
+    return () => listener.subscription.unsubscribe();
   }, []);
 
   const handleTogglePush = useCallback(async (value: boolean) => {
@@ -539,9 +548,11 @@ export default function ProfileScreen() {
           <Text style={styles.helpArrow}>›</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.8}>
-          <Text style={styles.logoutBtnText}>ログアウト</Text>
-        </TouchableOpacity>
+        {loggedIn && (
+          <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.8}>
+            <Text style={styles.logoutBtnText}>ログアウト</Text>
+          </TouchableOpacity>
+        )}
 
         <Text style={styles.version}>AImark v1.0.0 — 日本の個人事業主向け</Text>
       </ScrollView>
