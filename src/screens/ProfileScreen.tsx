@@ -19,7 +19,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as SecureStore from 'expo-secure-store';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
 import { useAppStore, InstagramCredentials, BrandSettings, DEFAULT_BRAND_SETTINGS } from '../store/appStore';
-import { INDUSTRIES } from '../services/aiService';
+import { INDUSTRIES, analyzeBrandFromPosts } from '../services/aiService';
+import { getInsightsSummary } from '../services/insightsService';
+import axios from 'axios';
 import { loadBrandSettingsFromDb, saveBrandSettingsToDb } from '../services/brandSettingsService';
 import { ACCOUNT_THEMES } from '../utils/accountThemes';
 import { supabase } from '../services/supabaseClient';
@@ -276,6 +278,54 @@ export default function ProfileScreen() {
   const openBrandModal = () => {
     setDraftBrand({ ...activeBrandSettings });
     setBrandModalVisible(true);
+  };
+
+  const activeCredentials = activeAccountSlot === 2 ? secondInstagramCredentials : instagramCredentials;
+
+  // Instagram投稿のキャプションを取得（インサイト→基本メディアの順でフォールバック）
+  const fetchCaptions = async (token: string): Promise<string[]> => {
+    try {
+      const insights = await getInsightsSummary(token, 20);
+      const caps = insights.media.map((m) => m.caption ?? '').filter((c) => c.trim().length > 0);
+      if (caps.length > 0) return caps;
+    } catch {
+      // ビジネスアカウント以外では失敗するため無視
+    }
+    const res = await axios.get(
+      `https://graph.instagram.com/me/media?fields=caption&limit=20&access_token=${token}`
+    );
+    const items: Array<{ caption?: string }> = res.data?.data ?? [];
+    return items.map((m) => m.caption ?? '').filter((c) => c.trim().length > 0);
+  };
+
+  // 連携済みアカウントの投稿を分析してブランド設定を自動生成する
+  const handleAutoBrand = async () => {
+    if (!activeCredentials?.accessToken) {
+      Alert.alert('Instagram未連携', '先にこのアカウントでInstagramを連携してください');
+      return;
+    }
+    setSaving(true);
+    try {
+      const captions = await fetchCaptions(activeCredentials.accessToken);
+      if (captions.length === 0) {
+        Alert.alert('投稿が見つかりません', 'キャプション付きの投稿がないため自動生成できませんでした');
+        return;
+      }
+      const s = await analyzeBrandFromPosts(captions, activeCredentials.username);
+      setDraftBrand((p) => ({
+        ...p,
+        brandName: s.brandName || p.brandName,
+        industry: s.industry || p.industry,
+        atmosphere: s.atmosphere || p.atmosphere,
+        targetAudience: s.targetAudience || p.targetAudience,
+        tone: s.tone || p.tone,
+      }));
+      Alert.alert('自動生成しました ✨', '内容を確認して「保存」を押してください');
+    } catch {
+      Alert.alert('エラー', 'ブランドの自動生成に失敗しました');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleSaveBrand = async () => {
@@ -731,6 +781,20 @@ export default function ProfileScreen() {
             </View>
 
             <TouchableOpacity
+              style={styles.autoBrandBtn}
+              onPress={handleAutoBrand}
+              disabled={saving}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.autoBrandText}>
+                {saving ? '生成中...' : '✨ AIで投稿を分析して自動入力'}
+              </Text>
+            </TouchableOpacity>
+            <Text style={styles.resetBrandHint}>
+              ※ 連携中のInstagram投稿をAIが分析し、上の項目を自動入力します
+            </Text>
+
+            <TouchableOpacity
               style={styles.resetBrandBtn}
               onPress={handleResetBrand}
               disabled={saving}
@@ -931,6 +995,14 @@ const styles = StyleSheet.create({
   modalTitle: { color: COLORS.text, fontSize: 17, fontWeight: '700' },
   modalCancel: { color: COLORS.textMuted, fontSize: 16 },
   modalSave: { color: COLORS.primary, fontSize: 16, fontWeight: '700' },
+  autoBrandBtn: {
+    marginTop: SPACING.lg,
+    backgroundColor: COLORS.primary,
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.md,
+    alignItems: 'center',
+  },
+  autoBrandText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   resetBrandBtn: {
     marginTop: SPACING.lg,
     borderWidth: 1,
