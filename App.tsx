@@ -203,6 +203,23 @@ function OAuthHandler() {
     const code = params.get('code');
     if (!code) return;
 
+    // Supabase の OAuth (Googleログイン) コールバックは Instagram連携と同じ ?code= を使うため区別する。
+    // Supabase の PKCE フローは localStorage に code-verifier を保存するので、それで判定。
+    const isSupabaseOAuth = Object.keys(localStorage).some((k) =>
+      k.includes('code-verifier')
+    );
+    if (isSupabaseOAuth) {
+      // Supabaseクライアントの detectSessionInUrl がセッションを確立する。
+      // 確実にするため明示的に交換し、完了後にURLを掃除する。
+      supabase.auth
+        .exchangeCodeForSession(window.location.href)
+        .catch(() => {})
+        .finally(() => {
+          window.history.replaceState({}, '', window.location.pathname);
+        });
+      return;
+    }
+
     const state = params.get('state') ?? '';
     const slot: 1 | 2 = state === 'slot2' ? 2 : 1;
 
