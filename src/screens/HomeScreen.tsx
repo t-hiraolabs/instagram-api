@@ -5,6 +5,7 @@ import {
   ScrollView,
   TouchableOpacity,
   StyleSheet,
+  Image,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -87,15 +88,22 @@ export default function HomeScreen() {
     >
       {/* Header */}
       <View style={styles.header}>
-        <View>
-          <Text style={styles.title}>AImark</Text>
-          <Text style={{ fontSize: 11, color: COLORS.textMuted, marginTop: -2, marginBottom: 2 }}>アイマーク</Text>
-          {brandSettings.brandName ? (
-            <Text style={styles.greeting}>{brandSettings.brandName}</Text>
-          ) : null}
-          {displayName && (
-            <Text style={styles.username}>{displayName}</Text>
-          )}
+        <View style={styles.headerLeft}>
+          <Image
+            source={require('../../assets/icon.png')}
+            style={styles.logoIcon}
+            resizeMode="contain"
+          />
+          <View>
+            <Text style={styles.title}>AImark</Text>
+            <Text style={{ fontSize: 11, color: COLORS.textMuted, marginTop: -2, marginBottom: 2 }}>アイマーク</Text>
+            {brandSettings.brandName ? (
+              <Text style={styles.greeting}>{brandSettings.brandName}</Text>
+            ) : null}
+            {displayName && (
+              <Text style={styles.username}>{displayName}</Text>
+            )}
+          </View>
         </View>
         {!instagramCredentials && (
           <View style={[styles.badge, styles.badgeInactive]}>
@@ -229,6 +237,16 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     marginBottom: SPACING.lg,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  logoIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
   },
   greeting: {
     color: COLORS.textMuted,
