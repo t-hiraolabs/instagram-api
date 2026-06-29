@@ -1,5 +1,5 @@
 {
-  "buildCommand": "npx expo export --platform web && cp web/service-worker.js dist/service-worker.js",
+  "buildCommand": "npx expo export --platform web && cp web/service-worker.js dist/service-worker.js && sed -i 's/<title>.*<\\/title>/<title>AImark アイマーク<\\/title>/' dist/index.html",
   "outputDirectory": "dist",
   "installCommand": "npm install"
 }
