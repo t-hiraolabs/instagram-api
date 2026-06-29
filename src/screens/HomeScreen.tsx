@@ -90,7 +90,7 @@ export default function HomeScreen() {
         <View>
           <Text style={styles.greeting}>{greeting}</Text>
           <Text style={styles.title}>
-            {brandSettings.brandName ? brandSettings.brandName : 'InstaAI'}
+            {brandSettings.brandName ? brandSettings.brandName : 'AImark'}
           </Text>
           {displayName && (
             <Text style={styles.username}>{displayName}</Text>

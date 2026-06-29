@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "InstaAI",
-    "slug": "insta-ai-app",
+    "name": "AImark",
+    "slug": "aimark-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "platforms": ["ios", "android", "web"],

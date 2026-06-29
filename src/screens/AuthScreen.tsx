@@ -69,7 +69,7 @@ export default function AuthScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-        <Text style={styles.logo}>InstaAI</Text>
+        <Text style={styles.logo}>AImark</Text>
         <Text style={styles.subtitle}>
           {mode === 'login' ? 'ログインして始めましょう' : 'アカウントを作成しましょう'}
         </Text>
