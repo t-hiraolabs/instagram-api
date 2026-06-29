@@ -88,10 +88,10 @@ export default function HomeScreen() {
       {/* Header */}
       <View style={styles.header}>
         <View>
-          <Text style={styles.greeting}>{greeting}</Text>
-          <Text style={styles.title}>
-            {brandSettings.brandName ? brandSettings.brandName : 'AImark'}
-          </Text>
+          <Text style={styles.title}>AImark</Text>
+          {brandSettings.brandName ? (
+            <Text style={styles.greeting}>{brandSettings.brandName}</Text>
+          ) : null}
           {displayName && (
             <Text style={styles.username}>{displayName}</Text>
           )}
