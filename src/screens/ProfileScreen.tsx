@@ -22,7 +22,7 @@ import { useAppStore, InstagramCredentials, BrandSettings, DEFAULT_BRAND_SETTING
 import { INDUSTRIES, analyzeBrandFromPosts } from '../services/aiService';
 import { getInsightsSummary } from '../services/insightsService';
 import axios from 'axios';
-import { loadBrandSettingsFromDb, saveBrandSettingsToDb } from '../services/brandSettingsService';
+import { loadBrandSettingsFromDb, saveBrandSettingsToDb, brandLocalKey } from '../services/brandSettingsService';
 import { ACCOUNT_THEMES } from '../utils/accountThemes';
 import { supabase } from '../services/supabaseClient';
 import { getMyPlan } from '../services/scheduleService';
@@ -208,24 +208,27 @@ export default function ProfileScreen() {
         });
       }
 
-      // Supabaseから読み込み（デバイス間同期）、失敗時はlocalStorageにフォールバック
-      const [db1, db2] = await Promise.all([
-        loadBrandSettingsFromDb(1).catch(() => null),
-        loadBrandSettingsFromDb(2).catch(() => null),
+      // ブランド設定はInstagramアカウント(userId)単位で読み込む。
+      // DB→ローカルの順でフォールバック。未連携のスロットは読み込まない。
+      const loadBrandFor = async (igUserId: string | null): Promise<BrandSettings | null> => {
+        if (!igUserId) return null;
+        const db = await loadBrandSettingsFromDb(igUserId).catch(() => null);
+        if (db) return db;
+        const raw = await load(brandLocalKey(igUserId));
+        if (raw) { try { return JSON.parse(raw) as BrandSettings; } catch {} }
+        return null;
+      };
+      const [b1, b2] = await Promise.all([
+        loadBrandFor(savedUserId),
+        loadBrandFor(savedUserId2),
       ]);
-      if (db1) {
-        setBrandSettings(db1);
-        if (Platform.OS === 'web') localStorage.setItem(SK_BRAND_1, JSON.stringify(db1));
-      } else {
-        const savedBrand1 = await load(SK_BRAND_1);
-        if (savedBrand1) { try { setBrandSettings(JSON.parse(savedBrand1) as BrandSettings); } catch {} }
+      if (b1) {
+        setBrandSettings(b1);
+        if (savedUserId && Platform.OS === 'web') localStorage.setItem(brandLocalKey(savedUserId), JSON.stringify(b1));
       }
-      if (db2) {
-        setBrandSettings2(db2);
-        if (Platform.OS === 'web') localStorage.setItem(SK_BRAND_2, JSON.stringify(db2));
-      } else {
-        const savedBrand2 = await load(SK_BRAND_2);
-        if (savedBrand2) { try { setBrandSettings2(JSON.parse(savedBrand2) as BrandSettings); } catch {} }
+      if (b2) {
+        setBrandSettings2(b2);
+        if (savedUserId2 && Platform.OS === 'web') localStorage.setItem(brandLocalKey(savedUserId2), JSON.stringify(b2));
       }
     })();
   }, []);
@@ -242,11 +245,14 @@ export default function ProfileScreen() {
   const doDisconnect = async () => {
     await clearInstagramStorage();
     setInstagramCredentials(null);
+    // 連携解除したら、このスロットのブランド設定（メモリ上）も初期化して混ざらないようにする
+    resetBrandSettings();
   };
 
   const doDisconnect2 = async () => {
     await clearInstagramStorage2();
     setSecondInstagramCredentials(null);
+    resetBrandSettings2();
   };
 
   const handleDisconnect = () => {
@@ -329,12 +335,17 @@ export default function ProfileScreen() {
   };
 
   const handleSaveBrand = async () => {
+    const igUserId = activeCredentials?.userId ?? '';
+    if (!igUserId) {
+      Alert.alert('Instagram未連携', 'ブランド設定を保存するには、先にこのアカウントでInstagramを連携してください');
+      return;
+    }
     setSaving(true);
     try {
       setActiveBrandSettings(draftBrand);
-      // ローカルとSupabase両方に保存（デバイス間同期）
-      await save(SK_BRAND, JSON.stringify(draftBrand));
-      await saveBrandSettingsToDb(draftBrand, activeAccountSlot).catch(() => {});
+      // ローカルとSupabase両方に、Instagramアカウント単位で保存（デバイス間同期）
+      await save(brandLocalKey(igUserId), JSON.stringify(draftBrand));
+      await saveBrandSettingsToDb(draftBrand, igUserId).catch(() => {});
       setBrandModalVisible(false);
       Alert.alert('保存しました ✅', 'ブランド設定を更新しました');
     } catch {
@@ -346,13 +357,14 @@ export default function ProfileScreen() {
 
   // 表示中アカウントのブランド設定をすべて初期状態に戻す（ローカル・Supabaseの保存データも削除）
   const doResetBrand = async () => {
+    const igUserId = activeCredentials?.userId ?? '';
     setSaving(true);
     try {
       resetActiveBrandSettings();
       setDraftBrand({ ...DEFAULT_BRAND_SETTINGS });
-      await remove(SK_BRAND);
+      if (igUserId) await remove(brandLocalKey(igUserId));
       // Supabaseも初期値で上書きしておく（次回読み込みで古い設定が復活しないように）
-      await saveBrandSettingsToDb({ ...DEFAULT_BRAND_SETTINGS }, activeAccountSlot).catch(() => {});
+      await saveBrandSettingsToDb({ ...DEFAULT_BRAND_SETTINGS }, igUserId).catch(() => {});
       setBrandModalVisible(false);
       if (Platform.OS === 'web') window.alert('ブランド設定をリセットしました');
       else Alert.alert('リセットしました ✅', 'ブランド設定を初期状態に戻しました');

@@ -17,7 +17,7 @@ import {
   loadInstagramCredentials2,
 } from './src/utils/instagram';
 import { getInsightsSummary } from './src/services/insightsService';
-import { loadBrandSettingsFromDb, saveBrandSettingsToDb } from './src/services/brandSettingsService';
+import { loadBrandSettingsFromDb, saveBrandSettingsToDb, brandLocalKey } from './src/services/brandSettingsService';
 import { analyzeBrandFromPosts } from './src/services/aiService';
 import axios from 'axios';
 
@@ -28,6 +28,20 @@ const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
 
 function saveCredential(key: string, value: string) {
   if (Platform.OS === 'web') localStorage.setItem(key, value);
+}
+
+/** 指定Instagramアカウントのブランド設定を読み込む（DB→ローカルの順） */
+async function loadBrandForAccount(igUserId: string): Promise<BrandSettings | null> {
+  if (!igUserId) return null;
+  const db = await loadBrandSettingsFromDb(igUserId).catch(() => null);
+  if (db) return db;
+  if (Platform.OS === 'web') {
+    try {
+      const raw = localStorage.getItem(brandLocalKey(igUserId));
+      if (raw) return JSON.parse(raw) as BrandSettings;
+    } catch {}
+  }
+  return null;
 }
 
 /** 連携後にブランド設定を自動分析してモーダルを出す */
@@ -90,11 +104,17 @@ function BrandConfirmModal() {
   if (!brandConfirmModal || !draft) return null;
 
   const handleConfirm = () => {
-    const SK = brandConfirmModal.slot === 2 ? 'brand_settings_v2' : 'brand_settings_v1';
-    if (Platform.OS === 'web') localStorage.setItem(SK, JSON.stringify(draft));
-    if (brandConfirmModal.slot === 2) setBrandSettings2(draft);
+    const slot = brandConfirmModal.slot;
+    const creds = slot === 2
+      ? useAppStore.getState().secondInstagramCredentials
+      : useAppStore.getState().instagramCredentials;
+    const igUserId = creds?.userId ?? '';
+    if (igUserId && Platform.OS === 'web') {
+      localStorage.setItem(brandLocalKey(igUserId), JSON.stringify(draft));
+    }
+    if (slot === 2) setBrandSettings2(draft);
     else setBrandSettings(draft);
-    saveBrandSettingsToDb(draft, brandConfirmModal.slot).catch(() => {});
+    saveBrandSettingsToDb(draft, igUserId).catch(() => {});
     setBrandConfirmModal(null);
     Alert.alert('ブランド設定を保存しました ✅', 'プロフィール画面からいつでも編集できます');
   };
@@ -162,38 +182,26 @@ function OAuthHandler() {
   const setBrandSettings = useAppStore((s) => s.setBrandSettings);
   const setBrandSettings2 = useAppStore((s) => s.setBrandSettings2);
 
-  // アプリ起動時に保存済みのInstagram連携情報・ブランド設定・アクティブスロットを読み込む
+  // アプリ起動時に保存済みのInstagram連携情報・ブランド設定・アクティブスロットを読み込む。
+  // ブランド設定は「Instagramアカウント(userId)単位」で読み込むので、
+  // 各スロットに連携されているアカウントのIDをキーに取得する。
   useEffect(() => {
     loadInstagramCredentials().then((creds) => {
-      if (creds) setInstagramCredentials(creds);
+      if (creds) {
+        setInstagramCredentials(creds);
+        loadBrandForAccount(creds.userId).then((b) => { if (b) setBrandSettings(b); });
+      }
     });
     loadInstagramCredentials2().then((creds) => {
-      if (creds) setSecondInstagramCredentials(creds);
+      if (creds) {
+        setSecondInstagramCredentials(creds);
+        loadBrandForAccount(creds.userId).then((b) => { if (b) setBrandSettings2(b); });
+      }
     });
     if (Platform.OS === 'web') {
       const saved = localStorage.getItem('active_account_slot');
       if (saved === '2') setActiveAccountSlot(2);
     }
-    // Supabaseからブランド設定を読み込み（デバイス間同期）
-    Promise.all([
-      loadBrandSettingsFromDb(1).catch(() => null),
-      loadBrandSettingsFromDb(2).catch(() => null),
-    ]).then(([b1, b2]) => {
-      if (b1) setBrandSettings(b1);
-      else if (Platform.OS === 'web') {
-        try {
-          const raw = localStorage.getItem('brand_settings_v1');
-          if (raw) setBrandSettings(JSON.parse(raw) as BrandSettings);
-        } catch {}
-      }
-      if (b2) setBrandSettings2(b2);
-      else if (Platform.OS === 'web') {
-        try {
-          const raw = localStorage.getItem('brand_settings_v2');
-          if (raw) setBrandSettings2(JSON.parse(raw) as BrandSettings);
-        } catch {}
-      }
-    });
   }, [setInstagramCredentials, setSecondInstagramCredentials, setActiveAccountSlot, setBrandSettings, setBrandSettings2]);
 
   useEffect(() => {
@@ -252,9 +260,16 @@ function OAuthHandler() {
           });
         }
 
-        Alert.alert('連携完了 ✅', `@${username} でログインしました\n投稿を分析してブランド設定を自動生成しています...`);
-        // 連携後にブランド設定を自動分析
-        await runBrandAnalysis(access_token, username, slot, setBrandConfirmModal);
+        // このアカウントに既存のブランド設定があれば復元し、なければAIで自動分析する
+        const existing = await loadBrandForAccount(user_id);
+        if (existing) {
+          if (slot === 2) setBrandSettings2(existing);
+          else setBrandSettings(existing);
+          Alert.alert('連携完了 ✅', `@${username} でログインしました\n保存済みのブランド設定を読み込みました`);
+        } else {
+          Alert.alert('連携完了 ✅', `@${username} でログインしました\n投稿を分析してブランド設定を自動生成しています...`);
+          await runBrandAnalysis(access_token, username, slot, setBrandConfirmModal);
+        }
       } catch {
         Alert.alert('エラー', 'Instagram連携に失敗しました');
       }
