@@ -9,7 +9,10 @@
     "web": {
       "bundler": "metro",
       "output": "single",
-      "favicon": "./assets/icon.png"
+      "favicon": "./assets/icon.png",
+      "name": "AImark アイマーク",
+      "shortName": "AImark",
+      "description": "AIで Instagram マーケティングを自動化"
     },
     "assetBundlePatterns": ["**/*"]
   }
