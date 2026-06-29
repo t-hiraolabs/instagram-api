@@ -1,5 +1,10 @@
 {
   "buildCommand": "sh scripts/build.sh",
   "outputDirectory": "dist",
-  "installCommand": "npm install"
+  "installCommand": "npm install",
+  "routes": [
+    { "src": "/privacy", "dest": "/privacy.html" },
+    { "src": "/service-worker.js", "dest": "/service-worker.js" },
+    { "src": "/(.*)", "dest": "/index.html" }
+  ]
 }
