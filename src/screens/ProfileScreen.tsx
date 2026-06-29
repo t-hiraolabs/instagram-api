@@ -461,7 +461,8 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         ))}
 
-        {isPushSupported() && (
+        <Text style={styles.sectionTitle}>通知</Text>
+        {isPushSupported() ? (
           <View style={styles.notifRow}>
             <View style={{ flex: 1 }}>
               <Text style={styles.notifLabel}>🔔 プッシュ通知</Text>
@@ -477,6 +478,10 @@ export default function ProfileScreen() {
                 thumbColor="#fff"
               />
             )}
+          </View>
+        ) : (
+          <View style={styles.notifRow}>
+            <Text style={styles.notifDesc}>このブラウザはプッシュ通知に対応していません</Text>
           </View>
         )}
 
