@@ -12,8 +12,7 @@ import {
   Platform,
 } from 'react-native';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
-import { FeedCrop, composeSquareImage } from '../utils/composeFeed';
-import { loadImage } from '../utils/composeStory';
+import { FeedTransform, DEFAULT_FEED_TRANSFORM, ASPECTS, AspectKey, composeFeedImage } from '../utils/composeFeed';
 
 interface Props {
   visible: boolean;
@@ -23,79 +22,60 @@ interface Props {
 }
 
 const SCREEN_W = Dimensions.get('window').width;
-const STAGE_W = Math.min(SCREEN_W - SPACING.md * 2, 420);
-const STAGE_MAX_H = 460;
-const MIN_CS = 60;
-
-interface Meta { iw: number; ih: number; dW: number; dH: number; }
-interface Crop { fx: number; fy: number; cs: number; } // 表示px上の切り抜き枠
+const FRAME_W = Math.min(SCREEN_W - SPACING.md * 2, 400);
+const MIN_SCALE = 1;
+const MAX_SCALE = 4;
 
 function clamp(v: number, min: number, max: number) { return Math.max(min, Math.min(max, v)); }
 
 export default function FeedCropEditor({ visible, images, onCancel, onDone }: Props) {
+  const [aspect, setAspect] = useState<AspectKey>('square');
   const [idx, setIdx] = useState(0);
-  const [metas, setMetas] = useState<(Meta | null)[]>([]);
-  const [crops, setCrops] = useState<Crop[]>([]);
+  const [transforms, setTransforms] = useState<FeedTransform[]>([]);
   const [processing, setProcessing] = useState(false);
 
+  const ar = ASPECTS[aspect];
+  const frameH = FRAME_W / ar;
+
   useEffect(() => {
-    if (!visible) return;
-    let cancelled = false;
-    (async () => {
-      const ms: (Meta | null)[] = [];
-      const cs: Crop[] = [];
-      for (const uri of images) {
-        try {
-          const img = await loadImage(uri);
-          const ar = img.width / img.height;
-          let dW = STAGE_W, dH = STAGE_W / ar;
-          if (dH > STAGE_MAX_H) { dH = STAGE_MAX_H; dW = STAGE_MAX_H * ar; }
-          const side = Math.min(dW, dH);
-          ms.push({ iw: img.width, ih: img.height, dW, dH });
-          cs.push({ fx: (dW - side) / 2, fy: (dH - side) / 2, cs: side });
-        } catch {
-          ms.push(null);
-          cs.push({ fx: 0, fy: 0, cs: STAGE_W });
-        }
-      }
-      if (!cancelled) { setMetas(ms); setCrops(cs); setIdx(0); }
-    })();
-    return () => { cancelled = true; };
+    if (visible) {
+      setTransforms(images.map(() => ({ ...DEFAULT_FEED_TRANSFORM })));
+      setIdx(0);
+      setAspect('square');
+    }
   }, [visible, images]);
 
-  const meta = metas[idx] ?? null;
-  const crop = crops[idx] ?? { fx: 0, fy: 0, cs: STAGE_W };
+  const cur = transforms[idx] ?? DEFAULT_FEED_TRANSFORM;
 
-  // PanResponder内で最新値を参照するためのref
-  const stateRef = useRef({ idx, metas, crops });
-  stateRef.current = { idx, metas, crops };
-  const startRef = useRef<{ fx: number; fy: number; cs: number; dist: number | null }>({ fx: 0, fy: 0, cs: 0, dist: null });
+  // PanResponder用の最新値ref
+  const stateRef = useRef({ idx, transforms });
+  stateRef.current = { idx, transforms };
+  const startRef = useRef<{ x: number; y: number; scale: number; dist: number | null }>({ x: 0, y: 0, scale: 1, dist: null });
 
-  const setCrop = (patch: Partial<Crop>) => {
-    setCrops((prev) => {
+  const setT = (patch: Partial<FeedTransform>) => {
+    setTransforms((prev) => {
       const i = stateRef.current.idx;
-      const m = stateRef.current.metas[i];
       const next = [...prev];
-      const c = { ...(next[i] ?? { fx: 0, fy: 0, cs: STAGE_W }), ...patch };
-      if (m) {
-        c.cs = clamp(c.cs, MIN_CS, Math.min(m.dW, m.dH));
-        c.fx = clamp(c.fx, 0, m.dW - c.cs);
-        c.fy = clamp(c.fy, 0, m.dH - c.cs);
-      }
-      next[i] = c;
+      const t = { ...(next[i] ?? DEFAULT_FEED_TRANSFORM), ...patch };
+      t.scale = clamp(t.scale, MIN_SCALE, MAX_SCALE);
+      // 黒フチが出ないよう移動量を制限（拡大時のみ動かせる）
+      const lim = (t.scale - 1) / 2;
+      t.x = clamp(t.x, -lim, lim);
+      t.y = clamp(t.y, -lim, lim);
+      next[i] = t;
       return next;
     });
   };
-  const setCropRef = useRef(setCrop); setCropRef.current = setCrop;
+  const setTRef = useRef(setT); setTRef.current = setT;
 
   const pan = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
       onPanResponderGrant: () => {
-        const { idx: i, crops: cs } = stateRef.current;
-        const c = cs[i] ?? { fx: 0, fy: 0, cs: STAGE_W };
-        startRef.current = { fx: c.fx, fy: c.fy, cs: c.cs, dist: null };
+        const { idx: i, transforms: ts } = stateRef.current;
+        const t = ts[i] ?? DEFAULT_FEED_TRANSFORM;
+        startRef.current = { x: t.x, y: t.y, scale: t.scale, dist: null };
       },
       onPanResponderMove: (evt, gesture) => {
         const touches = evt.nativeEvent.touches;
@@ -104,32 +84,28 @@ export default function FeedCropEditor({ visible, images, onCancel, onDone }: Pr
           const dy = touches[0].pageY - touches[1].pageY;
           const dist = Math.sqrt(dx * dx + dy * dy);
           if (startRef.current.dist == null) startRef.current.dist = dist;
-          else {
-            const ratio = dist / startRef.current.dist;
-            // 指を広げる=拡大=枠を小さく（被写体に寄る）
-            setCropRef.current({ cs: startRef.current.cs / ratio });
-          }
+          else setTRef.current({ scale: startRef.current.scale * (dist / startRef.current.dist) });
         } else {
-          setCropRef.current({ fx: startRef.current.fx + gesture.dx, fy: startRef.current.fy + gesture.dy });
+          setTRef.current({
+            x: startRef.current.x + gesture.dx / FRAME_W,
+            y: startRef.current.y + gesture.dy / (FRAME_W / ASPECTS[aspectRef.current]),
+          });
         }
       },
       onPanResponderRelease: () => { startRef.current.dist = null; },
       onPanResponderTerminate: () => { startRef.current.dist = null; },
     })
   ).current;
+  const aspectRef = useRef(aspect); aspectRef.current = aspect;
 
-  const zoom = (factor: number) => setCrop({ cs: crop.cs * factor });
+  const zoom = (delta: number) => setT({ scale: cur.scale + delta });
 
   const handleDone = async () => {
     setProcessing(true);
     try {
       const results: { blob: Blob; previewUrl: string }[] = [];
       for (let i = 0; i < images.length; i++) {
-        const m = metas[i]; const c = crops[i];
-        const cropN: FeedCrop = m
-          ? { x: c.fx / m.dW, y: c.fy / m.dH, size: c.cs / m.dW }
-          : { x: 0, y: 0, size: 1 };
-        results.push(await composeSquareImage(images[i], cropN));
+        results.push(await composeFeedImage(images[i], transforms[i] ?? DEFAULT_FEED_TRANSFORM, ar));
       }
       onDone(results);
     } catch {
@@ -144,38 +120,50 @@ export default function FeedCropEditor({ visible, images, onCancel, onDone }: Pr
       <View style={styles.container}>
         <View style={styles.header}>
           <TouchableOpacity onPress={onCancel}><Text style={styles.cancel}>キャンセル</Text></TouchableOpacity>
-          <Text style={styles.title}>切り抜き範囲を選ぶ</Text>
+          <Text style={styles.title}>写真を調整</Text>
           <TouchableOpacity onPress={handleDone} disabled={processing}>
             {processing ? <ActivityIndicator color={COLORS.primary} /> : <Text style={styles.next}>次へ ›</Text>}
           </TouchableOpacity>
         </View>
 
-        <Text style={styles.hint}>枠をドラッグして移動・2本指で大きさを調整できます</Text>
+        <Text style={styles.hint}>ドラッグで位置・2本指で拡大できます</Text>
 
-        {/* 写真は固定、切り抜き枠を動かす */}
+        {/* 固定フレーム内で写真を動かす（Instagram方式） */}
         <View style={styles.stageWrap}>
-          {meta ? (
-            <View style={{ width: meta.dW, height: meta.dH }} {...pan.panHandlers}>
-              <Image source={{ uri: images[idx] }} style={{ width: meta.dW, height: meta.dH }} resizeMode="contain" />
-              {/* 枠外を暗くするマスク */}
-              <View style={[styles.mask, { left: 0, top: 0, width: meta.dW, height: crop.fy }]} pointerEvents="none" />
-              <View style={[styles.mask, { left: 0, top: crop.fy + crop.cs, width: meta.dW, height: meta.dH - crop.fy - crop.cs }]} pointerEvents="none" />
-              <View style={[styles.mask, { left: 0, top: crop.fy, width: crop.fx, height: crop.cs }]} pointerEvents="none" />
-              <View style={[styles.mask, { left: crop.fx + crop.cs, top: crop.fy, width: meta.dW - crop.fx - crop.cs, height: crop.cs }]} pointerEvents="none" />
-              {/* 枠の枠線 */}
-              <View style={[styles.cropBox, { left: crop.fx, top: crop.fy, width: crop.cs, height: crop.cs }]} pointerEvents="none" />
-            </View>
-          ) : (
-            <View style={{ width: STAGE_W, height: STAGE_W, alignItems: 'center', justifyContent: 'center' }}>
-              <ActivityIndicator color={COLORS.primary} />
-            </View>
-          )}
+          <View style={[styles.frame, { width: FRAME_W, height: frameH }]} {...pan.panHandlers}>
+            {images[idx] && (
+              <Image
+                source={{ uri: images[idx] }}
+                style={{
+                  width: FRAME_W,
+                  height: frameH,
+                  transform: [
+                    { translateX: cur.x * FRAME_W },
+                    { translateY: cur.y * frameH },
+                    { scale: cur.scale },
+                  ],
+                }}
+                resizeMode="cover"
+              />
+            )}
+          </View>
         </View>
 
+        {/* 比率切り替え */}
+        <View style={styles.aspectRow}>
+          <TouchableOpacity style={[styles.aspectBtn, aspect === 'square' && styles.aspectBtnActive]} onPress={() => setAspect('square')}>
+            <Text style={[styles.aspectText, aspect === 'square' && styles.aspectTextActive]}>1:1</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.aspectBtn, aspect === 'portrait' && styles.aspectBtnActive]} onPress={() => setAspect('portrait')}>
+            <Text style={[styles.aspectText, aspect === 'portrait' && styles.aspectTextActive]}>4:5</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* ズーム補助 */}
         <View style={styles.zoomRow}>
-          <TouchableOpacity style={styles.zoomBtn} onPress={() => zoom(1 / 0.85)}><Text style={styles.zoomBtnText}>－</Text></TouchableOpacity>
-          <Text style={styles.zoomLabel}>大きさ</Text>
-          <TouchableOpacity style={styles.zoomBtn} onPress={() => zoom(0.85)}><Text style={styles.zoomBtnText}>＋</Text></TouchableOpacity>
+          <TouchableOpacity style={styles.zoomBtn} onPress={() => zoom(-0.2)}><Text style={styles.zoomBtnText}>－</Text></TouchableOpacity>
+          <Text style={styles.zoomLabel}>拡大 {Math.round(cur.scale * 100)}%</Text>
+          <TouchableOpacity style={styles.zoomBtn} onPress={() => zoom(0.2)}><Text style={styles.zoomBtnText}>＋</Text></TouchableOpacity>
         </View>
 
         {images.length > 1 && (
@@ -203,20 +191,25 @@ const styles = StyleSheet.create({
   title: { color: COLORS.text, fontSize: 16, fontWeight: '800' },
   next: { color: COLORS.primary, fontSize: 15, fontWeight: '800' },
   hint: { color: COLORS.textMuted, fontSize: 12, textAlign: 'center', marginTop: SPACING.md },
-  stageWrap: {
-    alignItems: 'center', justifyContent: 'center', marginTop: SPACING.md,
-    minHeight: STAGE_MAX_H,
-    ...(Platform.OS === 'web' ? ({ touchAction: 'none' } as object) : {}),
+  stageWrap: { alignItems: 'center', marginTop: SPACING.md },
+  frame: {
+    overflow: 'hidden',
+    borderRadius: RADIUS.md,
+    backgroundColor: '#000',
+    ...(Platform.OS === 'web' ? ({ cursor: 'grab', touchAction: 'none' } as object) : {}),
   },
-  mask: { position: 'absolute', backgroundColor: 'rgba(0,0,0,0.55)' },
-  cropBox: { position: 'absolute', borderWidth: 2, borderColor: '#fff' },
-  zoomRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.md, marginTop: SPACING.lg },
+  aspectRow: { flexDirection: 'row', justifyContent: 'center', gap: SPACING.sm, marginTop: SPACING.lg },
+  aspectBtn: { paddingHorizontal: SPACING.lg, paddingVertical: 8, borderRadius: RADIUS.full, borderWidth: 1, borderColor: COLORS.border },
+  aspectBtnActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  aspectText: { color: COLORS.textSecondary, fontSize: 14, fontWeight: '700' },
+  aspectTextActive: { color: '#fff' },
+  zoomRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.md, marginTop: SPACING.md },
   zoomBtn: {
     width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.surface,
     alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.border,
   },
   zoomBtnText: { color: COLORS.text, fontSize: 22, fontWeight: '700' },
-  zoomLabel: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600', minWidth: 60, textAlign: 'center' },
+  zoomLabel: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600', minWidth: 90, textAlign: 'center' },
   thumbRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, justifyContent: 'center', marginTop: SPACING.xl, paddingHorizontal: SPACING.md },
   thumb: { width: 56, height: 56, borderRadius: RADIUS.sm, overflow: 'hidden', borderWidth: 2, borderColor: 'transparent' },
   thumbActive: { borderColor: COLORS.primary },
