@@ -71,7 +71,9 @@ Deno.serve(async (req) => {
   if (used >= limit) {
     const msg =
       plan === 'free'
-        ? `無料プランのAI生成は1アカウント${limit}回までです。Proプランなら月${LIMITS.pro}回使えます。`
+        ? `無料プランのAI生成は1アカウント${limit}回までです。Proなら月${LIMITS.pro}回、ビジネスなら月${LIMITS.business}回使えます。`
+        : plan === 'pro'
+        ? `今月のAI生成（月${limit}回）を使い切りました。たくさん使うならビジネスプラン（月${LIMITS.business}回）へのアップグレードがおすすめです。`
         : `今月のAI生成回数の上限（${limit}回）に達しました。来月またご利用いただけます。`;
     return json({ error: msg, code: 'AI_LIMIT', plan, limit, used }, 429);
   }

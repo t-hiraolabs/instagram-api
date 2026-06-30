@@ -340,6 +340,13 @@ export default function GenerateScreen() {
               無料は1アカウント{usage.limit}回までです。Proなら月50回、ビジネスなら月300回まで使えます。
             </Text>
           )}
+          {usage.plan === 'pro' && usage.remaining <= 10 && (
+            <Text style={styles.usageWarn}>
+              {usage.remaining <= 0
+                ? '今月のAI生成（50回）を使い切りました。ビジネスプランなら月300回まで使えます。'
+                : `Proは月${usage.limit}回までです。たくさん使うならビジネス（月300回）がおすすめです。`}
+            </Text>
+          )}
         </View>
       )}
 
