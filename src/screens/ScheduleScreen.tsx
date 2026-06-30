@@ -240,6 +240,9 @@ export default function ScheduleScreen() {
 
   // 詳細モーダル用
   const [detailPost, setDetailPost] = useState<ScheduledPost | null>(null);
+  const [carouselW, setCarouselW] = useState(0);
+  const [carouselIdx, setCarouselIdx] = useState(0);
+  useEffect(() => { setCarouselIdx(0); }, [detailPost]);
 
   // AI生成結果画面用
   const [resultVisible, setResultVisible] = useState(false);
@@ -1354,22 +1357,26 @@ export default function ScheduleScreen() {
           )}
         </View>
         <View style={styles.cardActions}>
-          {post.status === 'draft' && (
-            <TouchableOpacity onPress={() => openScheduleDraft(post)} hitSlop={8}>
-              <Text style={styles.editBtn}>📅</Text>
+          {post.status === 'draft' ? (
+            // 下書きカードはゴミ箱のみ（その他の操作はタップして詳細から）
+            <TouchableOpacity onPress={() => handleDelete(post.id)} hitSlop={8}>
+              <Text style={styles.deleteBtn}>🗑</Text>
             </TouchableOpacity>
+          ) : (
+            <>
+              <TouchableOpacity onPress={() => openDuplicate(post)} hitSlop={8}>
+                <Text style={styles.editBtn}>📄</Text>
+              </TouchableOpacity>
+              {post.status === 'pending' && (
+                <TouchableOpacity onPress={() => openEdit(post)} hitSlop={8}>
+                  <Text style={styles.editBtn}>✏️</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity onPress={() => handleDelete(post.id)} hitSlop={8}>
+                <Text style={styles.deleteBtn}>🗑</Text>
+              </TouchableOpacity>
+            </>
           )}
-          <TouchableOpacity onPress={() => openDuplicate(post)} hitSlop={8}>
-            <Text style={styles.editBtn}>📄</Text>
-          </TouchableOpacity>
-          {(post.status === 'pending' || post.status === 'draft') && (
-            <TouchableOpacity onPress={() => openEdit(post)} hitSlop={8}>
-              <Text style={styles.editBtn}>✏️</Text>
-            </TouchableOpacity>
-          )}
-          <TouchableOpacity onPress={() => handleDelete(post.id)} hitSlop={8}>
-            <Text style={styles.deleteBtn}>🗑</Text>
-          </TouchableOpacity>
         </View>
       </View>
 
@@ -1716,14 +1723,46 @@ export default function ScheduleScreen() {
               </TouchableOpacity>
             </View>
             <ScrollView style={styles.modalBody} contentContainerStyle={{ paddingBottom: 40 }}>
-              {/* 画像 */}
-              {detailPost.image_url && (
-                <Image
-                  source={{ uri: detailPost.image_url.split('\n')[0] }}
-                  style={{ width: '100%', aspectRatio: 1, borderRadius: RADIUS.md, marginBottom: SPACING.md }}
-                  resizeMode="cover"
-                />
-              )}
+              {/* 画像（複数枚はInstagram風にスライド） */}
+              {detailPost.image_url && (() => {
+                const imgs = detailPost.image_url.split('\n').map((s) => s.trim()).filter(Boolean);
+                return (
+                  <View
+                    style={{ marginBottom: SPACING.md }}
+                    onLayout={(e) => setCarouselW(e.nativeEvent.layout.width)}
+                  >
+                    <ScrollView
+                      horizontal
+                      pagingEnabled
+                      showsHorizontalScrollIndicator={false}
+                      onMomentumScrollEnd={(e) => {
+                        if (carouselW > 0) setCarouselIdx(Math.round(e.nativeEvent.contentOffset.x / carouselW));
+                      }}
+                    >
+                      {imgs.map((uri, i) => (
+                        <Image
+                          key={i}
+                          source={{ uri }}
+                          style={{ width: carouselW || 1, aspectRatio: 1, borderRadius: RADIUS.md }}
+                          resizeMode="cover"
+                        />
+                      ))}
+                    </ScrollView>
+                    {imgs.length > 1 && (
+                      <>
+                        <View style={styles.carouselCounter}>
+                          <Text style={styles.carouselCounterText}>{carouselIdx + 1}/{imgs.length}</Text>
+                        </View>
+                        <View style={styles.carouselDots}>
+                          {imgs.map((_, i) => (
+                            <View key={i} style={[styles.carouselDot, i === carouselIdx && styles.carouselDotActive]} />
+                          ))}
+                        </View>
+                      </>
+                    )}
+                  </View>
+                );
+              })()}
               {/* ステータス・タイプ */}
               <View style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.md, flexWrap: 'wrap' }}>
                 <View style={[styles.typeBadge, detailPost.type !== 'feed' && styles.typeBadgeStory]}>
@@ -1765,6 +1804,23 @@ export default function ScheduleScreen() {
                     下の「削除」はアプリ内の履歴のみを削除します。
                   </Text>
                 </View>
+              )}
+              {/* 下書き: 予約・編集 */}
+              {detailPost.status === 'draft' && (
+                <>
+                  <TouchableOpacity
+                    style={[styles.modalSaveBtn, { backgroundColor: COLORS.primary, marginTop: SPACING.md }]}
+                    onPress={() => { const p = detailPost; setDetailPost(null); openScheduleDraft(p); }}
+                  >
+                    <Text style={styles.modalSaveBtnText}>📅 予約する</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.modalSaveBtn, { backgroundColor: COLORS.surfaceElevated, marginTop: SPACING.sm }]}
+                    onPress={() => { const p = detailPost; setDetailPost(null); openEdit(p); }}
+                  >
+                    <Text style={[styles.modalSaveBtnText, { color: COLORS.text }]}>✏️ 編集する</Text>
+                  </TouchableOpacity>
+                </>
               )}
               {/* 削除ボタン */}
               <TouchableOpacity
@@ -2586,6 +2642,29 @@ const styles = StyleSheet.create({
   statusText: { color: COLORS.text, fontSize: 11, fontWeight: '600' },
   deleteBtn: { fontSize: 18 },
   cardActions: { flexDirection: 'row', gap: SPACING.md, alignItems: 'center' },
+  carouselCounter: {
+    position: 'absolute',
+    top: SPACING.sm,
+    right: SPACING.sm,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: RADIUS.full,
+  },
+  carouselCounterText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+  carouselDots: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: SPACING.sm,
+  },
+  carouselDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: COLORS.border,
+  },
+  carouselDotActive: { backgroundColor: COLORS.primary },
   editBtn: { fontSize: 17 },
   editKind: {
     color: COLORS.textMuted,
