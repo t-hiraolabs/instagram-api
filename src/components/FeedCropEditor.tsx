@@ -149,29 +149,43 @@ export default function FeedCropEditor({ visible, images, onCancel, onDone }: Pr
 
         <Text style={styles.hint}>ドラッグで位置・2本指で拡大できます</Text>
 
-        {/* 固定フレーム内で写真を動かす（Instagram方式） */}
-        <View style={styles.stageWrap}>
-          <View style={[styles.frame, { width: FRAME_W, height: frameH }]} {...pan.panHandlers}>
-            {images[idx] && (
-              <Image
-                source={{ uri: images[idx] }}
-                style={{
-                  position: 'absolute',
-                  width: coverW,
-                  height: coverH,
-                  left: (FRAME_W - coverW) / 2,
-                  top: (frameH - coverH) / 2,
-                  transform: [
-                    { translateX: cur.x * FRAME_W },
-                    { translateY: cur.y * frameH },
-                    { scale: cur.scale },
-                  ],
-                }}
-                resizeMode="cover"
-              />
-            )}
-          </View>
-        </View>
+        {/* 固定フレーム内で写真を動かす（Instagram方式）。枠外も薄く見える */}
+        {(() => {
+          const MARGIN = 64;
+          const stageW = SCREEN_W;
+          const stageH = frameH + MARGIN * 2;
+          const frameLeft = (stageW - FRAME_W) / 2;
+          const frameTop = MARGIN;
+          return (
+            <View style={[styles.stage, { width: stageW, height: stageH }]} {...pan.panHandlers}>
+              {images[idx] && (
+                <Image
+                  source={{ uri: images[idx] }}
+                  style={{
+                    position: 'absolute',
+                    width: coverW,
+                    height: coverH,
+                    left: frameLeft + (FRAME_W - coverW) / 2,
+                    top: frameTop + (frameH - coverH) / 2,
+                    transform: [
+                      { translateX: cur.x * FRAME_W },
+                      { translateY: cur.y * frameH },
+                      { scale: cur.scale },
+                    ],
+                  }}
+                  resizeMode="cover"
+                />
+              )}
+              {/* 枠外の薄暗いマスク */}
+              <View pointerEvents="none" style={[styles.mask, { left: 0, top: 0, width: stageW, height: frameTop }]} />
+              <View pointerEvents="none" style={[styles.mask, { left: 0, top: frameTop + frameH, width: stageW, height: stageH - frameTop - frameH }]} />
+              <View pointerEvents="none" style={[styles.mask, { left: 0, top: frameTop, width: frameLeft, height: frameH }]} />
+              <View pointerEvents="none" style={[styles.mask, { left: frameLeft + FRAME_W, top: frameTop, width: stageW - frameLeft - FRAME_W, height: frameH }]} />
+              {/* 枠線 */}
+              <View pointerEvents="none" style={[styles.cropBox, { left: frameLeft, top: frameTop, width: FRAME_W, height: frameH }]} />
+            </View>
+          );
+        })()}
 
         {/* 比率切り替え */}
         <View style={styles.aspectRow}>
@@ -215,13 +229,15 @@ const styles = StyleSheet.create({
   title: { color: COLORS.text, fontSize: 16, fontWeight: '800' },
   next: { color: COLORS.primary, fontSize: 15, fontWeight: '800' },
   hint: { color: COLORS.textMuted, fontSize: 12, textAlign: 'center', marginTop: SPACING.md },
-  stageWrap: { alignItems: 'center', marginTop: SPACING.md },
-  frame: {
+  stage: {
     overflow: 'hidden',
-    borderRadius: RADIUS.md,
+    marginTop: SPACING.md,
+    alignSelf: 'center',
     backgroundColor: '#000',
     ...(Platform.OS === 'web' ? ({ cursor: 'grab', touchAction: 'none' } as object) : {}),
   },
+  mask: { position: 'absolute', backgroundColor: 'rgba(0,0,0,0.55)' },
+  cropBox: { position: 'absolute', borderWidth: 2, borderColor: '#fff', borderRadius: 2 },
   aspectRow: { flexDirection: 'row', justifyContent: 'center', gap: SPACING.sm, marginTop: SPACING.lg },
   aspectBtn: { paddingHorizontal: SPACING.lg, paddingVertical: 8, borderRadius: RADIUS.full, borderWidth: 1, borderColor: COLORS.border },
   aspectBtnActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
