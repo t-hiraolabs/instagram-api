@@ -482,8 +482,12 @@ export default function ProfileScreen() {
       >
         <Text style={styles.title}>プロフィール</Text>
 
-        {/* Instagram account card */}
-        <View style={[styles.accountCard, isConnected && styles.accountCardConnected]}>
+        {/* Instagram account card（タップで使用アカウントを切り替え） */}
+        <TouchableOpacity
+          style={[styles.accountCard, isConnected && styles.accountCardConnected]}
+          onPress={isConnected ? () => setActiveAccountSlot(1) : undefined}
+          activeOpacity={isConnected ? 0.7 : 1}
+        >
           <View style={styles.avatar}>
             <Text style={styles.avatarText}>{isConnected ? '📷' : '👤'}</Text>
           </View>
@@ -504,14 +508,10 @@ export default function ProfileScreen() {
           </View>
           {isConnected ? (
             <View style={styles.accountActions}>
-              {activeAccountSlot === 1 ? (
+              {activeAccountSlot === 1 && (
                 <View style={styles.activeBadge}>
                   <Text style={styles.activeBadgeText}>使用中</Text>
                 </View>
-              ) : (
-                <TouchableOpacity style={styles.switchBtn} onPress={() => setActiveAccountSlot(1)}>
-                  <Text style={styles.switchBtnText}>使う</Text>
-                </TouchableOpacity>
               )}
               <TouchableOpacity style={styles.disconnectBtn} onPress={handleDisconnect}>
                 <Text style={styles.disconnectBtnText}>解除</Text>
@@ -522,7 +522,7 @@ export default function ProfileScreen() {
               <Text style={styles.connectBtnText}>連携する</Text>
             </TouchableOpacity>
           )}
-        </View>
+        </TouchableOpacity>
 
         {isConnected && (
           <View style={styles.connectedBadge}>
@@ -532,7 +532,11 @@ export default function ProfileScreen() {
 
         {/* Second Instagram account card */}
         <Text style={styles.sectionTitle}>2つ目のアカウント</Text>
-        <View style={[styles.accountCard, isConnected2 && styles.accountCardConnected]}>
+        <TouchableOpacity
+          style={[styles.accountCard, isConnected2 && styles.accountCardConnected]}
+          onPress={isConnected2 ? () => setActiveAccountSlot(2) : undefined}
+          activeOpacity={isConnected2 ? 0.7 : 1}
+        >
           <View style={styles.avatar}>
             <Text style={styles.avatarText}>{isConnected2 ? '📷' : '➕'}</Text>
           </View>
@@ -553,14 +557,10 @@ export default function ProfileScreen() {
           </View>
           {isConnected2 ? (
             <View style={styles.accountActions}>
-              {activeAccountSlot === 2 ? (
+              {activeAccountSlot === 2 && (
                 <View style={styles.activeBadge}>
                   <Text style={styles.activeBadgeText}>使用中</Text>
                 </View>
-              ) : (
-                <TouchableOpacity style={styles.switchBtn} onPress={() => setActiveAccountSlot(2)}>
-                  <Text style={styles.switchBtnText}>使う</Text>
-                </TouchableOpacity>
               )}
               <TouchableOpacity style={styles.disconnectBtn} onPress={handleDisconnect2}>
                 <Text style={styles.disconnectBtnText}>解除</Text>
@@ -571,7 +571,7 @@ export default function ProfileScreen() {
               <Text style={styles.connectBtnText}>連携する</Text>
             </TouchableOpacity>
           )}
-        </View>
+        </TouchableOpacity>
 
         {/* Brand Settings Card */}
         <Text style={styles.sectionTitle}>
@@ -899,14 +899,6 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.full,
   },
   activeBadgeText: { color: '#fff', fontWeight: '700', fontSize: 12 },
-  switchBtn: {
-    borderWidth: 1,
-    borderColor: COLORS.primary,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 6,
-    borderRadius: RADIUS.full,
-  },
-  switchBtnText: { color: COLORS.primary, fontWeight: '700', fontSize: 12 },
   connectedBadge: {
     backgroundColor: COLORS.success + '22',
     borderRadius: RADIUS.md,
