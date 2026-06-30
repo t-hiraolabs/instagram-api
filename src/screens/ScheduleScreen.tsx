@@ -13,6 +13,7 @@ import {
   Platform,
   Image,
   PanResponder,
+  Dimensions,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -1729,21 +1730,29 @@ export default function ScheduleScreen() {
                 return (
                   <View
                     style={{ marginBottom: SPACING.md }}
-                    onLayout={(e) => setCarouselW(e.nativeEvent.layout.width)}
+                    onLayout={(e) => {
+                      const w = e.nativeEvent.layout.width;
+                      if (w > 0 && w !== carouselW) setCarouselW(w);
+                    }}
                   >
                     <ScrollView
                       horizontal
                       pagingEnabled
                       showsHorizontalScrollIndicator={false}
-                      onMomentumScrollEnd={(e) => {
-                        if (carouselW > 0) setCarouselIdx(Math.round(e.nativeEvent.contentOffset.x / carouselW));
+                      scrollEventThrottle={16}
+                      onScroll={(e) => {
+                        const w = carouselW || e.nativeEvent.layoutMeasurement.width;
+                        if (w > 0) {
+                          const idx = Math.round(e.nativeEvent.contentOffset.x / w);
+                          if (idx !== carouselIdx) setCarouselIdx(idx);
+                        }
                       }}
                     >
                       {imgs.map((uri, i) => (
                         <Image
                           key={i}
                           source={{ uri }}
-                          style={{ width: carouselW || 1, aspectRatio: 1, borderRadius: RADIUS.md }}
+                          style={{ width: carouselW || Dimensions.get('window').width - SPACING.md * 2, aspectRatio: 1, borderRadius: RADIUS.md }}
                           resizeMode="cover"
                         />
                       ))}
