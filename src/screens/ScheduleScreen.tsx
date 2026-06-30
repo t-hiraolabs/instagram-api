@@ -24,6 +24,7 @@ import {
   StoryTransform,
   DEFAULT_TRANSFORM,
 } from '../utils/composeStory';
+import FeedCropEditor from '../components/FeedCropEditor';
 import StoryEditor from '../components/StoryEditor';
 import ReelScreen from './ReelScreen';
 import RosterScreen from './RosterScreen';
@@ -247,6 +248,10 @@ export default function ScheduleScreen() {
   useEffect(() => { setCarouselIdx(0); }, [detailPost]);
   const [rCarW, setRCarW] = useState(0);
   const [rCarIdx, setRCarIdx] = useState(0);
+  // 写真トリミング編集（選択→調整→AI生成の流れ）
+  const [cropVisible, setCropVisible] = useState(false);
+  const [cropRawImages, setCropRawImages] = useState<string[]>([]);
+  const cropAppendRef = useRef(false); // 追加（追記）モードか、置き換えモードか
 
   // AI生成結果画面用
   const [resultVisible, setResultVisible] = useState(false);
@@ -465,7 +470,7 @@ export default function ScheduleScreen() {
       return;
     }
 
-    // フィードは複数選択OK（カルーセル投稿）
+    // フィードは複数選択OK（カルーセル投稿）→ まずトリミング編集へ
     const res = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsMultipleSelection: true,
@@ -474,22 +479,9 @@ export default function ScheduleScreen() {
     });
     if (res.canceled) return;
 
-    setFeedPreviews(res.assets.map((a) => a.uri));
-    setImagePreview(res.assets[0].uri);
-    setImageUploading(true);
-    try {
-      const urls: string[] = [];
-      for (const a of res.assets) {
-        urls.push(await uploadPostImage(a.uri));
-      }
-      setImageUrls(urls);
-      setImageUrl(urls[0]);
-    } catch (e) {
-      setImagePreview('');
-      alertMsg(e instanceof Error ? e.message : '画像アップロードに失敗しました');
-    } finally {
-      setImageUploading(false);
-    }
+    cropAppendRef.current = false;
+    setCropRawImages(res.assets.map((a) => a.uri));
+    setCropVisible(true);
   };
 
   // ストーリー用のメディア（写真 または 動画）を選ぶ
@@ -1224,7 +1216,7 @@ export default function ScheduleScreen() {
     setResultVisible(true);
   };
 
-  // 生成結果画面で写真を追加する（既存に追記）
+  // 生成結果画面で写真を追加する（トリミング編集を経て追記）
   const addFeedImages = async () => {
     const res = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -1233,20 +1225,37 @@ export default function ScheduleScreen() {
       quality: 0.9,
     });
     if (res.canceled) return;
+    cropAppendRef.current = true;
+    setCropRawImages(res.assets.map((a) => a.uri));
+    setCropVisible(true);
+  };
+
+  // トリミング編集の完了：合成画像をアップロードして反映（置き換え or 追記）
+  const handleCropDone = async (results: { blob: Blob; previewUrl: string }[]) => {
+    setCropVisible(false);
     setImageUploading(true);
     try {
-      const newUrls: string[] = [];
-      for (const a of res.assets) newUrls.push(await uploadPostImage(a.uri));
-      setFeedPreviews((p) => [...p, ...res.assets.map((a) => a.uri)]);
-      setImageUrls((p) => {
-        const merged = [...p, ...newUrls];
-        setImageUrl(merged[0]);
-        return merged;
-      });
+      const urls: string[] = [];
+      for (const r of results) urls.push(await uploadBlob(r.blob));
+      const previews = results.map((r) => r.previewUrl);
+      if (cropAppendRef.current) {
+        setFeedPreviews((p) => [...p, ...previews]);
+        setImageUrls((p) => {
+          const merged = [...p, ...urls];
+          setImageUrl(merged[0]);
+          return merged;
+        });
+      } else {
+        setFeedPreviews(previews);
+        setImagePreview(previews[0] ?? '');
+        setImageUrls(urls);
+        setImageUrl(urls[0] ?? '');
+      }
     } catch (e) {
       alertMsg(e instanceof Error ? e.message : '画像アップロードに失敗しました');
     } finally {
       setImageUploading(false);
+      cropAppendRef.current = false;
     }
   };
 
@@ -1647,6 +1656,14 @@ export default function ScheduleScreen() {
           </>
         )}
       </ScrollView>
+
+      {/* 写真トリミング編集（選択→調整→AI生成） */}
+      <FeedCropEditor
+        visible={cropVisible}
+        images={cropRawImages}
+        onCancel={() => { setCropVisible(false); cropAppendRef.current = false; }}
+        onDone={handleCropDone}
+      />
 
       {/* AI生成結果モーダル */}
       <Modal visible={resultVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => handleResultClose()}>
