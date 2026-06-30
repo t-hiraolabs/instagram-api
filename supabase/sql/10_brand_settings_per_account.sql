@@ -24,10 +24,12 @@ alter table public.brand_settings add column if not exists ig_user_id text;
 alter table public.brand_settings alter column slot drop not null;
 alter table public.brand_settings drop constraint if exists brand_settings_user_id_slot_key;
 
--- Instagramアカウント単位の一意制約
-create unique index if not exists brand_settings_user_ig_unique
-  on public.brand_settings (user_id, ig_user_id)
-  where ig_user_id is not null;
+-- Instagramアカウント単位の一意制約。
+-- ※ 部分インデックスは upsert(ON CONFLICT) の競合解決に使えないため、
+--   通常のユニーク制約にする（NULL同士は別物として扱われるので旧データも共存可）。
+drop index if exists brand_settings_user_ig_unique;
+alter table public.brand_settings drop constraint if exists brand_settings_user_ig_key;
+alter table public.brand_settings add constraint brand_settings_user_ig_key unique (user_id, ig_user_id);
 
 -- RLS: 本人のみ自分の設定を操作可能
 alter table public.brand_settings enable row level security;
