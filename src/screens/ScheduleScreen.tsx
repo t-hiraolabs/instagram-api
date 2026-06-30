@@ -907,28 +907,31 @@ export default function ScheduleScreen() {
   };
 
   const handleResultClose = () => {
-    if (!caption.trim() && feedTags.length === 0) {
+    // 入力が何も無ければそのまま閉じる
+    if (!caption.trim() && feedTags.length === 0 && feedPreviews.length === 0) {
       editingDraftId.current = null;
       setResultVisible(false);
       return;
     }
+    const discard = () => { editingDraftId.current = null; setResultVisible(false); };
+    const save = async () => { await handleSaveDraft(); setResultVisible(false); };
+
+    if (Platform.OS === 'web') {
+      // OK=下書き保存 / キャンセル=破棄して閉じる
+      if (window.confirm('内容は破棄されます。下書きとして保存しますか？\n\n「OK」＝下書き保存　「キャンセル」＝保存せず閉じる')) {
+        save();
+      } else {
+        discard();
+      }
+      return;
+    }
     Alert.alert(
-      '下書きを保存しますか？',
-      'キャプションとハッシュタグを下書きとして保存できます。',
+      '内容は破棄されます',
+      '下書きとして保存しますか？',
       [
-        { text: 'キャンセル', style: 'cancel' },
-        {
-          text: '保存しない',
-          style: 'destructive',
-          onPress: () => { editingDraftId.current = null; setResultVisible(false); },
-        },
-        {
-          text: '下書き保存',
-          onPress: async () => {
-            await handleSaveDraft();
-            setResultVisible(false);
-          },
-        },
+        { text: '編集に戻る', style: 'cancel' },
+        { text: '保存せず閉じる', style: 'destructive', onPress: discard },
+        { text: '下書き保存', onPress: save },
       ],
     );
   };
@@ -1711,13 +1714,11 @@ export default function ScheduleScreen() {
       <Modal visible={resultVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => handleResultClose()}>
         <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.background }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => { editingDraftId.current = null; setResultVisible(false); setModalVisible(true); }}>
-              <Text style={styles.modalCancel}>‹ 戻る</Text>
+            <TouchableOpacity onPress={handleResultClose}>
+              <Text style={styles.modalCancel}>✕ キャンセル</Text>
             </TouchableOpacity>
             <Text style={styles.modalTitle}>投稿を作成</Text>
-            <TouchableOpacity onPress={handleResultClose}>
-              <Text style={[styles.modalCancel, { color: COLORS.error }]}>閉じる</Text>
-            </TouchableOpacity>
+            <View style={{ width: 70 }} />
           </View>
 
           <ScrollView style={styles.modalBody} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 40 }}>
