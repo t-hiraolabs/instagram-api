@@ -907,8 +907,8 @@ export default function ScheduleScreen() {
   };
 
   const handleResultClose = () => {
-    // 入力が何も無ければそのまま閉じる
-    if (!caption.trim() && feedTags.length === 0 && feedPreviews.length === 0) {
+    // キャプション・ハッシュタグの編集が無ければ、何も聞かずに閉じる
+    if (!caption.trim() && feedTags.length === 0) {
       editingDraftId.current = null;
       setResultVisible(false);
       return;
