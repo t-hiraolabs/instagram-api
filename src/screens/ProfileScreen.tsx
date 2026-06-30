@@ -524,14 +524,7 @@ export default function ProfileScreen() {
           )}
         </TouchableOpacity>
 
-        {isConnected && (
-          <View style={styles.connectedBadge}>
-            <Text style={styles.connectedBadgeText}>✅ 予約自動投稿が利用できます</Text>
-          </View>
-        )}
-
         {/* Second Instagram account card */}
-        <Text style={styles.sectionTitle}>2つ目のアカウント</Text>
         <TouchableOpacity
           style={[
             styles.accountCard,
