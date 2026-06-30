@@ -271,6 +271,9 @@ function OAuthHandler() {
           });
         }
 
+        // 連携したアカウントを使用中（アクティブ）に切り替える
+        setActiveAccountSlot(slot);
+
         // このアカウントに既存のブランド設定があれば復元し、なければAIで自動分析する
         const existing = await loadBrandForAccount(user_id);
         if (existing) {
