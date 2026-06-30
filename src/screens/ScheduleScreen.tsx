@@ -1244,6 +1244,16 @@ export default function ScheduleScreen() {
     setCropVisible(true);
   };
 
+  // 生成結果画面で、現在の画像を調整し直す（下書き編集時など）
+  const reAdjustResultImages = () => {
+    if (feedPreviews.length === 0) return;
+    cropAppendRef.current = false;
+    cropReturnRef.current = 'result';
+    setResultVisible(false);
+    setCropRawImages(feedPreviews);
+    setCropVisible(true);
+  };
+
   // トリミング編集を閉じて、元のモーダルに戻す
   const restoreFromCrop = () => {
     if (cropReturnRef.current === 'create') setModalVisible(true);
@@ -1769,6 +1779,16 @@ export default function ScheduleScreen() {
                 <Text style={styles.aiBtnGhostText}>{feedPreviews.length > 0 ? '＋ 写真を追加' : '🖼 写真を選ぶ'}</Text>
               )}
             </TouchableOpacity>
+            {feedPreviews.length > 0 && (
+              <TouchableOpacity
+                style={[styles.aiBtnGhost, { marginBottom: SPACING.md }, imageUploading && styles.publishNowBtnDisabled]}
+                onPress={reAdjustResultImages}
+                disabled={imageUploading}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.aiBtnGhostText}>✏️ 写真を調整する</Text>
+              </TouchableOpacity>
+            )}
 
             {/* AIへの指示 */}
             <Text style={styles.fieldLabel}>AIへの指示（任意）</Text>
