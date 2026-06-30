@@ -252,6 +252,7 @@ export default function ScheduleScreen() {
   const [cropVisible, setCropVisible] = useState(false);
   const [cropRawImages, setCropRawImages] = useState<string[]>([]);
   const cropAppendRef = useRef(false); // 追加（追記）モードか、置き換えモードか
+  const cropReturnRef = useRef<'create' | 'result' | null>(null); // 編集後に戻るモーダル
 
   // AI生成結果画面用
   const [resultVisible, setResultVisible] = useState(false);
@@ -480,6 +481,8 @@ export default function ScheduleScreen() {
     if (res.canceled) return;
 
     cropAppendRef.current = false;
+    cropReturnRef.current = 'create';
+    setModalVisible(false); // 下のモーダルと重なってz-indexで隠れるのを防ぐ
     setCropRawImages(res.assets.map((a) => a.uri));
     setCropVisible(true);
   };
@@ -1226,13 +1229,29 @@ export default function ScheduleScreen() {
     });
     if (res.canceled) return;
     cropAppendRef.current = true;
+    cropReturnRef.current = 'result';
+    setResultVisible(false);
     setCropRawImages(res.assets.map((a) => a.uri));
     setCropVisible(true);
+  };
+
+  // トリミング編集を閉じて、元のモーダルに戻す
+  const restoreFromCrop = () => {
+    if (cropReturnRef.current === 'create') setModalVisible(true);
+    else if (cropReturnRef.current === 'result') setResultVisible(true);
+    cropReturnRef.current = null;
+  };
+
+  const handleCropCancel = () => {
+    setCropVisible(false);
+    cropAppendRef.current = false;
+    restoreFromCrop();
   };
 
   // トリミング編集の完了：合成画像をアップロードして反映（置き換え or 追記）
   const handleCropDone = async (results: { blob: Blob; previewUrl: string }[]) => {
     setCropVisible(false);
+    restoreFromCrop();
     setImageUploading(true);
     try {
       const urls: string[] = [];
@@ -1661,7 +1680,7 @@ export default function ScheduleScreen() {
       <FeedCropEditor
         visible={cropVisible}
         images={cropRawImages}
-        onCancel={() => { setCropVisible(false); cropAppendRef.current = false; }}
+        onCancel={handleCropCancel}
         onDone={handleCropDone}
       />
 

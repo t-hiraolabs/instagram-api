@@ -1,22 +1,19 @@
 // フィード投稿用：写真を正方形(1080x1080)にトリミング合成する（web/Canvas専用）
 import { loadImage } from './composeStory';
 
-// 写真の「拡大・移動」情報。x/y はフレーム全体に対する割合（0=中央）で保持し、
-// プレビュー(任意サイズ)と最終出力(1080px)で同じ見た目になるようにする。
-export interface FeedTransform {
-  scale: number; // 拡大率（1 = cover でぴったり収まる基準）
-  x: number;     // 横移動（フレーム比, 0 = 中央）
-  y: number;     // 縦移動（フレーム比, 0 = 中央）
+// 切り抜き枠（写真に対する割合 0..1）。x,y は左上、size は一辺（幅に対する割合）。
+export interface FeedCrop {
+  x: number;
+  y: number;
+  size: number;
 }
-
-export const DEFAULT_FEED_TRANSFORM: FeedTransform = { scale: 1, x: 0, y: 0 };
 
 export const FEED_SIZE = 1080;
 
-/** 写真URI＋transform から正方形画像を生成。Blob（アップロード用）とプレビューURLを返す */
+/** 写真URI＋切り抜き枠（正規化）から正方形画像を生成。Blobとプレビューを返す */
 export async function composeSquareImage(
   imageUri: string,
-  t: FeedTransform = DEFAULT_FEED_TRANSFORM
+  crop: FeedCrop
 ): Promise<{ blob: Blob; previewUrl: string }> {
   const canvas = document.createElement('canvas');
   canvas.width = FEED_SIZE;
@@ -28,14 +25,12 @@ export async function composeSquareImage(
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, FEED_SIZE, FEED_SIZE);
 
-  // cover基準（フレームを覆う最小倍率）→ 拡大率を掛ける
-  const cover = Math.max(FEED_SIZE / img.width, FEED_SIZE / img.height);
-  const scale = cover * t.scale;
-  const dw = img.width * scale;
-  const dh = img.height * scale;
-  const dx = (FEED_SIZE - dw) / 2 + t.x * FEED_SIZE;
-  const dy = (FEED_SIZE - dh) / 2 + t.y * FEED_SIZE;
-  ctx.drawImage(img, dx, dy, dw, dh);
+  // 正規化された枠を元画像のピクセルへ変換（size は幅基準だが contain で縦横同スケール）
+  const sx = crop.x * img.width;
+  const sy = crop.y * img.height;
+  const sSide = crop.size * img.width;
+
+  ctx.drawImage(img, sx, sy, sSide, sSide, 0, 0, FEED_SIZE, FEED_SIZE);
 
   const blob = await new Promise<Blob>((resolve, reject) =>
     canvas.toBlob(
