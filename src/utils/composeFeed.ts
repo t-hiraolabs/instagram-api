@@ -34,6 +34,17 @@ export async function composeFeedImage(
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, W, H);
 
+  // 自動背景: 写真を画面いっぱいにcoverで敷いてぼかす（余白埋め）
+  {
+    const bgCover = Math.max(W / img.width, H / img.height) * 1.1;
+    const bw = img.width * bgCover;
+    const bh = img.height * bgCover;
+    ctx.save();
+    ctx.filter = 'blur(40px)';
+    ctx.drawImage(img, (W - bw) / 2, (H - bh) / 2, bw, bh);
+    ctx.restore();
+  }
+
   const cover = Math.max(W / img.width, H / img.height);
   const scale = cover * t.scale;
   const dw = img.width * scale;

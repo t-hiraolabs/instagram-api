@@ -24,7 +24,7 @@ interface Props {
 
 const SCREEN_W = Dimensions.get('window').width;
 const FRAME_W = Math.min(SCREEN_W - SPACING.md * 2, 400);
-const MIN_SCALE = 1;
+const MIN_SCALE = 0.3;
 const MAX_SCALE = 4;
 
 function clamp(v: number, min: number, max: number) { return Math.max(min, Math.min(max, v)); }
@@ -78,9 +78,9 @@ export default function FeedCropEditor({ visible, images, onCancel, onDone }: Pr
       const next = [...prev];
       const t = { ...(next[i] ?? DEFAULT_FEED_TRANSFORM), ...patch };
       t.scale = clamp(t.scale, MIN_SCALE, MAX_SCALE);
-      // はみ出している分だけ移動を許可（黒フチ防止）
-      const ox = Math.max(0, (r.coverW * t.scale - FRAME_W) / 2) / FRAME_W;
-      const oy = Math.max(0, (r.coverH * t.scale - r.frameH) / 2) / r.frameH;
+      // 拡大時ははみ出し分、縮小時は余白分まで移動を許可（背景で埋まる）
+      const ox = Math.abs(r.coverW * t.scale - FRAME_W) / 2 / FRAME_W;
+      const oy = Math.abs(r.coverH * t.scale - r.frameH) / 2 / r.frameH;
       t.x = clamp(t.x, -ox, ox);
       t.y = clamp(t.y, -oy, oy);
       next[i] = t;
@@ -158,6 +158,21 @@ export default function FeedCropEditor({ visible, images, onCancel, onDone }: Pr
           const frameTop = MARGIN;
           return (
             <View style={[styles.stage, { width: stageW, height: stageH }]} {...pan.panHandlers}>
+              {/* 自動背景（ぼかし）。縮小時の余白を埋める */}
+              {images[idx] && (
+                <Image
+                  source={{ uri: images[idx] }}
+                  style={{
+                    position: 'absolute',
+                    left: frameLeft,
+                    top: frameTop,
+                    width: FRAME_W,
+                    height: frameH,
+                    ...(Platform.OS === 'web' ? ({ filter: 'blur(18px)', transform: 'scale(1.1)' } as object) : {}),
+                  }}
+                  resizeMode="cover"
+                />
+              )}
               {images[idx] && (
                 <Image
                   source={{ uri: images[idx] }}
