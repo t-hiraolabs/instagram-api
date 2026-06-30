@@ -907,8 +907,8 @@ export default function ScheduleScreen() {
   };
 
   const handleResultClose = () => {
-    // キャプション・ハッシュタグの編集が無ければ、何も聞かずに閉じる
-    if (!caption.trim() && feedTags.length === 0) {
+    // 写真もキャプションもハッシュタグも無ければ、何も聞かずに閉じる
+    if (!caption.trim() && feedTags.length === 0 && feedPreviews.length === 0) {
       editingDraftId.current = null;
       setResultVisible(false);
       return;
@@ -1112,12 +1112,9 @@ export default function ScheduleScreen() {
   };
 
   // 下書き保存：日時を決めずに内容だけ保存しておく（自動投稿の対象外）
+  // 下書きはキャプション未入力でも保存OK（写真だけ先に保存しておける）
   const handleSaveDraft = async () => {
     const isStory = type === 'story';
-    if (type === 'feed' && !caption.trim()) {
-      alertMsg('キャプションを入力してください', '入力に不備があります');
-      return;
-    }
     if (isStory) {
       if (!storyMediaType) {
         alertMsg('写真または動画を選んでください', 'メディアが必要です');
