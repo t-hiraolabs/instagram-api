@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
 import { FeedTransform, DEFAULT_FEED_TRANSFORM, ASPECTS, AspectKey, composeFeedImage } from '../utils/composeFeed';
+import { loadImage } from '../utils/composeStory';
 
 interface Props {
   visible: boolean;
@@ -28,40 +29,60 @@ const MAX_SCALE = 4;
 
 function clamp(v: number, min: number, max: number) { return Math.max(min, Math.min(max, v)); }
 
+interface Meta { iw: number; ih: number; }
+
 export default function FeedCropEditor({ visible, images, onCancel, onDone }: Props) {
   const [aspect, setAspect] = useState<AspectKey>('square');
   const [idx, setIdx] = useState(0);
   const [transforms, setTransforms] = useState<FeedTransform[]>([]);
+  const [metas, setMetas] = useState<(Meta | null)[]>([]);
   const [processing, setProcessing] = useState(false);
 
   const ar = ASPECTS[aspect];
   const frameH = FRAME_W / ar;
 
   useEffect(() => {
-    if (visible) {
-      setTransforms(images.map(() => ({ ...DEFAULT_FEED_TRANSFORM })));
-      setIdx(0);
-      setAspect('square');
-    }
+    if (!visible) return;
+    setTransforms(images.map(() => ({ ...DEFAULT_FEED_TRANSFORM })));
+    setIdx(0);
+    setAspect('square');
+    let cancelled = false;
+    (async () => {
+      const ms: (Meta | null)[] = [];
+      for (const uri of images) {
+        try { const img = await loadImage(uri); ms.push({ iw: img.width, ih: img.height }); }
+        catch { ms.push(null); }
+      }
+      if (!cancelled) setMetas(ms);
+    })();
+    return () => { cancelled = true; };
   }, [visible, images]);
 
   const cur = transforms[idx] ?? DEFAULT_FEED_TRANSFORM;
+  const meta = metas[idx] ?? null;
 
-  // PanResponder用の最新値ref
-  const stateRef = useRef({ idx, transforms });
-  stateRef.current = { idx, transforms };
+  // cover基準のサイズ（フレームを覆う）
+  const baseCover = meta ? Math.max(FRAME_W / meta.iw, frameH / meta.ih) : 1;
+  const coverW = meta ? meta.iw * baseCover : FRAME_W;
+  const coverH = meta ? meta.ih * baseCover : frameH;
+
+  // 最新値ref（PanResponder用）
+  const refs = useRef({ idx, transforms, metas, ar, frameH, coverW, coverH });
+  refs.current = { idx, transforms, metas, ar, frameH, coverW, coverH };
   const startRef = useRef<{ x: number; y: number; scale: number; dist: number | null }>({ x: 0, y: 0, scale: 1, dist: null });
 
   const setT = (patch: Partial<FeedTransform>) => {
     setTransforms((prev) => {
-      const i = stateRef.current.idx;
+      const r = refs.current;
+      const i = r.idx;
       const next = [...prev];
       const t = { ...(next[i] ?? DEFAULT_FEED_TRANSFORM), ...patch };
       t.scale = clamp(t.scale, MIN_SCALE, MAX_SCALE);
-      // 黒フチが出ないよう移動量を制限（拡大時のみ動かせる）
-      const lim = (t.scale - 1) / 2;
-      t.x = clamp(t.x, -lim, lim);
-      t.y = clamp(t.y, -lim, lim);
+      // はみ出している分だけ移動を許可（黒フチ防止）
+      const ox = Math.max(0, (r.coverW * t.scale - FRAME_W) / 2) / FRAME_W;
+      const oy = Math.max(0, (r.coverH * t.scale - r.frameH) / 2) / r.frameH;
+      t.x = clamp(t.x, -ox, ox);
+      t.y = clamp(t.y, -oy, oy);
       next[i] = t;
       return next;
     });
@@ -73,11 +94,12 @@ export default function FeedCropEditor({ visible, images, onCancel, onDone }: Pr
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
       onPanResponderGrant: () => {
-        const { idx: i, transforms: ts } = stateRef.current;
-        const t = ts[i] ?? DEFAULT_FEED_TRANSFORM;
+        const r = refs.current;
+        const t = r.transforms[r.idx] ?? DEFAULT_FEED_TRANSFORM;
         startRef.current = { x: t.x, y: t.y, scale: t.scale, dist: null };
       },
       onPanResponderMove: (evt, gesture) => {
+        const r = refs.current;
         const touches = evt.nativeEvent.touches;
         if (touches.length >= 2) {
           const dx = touches[0].pageX - touches[1].pageX;
@@ -88,7 +110,7 @@ export default function FeedCropEditor({ visible, images, onCancel, onDone }: Pr
         } else {
           setTRef.current({
             x: startRef.current.x + gesture.dx / FRAME_W,
-            y: startRef.current.y + gesture.dy / (FRAME_W / ASPECTS[aspectRef.current]),
+            y: startRef.current.y + gesture.dy / r.frameH,
           });
         }
       },
@@ -96,7 +118,6 @@ export default function FeedCropEditor({ visible, images, onCancel, onDone }: Pr
       onPanResponderTerminate: () => { startRef.current.dist = null; },
     })
   ).current;
-  const aspectRef = useRef(aspect); aspectRef.current = aspect;
 
   const zoom = (delta: number) => setT({ scale: cur.scale + delta });
 
@@ -135,8 +156,11 @@ export default function FeedCropEditor({ visible, images, onCancel, onDone }: Pr
               <Image
                 source={{ uri: images[idx] }}
                 style={{
-                  width: FRAME_W,
-                  height: frameH,
+                  position: 'absolute',
+                  width: coverW,
+                  height: coverH,
+                  left: (FRAME_W - coverW) / 2,
+                  top: (frameH - coverH) / 2,
                   transform: [
                     { translateX: cur.x * FRAME_W },
                     { translateY: cur.y * frameH },
