@@ -231,6 +231,7 @@ export default function ScheduleScreen() {
   const [repeat, setRepeat] = useState<RepeatOption>('none');
   const [scheduleModalVisible, setScheduleModalVisible] = useState(false); // 「予約する」で日時入力を別画面表示
   const scheduleFromResult = useRef(false); // 結果画面から予約モーダルを開いたか
+  const editingDraftId = useRef<string | null>(null); // 結果画面で既存の下書きを編集中ならそのID
   const [plan, setPlan] = useState<Plan>('free');
   const [nowSub, setNowSub] = useState<'menu' | 'reel' | 'roster'>('menu'); // 投稿タブ内の表示
 
@@ -244,9 +245,12 @@ export default function ScheduleScreen() {
   const [carouselW, setCarouselW] = useState(0);
   const [carouselIdx, setCarouselIdx] = useState(0);
   useEffect(() => { setCarouselIdx(0); }, [detailPost]);
+  const [rCarW, setRCarW] = useState(0);
+  const [rCarIdx, setRCarIdx] = useState(0);
 
   // AI生成結果画面用
   const [resultVisible, setResultVisible] = useState(false);
+  useEffect(() => { setRCarIdx(0); }, [resultVisible]);
 
   // 編集モーダル用
   const [editVisible, setEditVisible] = useState(false);
@@ -909,6 +913,7 @@ export default function ScheduleScreen() {
 
   const handleResultClose = () => {
     if (!caption.trim() && feedTags.length === 0) {
+      editingDraftId.current = null;
       setResultVisible(false);
       return;
     }
@@ -920,7 +925,7 @@ export default function ScheduleScreen() {
         {
           text: '保存しない',
           style: 'destructive',
-          onPress: () => { setResultVisible(false); },
+          onPress: () => { editingDraftId.current = null; setResultVisible(false); },
         },
         {
           text: '下書き保存',
@@ -1019,11 +1024,13 @@ export default function ScheduleScreen() {
           instagram_user_id: instagramCredentials.userId,
           access_token: instagramCredentials.accessToken,
         });
+        await finishDraftEdit();
         await fetchPosts();
       } catch {
         // 履歴の記録に失敗しても投稿自体は成功しているので、続行する
       }
       clearDraft();
+      setResultVisible(false);
       setModalVisible(false);
       const kind = result.posted_type === 'story' ? 'ストーリー' : 'フィード';
       const ok = `投稿しました ✅（${kind}として投稿）\nInstagramアプリで確認してください`;
@@ -1087,6 +1094,7 @@ export default function ScheduleScreen() {
         instagram_user_id: instagramCredentials?.userId || undefined,
         access_token: instagramCredentials?.accessToken || undefined,
       });
+      await finishDraftEdit();
       clearDraft();
       scheduleFromResult.current = false;
       setScheduleModalVisible(false);
@@ -1141,6 +1149,7 @@ export default function ScheduleScreen() {
         instagram_user_id: instagramCredentials?.userId || undefined,
         access_token: instagramCredentials?.accessToken || undefined,
       });
+      await finishDraftEdit();
       clearDraft();
       setModalVisible(false);
       setFilter('draft');
@@ -1187,6 +1196,68 @@ export default function ScheduleScreen() {
         { text: '削除', style: 'destructive', onPress: () => doDelete(id) },
       ]);
     }
+  };
+
+  // 結果画面で下書きを編集中だった場合、元の下書きを削除する（保存・投稿の成功後に呼ぶ）
+  const finishDraftEdit = async () => {
+    if (editingDraftId.current) {
+      await deleteScheduledPost(editingDraftId.current).catch(() => {});
+      editingDraftId.current = null;
+    }
+  };
+
+  // 下書きを「生成結果画面」で開いて編集する
+  const openEditDraftInResult = (post: ScheduledPost) => {
+    const urls = post.image_url?.includes('\n')
+      ? post.image_url.split('\n').filter(Boolean)
+      : post.image_url ? [post.image_url] : [];
+    setCaption(post.caption ?? '');
+    setHashtagsText((post.hashtags ?? []).join(' '));
+    setType('feed');
+    setImageUrl(urls[0] ?? '');
+    setImageUrls(urls);
+    setFeedPreviews(urls);
+    setImagePreview(urls[0] ?? '');
+    setAiInstruction('');
+    editingDraftId.current = post.id;
+    setDetailPost(null);
+    setResultVisible(true);
+  };
+
+  // 生成結果画面で写真を追加する（既存に追記）
+  const addFeedImages = async () => {
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsMultipleSelection: true,
+      selectionLimit: 10,
+      quality: 0.9,
+    });
+    if (res.canceled) return;
+    setImageUploading(true);
+    try {
+      const newUrls: string[] = [];
+      for (const a of res.assets) newUrls.push(await uploadPostImage(a.uri));
+      setFeedPreviews((p) => [...p, ...res.assets.map((a) => a.uri)]);
+      setImageUrls((p) => {
+        const merged = [...p, ...newUrls];
+        setImageUrl(merged[0]);
+        return merged;
+      });
+    } catch (e) {
+      alertMsg(e instanceof Error ? e.message : '画像アップロードに失敗しました');
+    } finally {
+      setImageUploading(false);
+    }
+  };
+
+  // 生成結果画面で写真を1枚削除する
+  const removeFeedImage = (index: number) => {
+    setFeedPreviews((p) => p.filter((_, i) => i !== index));
+    setImageUrls((p) => {
+      const next = p.filter((_, i) => i !== index);
+      setImageUrl(next[0] ?? '');
+      return next;
+    });
   };
 
   // 複製：投稿作成モーダルに内容を引き継いで開く
@@ -1581,7 +1652,7 @@ export default function ScheduleScreen() {
       <Modal visible={resultVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => handleResultClose()}>
         <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.background }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => { setResultVisible(false); setModalVisible(true); }}>
+            <TouchableOpacity onPress={() => { editingDraftId.current = null; setResultVisible(false); setModalVisible(true); }}>
               <Text style={styles.modalCancel}>‹ 戻る</Text>
             </TouchableOpacity>
             <Text style={styles.modalTitle}>✨ 生成結果</Text>
@@ -1591,14 +1662,68 @@ export default function ScheduleScreen() {
           </View>
 
           <ScrollView style={styles.modalBody} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 40 }}>
-            {/* 画像プレビュー */}
+            {/* 画像プレビュー（Instagram風スライド） */}
             {feedPreviews.length > 0 && (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: SPACING.md }}>
-                {feedPreviews.map((uri, i) => (
-                  <Image key={i} source={{ uri }} style={{ width: 120, height: 120, borderRadius: RADIUS.md, marginRight: SPACING.sm }} resizeMode="cover" />
-                ))}
-              </ScrollView>
+              <View
+                style={{ marginBottom: SPACING.sm }}
+                onLayout={(e) => {
+                  const w = e.nativeEvent.layout.width;
+                  if (w > 0 && w !== rCarW) setRCarW(w);
+                }}
+              >
+                <ScrollView
+                  horizontal
+                  pagingEnabled
+                  showsHorizontalScrollIndicator={false}
+                  scrollEventThrottle={16}
+                  onScroll={(e) => {
+                    const w = rCarW || e.nativeEvent.layoutMeasurement.width;
+                    if (w > 0) {
+                      const idx = Math.round(e.nativeEvent.contentOffset.x / w);
+                      if (idx !== rCarIdx) setRCarIdx(idx);
+                    }
+                  }}
+                >
+                  {feedPreviews.map((uri, i) => (
+                    <View key={i} style={{ width: rCarW || Dimensions.get('window').width - SPACING.md * 2 }}>
+                      <Image
+                        source={{ uri }}
+                        style={{ width: '100%', aspectRatio: 1, borderRadius: RADIUS.md }}
+                        resizeMode="cover"
+                      />
+                      <TouchableOpacity style={styles.carouselRemove} onPress={() => removeFeedImage(i)} hitSlop={8}>
+                        <Text style={styles.carouselRemoveText}>✕</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </ScrollView>
+                {feedPreviews.length > 1 && (
+                  <>
+                    <View style={styles.carouselCounter}>
+                      <Text style={styles.carouselCounterText}>{rCarIdx + 1}/{feedPreviews.length}</Text>
+                    </View>
+                    <View style={styles.carouselDots}>
+                      {feedPreviews.map((_, i) => (
+                        <View key={i} style={[styles.carouselDot, i === rCarIdx && styles.carouselDotActive]} />
+                      ))}
+                    </View>
+                  </>
+                )}
+              </View>
             )}
+            {/* 写真の追加 */}
+            <TouchableOpacity
+              style={[styles.aiBtnGhost, { marginBottom: SPACING.md }, imageUploading && styles.publishNowBtnDisabled]}
+              onPress={addFeedImages}
+              disabled={imageUploading}
+              activeOpacity={0.85}
+            >
+              {imageUploading ? (
+                <ActivityIndicator color={COLORS.secondary} />
+              ) : (
+                <Text style={styles.aiBtnGhostText}>{feedPreviews.length > 0 ? '＋ 写真を追加' : '🖼 写真を選ぶ'}</Text>
+              )}
+            </TouchableOpacity>
 
             {/* AIへの指示 */}
             <Text style={styles.fieldLabel}>AIへの指示（任意）</Text>
@@ -1825,7 +1950,7 @@ export default function ScheduleScreen() {
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.modalSaveBtn, { backgroundColor: COLORS.surfaceElevated, marginTop: SPACING.sm }]}
-                    onPress={() => { const p = detailPost; setDetailPost(null); openEdit(p); }}
+                    onPress={() => { const p = detailPost; openEditDraftInResult(p); }}
                   >
                     <Text style={[styles.modalSaveBtnText, { color: COLORS.text }]}>✏️ 編集する</Text>
                   </TouchableOpacity>
@@ -2674,6 +2799,18 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.border,
   },
   carouselDotActive: { backgroundColor: COLORS.primary },
+  carouselRemove: {
+    position: 'absolute',
+    top: SPACING.sm,
+    left: SPACING.sm,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  carouselRemoveText: { color: '#fff', fontSize: 14, fontWeight: '700' },
   editBtn: { fontSize: 17 },
   editKind: {
     color: COLORS.textMuted,
