@@ -23,7 +23,6 @@ import { INDUSTRIES, analyzeBrandFromPosts } from '../services/aiService';
 import { getInsightsSummary } from '../services/insightsService';
 import axios from 'axios';
 import { loadBrandSettingsFromDb, saveBrandSettingsToDb, brandLocalKey } from '../services/brandSettingsService';
-import { ACCOUNT_THEMES } from '../utils/accountThemes';
 import { supabase } from '../services/supabaseClient';
 import { getMyPlan } from '../services/scheduleService';
 import { ensureLoggedIn } from '../utils/requireLogin';
@@ -562,11 +561,11 @@ export default function ProfileScreen() {
               {industryInfo ? industryInfo.emoji : '🏪'}
             </Text>
             <View style={styles.brandText}>
-              <Text style={styles.brandName}>
+              <Text style={styles.brandName} numberOfLines={1} ellipsizeMode="tail">
                 {activeBrandSettings.brandName || 'ブランド名を設定'}
               </Text>
-              <Text style={styles.brandSub}>
-                {industryInfo ? industryInfo.label : '業種を設定するとAI精度が向上します'}
+              <Text style={styles.brandSub} numberOfLines={1} ellipsizeMode="tail">
+                {activeBrandSettings.industry || '業種を設定するとAI精度が向上します'}
               </Text>
             </View>
             <Text style={styles.brandArrow}>›</Text>
@@ -575,12 +574,12 @@ export default function ProfileScreen() {
             <View style={styles.brandTags}>
               {activeBrandSettings.tone && (
                 <View style={styles.brandTag}>
-                  <Text style={styles.brandTagText}>{activeBrandSettings.tone}</Text>
+                  <Text style={styles.brandTagText} numberOfLines={1} ellipsizeMode="tail">{activeBrandSettings.tone}</Text>
                 </View>
               )}
               {activeBrandSettings.targetAudience && (
-                <View style={styles.brandTag}>
-                  <Text style={styles.brandTagText}>{activeBrandSettings.targetAudience}</Text>
+                <View style={[styles.brandTag, { flexShrink: 1 }]}>
+                  <Text style={styles.brandTagText} numberOfLines={1} ellipsizeMode="tail">{activeBrandSettings.targetAudience}</Text>
                 </View>
               )}
             </View>
@@ -717,46 +716,13 @@ export default function ProfileScreen() {
             />
 
             <Text style={styles.fieldLabel}>業種・ジャンル</Text>
-            <View style={styles.industryGrid}>
-              {INDUSTRIES.filter((i) => i.key !== '').map((ind) => (
-                <TouchableOpacity
-                  key={ind.key}
-                  style={[styles.industryBtn, draftBrand.industry === ind.key && styles.industryBtnActive]}
-                  onPress={() => setDraftBrand((p) => ({ ...p, industry: ind.key }))}
-                >
-                  <Text style={styles.industryBtnEmoji}>{ind.emoji}</Text>
-                  <Text style={[styles.industryBtnLabel, draftBrand.industry === ind.key && styles.industryBtnLabelActive]}>
-                    {ind.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-            <Text style={[styles.fieldLabel, { marginTop: SPACING.sm }]}>
-              または業種を自由に入力
-            </Text>
             <TextInput
               style={styles.input}
               value={draftBrand.industry}
               onChangeText={(v) => setDraftBrand((p) => ({ ...p, industry: v }))}
-              placeholder="例: クラフトビール専門店、出張カメラマン など"
+              placeholder="例: 美容・ネイル、飲食・カフェ、クラフトビール専門店 など"
               placeholderTextColor={COLORS.textMuted}
             />
-
-            <Text style={styles.fieldLabel}>アカウントタイプ（文字・デザインに反映）</Text>
-            <View style={styles.industryGrid}>
-              {ACCOUNT_THEMES.map((at) => (
-                <TouchableOpacity
-                  key={at.key}
-                  style={[styles.industryBtn, draftBrand.accountType === at.key && styles.industryBtnActive]}
-                  onPress={() => setDraftBrand((p) => ({ ...p, accountType: at.key }))}
-                >
-                  <Text style={styles.industryBtnEmoji}>{at.emoji}</Text>
-                  <Text style={[styles.industryBtnLabel, draftBrand.accountType === at.key && styles.industryBtnLabelActive]}>
-                    {at.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
 
             <Text style={styles.fieldLabel}>お店の雰囲気・こだわり（任意）</Text>
             <TextInput
