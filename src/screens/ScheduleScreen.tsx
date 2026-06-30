@@ -1235,6 +1235,15 @@ export default function ScheduleScreen() {
     setCropVisible(true);
   };
 
+  // 選択済みの写真を再調整する（元画像からトリミングし直す）
+  const reAdjustImages = () => {
+    if (cropRawImages.length === 0) return;
+    cropAppendRef.current = false;
+    cropReturnRef.current = 'create';
+    setModalVisible(false);
+    setCropVisible(true);
+  };
+
   // トリミング編集を閉じて、元のモーダルに戻す
   const restoreFromCrop = () => {
     if (cropReturnRef.current === 'create') setModalVisible(true);
@@ -2086,6 +2095,16 @@ export default function ScheduleScreen() {
                     </View>
                   )}
                 </TouchableOpacity>
+                {feedPreviews.length > 0 && cropRawImages.length > 0 && (
+                  <TouchableOpacity
+                    style={[styles.aiBtnGhost, { marginTop: SPACING.sm }]}
+                    onPress={reAdjustImages}
+                    disabled={imageUploading}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.aiBtnGhostText}>✏️ 写真を調整する</Text>
+                  </TouchableOpacity>
+                )}
               </>
             ) : (
               <>
