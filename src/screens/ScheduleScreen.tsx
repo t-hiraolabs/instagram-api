@@ -1714,7 +1714,7 @@ export default function ScheduleScreen() {
             <TouchableOpacity onPress={() => { editingDraftId.current = null; setResultVisible(false); setModalVisible(true); }}>
               <Text style={styles.modalCancel}>‹ 戻る</Text>
             </TouchableOpacity>
-            <Text style={styles.modalTitle}>✨ 生成結果</Text>
+            <Text style={styles.modalTitle}>投稿を作成</Text>
             <TouchableOpacity onPress={handleResultClose}>
               <Text style={[styles.modalCancel, { color: COLORS.error }]}>閉じる</Text>
             </TouchableOpacity>
@@ -2322,76 +2322,14 @@ export default function ScheduleScreen() {
 
             {type === 'feed' ? (
               <>
-                {/* AI生成カード */}
-                <View style={styles.aiCard}>
-                  <Text style={styles.aiCardTitle}>✨ AIで文章を作る</Text>
-
-                  <Text style={styles.fieldLabel}>AIへの指示（任意・どちらにも反映）</Text>
-                  <TextInput
-                    style={[styles.input, styles.aiInstructionInput]}
-                    value={aiInstruction}
-                    onChangeText={setAiInstruction}
-                    placeholder={'例: もっとカジュアルに\n絵文字多めで\n短く3行で'}
-                    placeholderTextColor={COLORS.textMuted}
-                    multiline
-                  />
-
-                  {/* 方法A: テーマから */}
-                  <View style={styles.aiMethod}>
-                    <Text style={styles.aiMethodTitle}>📝 テーマから作る</Text>
-                    <TextInput
-                      style={styles.input}
-                      value={feedTheme}
-                      onChangeText={setFeedTheme}
-                      placeholder="例: 夏の新メニュー紹介"
-                      placeholderTextColor={COLORS.textMuted}
-                    />
-                    <TouchableOpacity
-                      style={[styles.aiBtn, { marginTop: SPACING.sm }, aiLoading && styles.publishNowBtnDisabled]}
-                      onPress={handleGenerateFeedText}
-                      disabled={aiLoading}
-                      activeOpacity={0.85}
-                    >
-                      {aiLoading ? (
-                        <ActivityIndicator color="#fff" />
-                      ) : (
-                        <Text style={styles.aiBtnText}>✨ テーマから作る</Text>
-                      )}
-                    </TouchableOpacity>
-                  </View>
-
-                  {/* 方法B: 写真から */}
-                  <View style={styles.aiMethod}>
-                    <Text style={styles.aiMethodTitle}>📷 写真から作る</Text>
-                    <Text style={styles.aiHintText}>
-                      投稿用に選んだ写真（最大5枚）を見て作ります
-                    </Text>
-                    <TouchableOpacity
-                      style={[styles.aiBtn, aiLoading && styles.publishNowBtnDisabled]}
-                      onPress={handleGenerateFeedFromPhoto}
-                      disabled={aiLoading}
-                      activeOpacity={0.85}
-                    >
-                      {aiLoading ? (
-                        <ActivityIndicator color="#fff" />
-                      ) : (
-                        <Text style={styles.aiBtnText}>📷 選んだ写真から作る</Text>
-                      )}
-                    </TouchableOpacity>
-                  </View>
-                </View>
-
-                {/* 生成結果画面へ（生成済みなら結果を見る、未生成なら手動入力） */}
+                {/* 次のステップ（キャプション作成）へ */}
                 <TouchableOpacity
-                  style={[styles.aiBtn, { marginTop: SPACING.md, backgroundColor: caption.trim() ? COLORS.primary : COLORS.secondary }]}
+                  style={[styles.aiBtn, { marginTop: SPACING.lg }]}
                   onPress={() => { setModalVisible(false); setResultVisible(true); }}
                   activeOpacity={0.85}
                 >
-                  <Text style={styles.aiBtnText}>
-                    {caption.trim() ? '✨ 生成結果を見る・投稿する' : '✍️ 手動で作成・投稿する'}
-                  </Text>
+                  <Text style={styles.aiBtnText}>次へ（キャプション作成）›</Text>
                 </TouchableOpacity>
-
               </>
             ) : null}
 
