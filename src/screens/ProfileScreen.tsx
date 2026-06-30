@@ -127,7 +127,7 @@ export default function ProfileScreen() {
   const {
     instagramCredentials, setInstagramCredentials,
     secondInstagramCredentials, setSecondInstagramCredentials,
-    activeAccountSlot,
+    activeAccountSlot, setActiveAccountSlot,
     brandSettings, setBrandSettings, resetBrandSettings,
     brandSettings2, setBrandSettings2, resetBrandSettings2,
   } = useAppStore();
@@ -503,9 +503,20 @@ export default function ProfileScreen() {
             )}
           </View>
           {isConnected ? (
-            <TouchableOpacity style={styles.disconnectBtn} onPress={handleDisconnect}>
-              <Text style={styles.disconnectBtnText}>解除</Text>
-            </TouchableOpacity>
+            <View style={styles.accountActions}>
+              {activeAccountSlot === 1 ? (
+                <View style={styles.activeBadge}>
+                  <Text style={styles.activeBadgeText}>使用中</Text>
+                </View>
+              ) : (
+                <TouchableOpacity style={styles.switchBtn} onPress={() => setActiveAccountSlot(1)}>
+                  <Text style={styles.switchBtnText}>使う</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity style={styles.disconnectBtn} onPress={handleDisconnect}>
+                <Text style={styles.disconnectBtnText}>解除</Text>
+              </TouchableOpacity>
+            </View>
           ) : (
             <TouchableOpacity style={styles.connectBtn} onPress={handleInstagramLogin}>
               <Text style={styles.connectBtnText}>連携する</Text>
@@ -541,9 +552,20 @@ export default function ProfileScreen() {
             )}
           </View>
           {isConnected2 ? (
-            <TouchableOpacity style={styles.disconnectBtn} onPress={handleDisconnect2}>
-              <Text style={styles.disconnectBtnText}>解除</Text>
-            </TouchableOpacity>
+            <View style={styles.accountActions}>
+              {activeAccountSlot === 2 ? (
+                <View style={styles.activeBadge}>
+                  <Text style={styles.activeBadgeText}>使用中</Text>
+                </View>
+              ) : (
+                <TouchableOpacity style={styles.switchBtn} onPress={() => setActiveAccountSlot(2)}>
+                  <Text style={styles.switchBtnText}>使う</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity style={styles.disconnectBtn} onPress={handleDisconnect2}>
+                <Text style={styles.disconnectBtnText}>解除</Text>
+              </TouchableOpacity>
+            </View>
           ) : (
             <TouchableOpacity style={styles.connectBtn} onPress={handleInstagramLogin2}>
               <Text style={styles.connectBtnText}>連携する</Text>
@@ -869,6 +891,22 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.full,
   },
   disconnectBtnText: { color: COLORS.error, fontWeight: '600', fontSize: 12 },
+  accountActions: { alignItems: 'flex-end', gap: 6 },
+  activeBadge: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 6,
+    borderRadius: RADIUS.full,
+  },
+  activeBadgeText: { color: '#fff', fontWeight: '700', fontSize: 12 },
+  switchBtn: {
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 6,
+    borderRadius: RADIUS.full,
+  },
+  switchBtnText: { color: COLORS.primary, fontWeight: '700', fontSize: 12 },
   connectedBadge: {
     backgroundColor: COLORS.success + '22',
     borderRadius: RADIUS.md,

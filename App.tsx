@@ -240,6 +240,17 @@ function OAuthHandler() {
         );
         const { access_token, user_id, username, profile_picture_url } = res.data;
 
+        // 同じInstagramアカウントを2つのスロットに重複連携させない
+        const state0 = useAppStore.getState();
+        const otherCreds = slot === 2 ? state0.instagramCredentials : state0.secondInstagramCredentials;
+        if (otherCreds && otherCreds.userId === user_id) {
+          Alert.alert(
+            '連携できません',
+            `@${username} はすでにもう一方のアカウントに連携されています。別のInstagramアカウントを連携してください。`
+          );
+          return;
+        }
+
         if (slot === 2) {
           saveCredential('instagram_user_id_2', user_id);
           saveCredential('instagram_access_token_2', access_token);
