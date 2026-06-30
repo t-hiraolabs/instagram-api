@@ -1269,10 +1269,12 @@ export default function ScheduleScreen() {
     restoreFromCrop();
   };
 
-  // トリミング編集の完了：合成画像をアップロードして反映（置き換え or 追記）
+  // トリミング編集の完了：合成画像をアップロードして反映し、生成画面（ステップ2）へ
   const handleCropDone = async (results: { blob: Blob; previewUrl: string }[]) => {
     setCropVisible(false);
-    restoreFromCrop();
+    cropReturnRef.current = null;
+    setModalVisible(false);
+    setResultVisible(true); // 写真調整 → キャプション/生成画面へ直行
     setImageUploading(true);
     try {
       const urls: string[] = [];
@@ -1792,8 +1794,39 @@ export default function ScheduleScreen() {
               </TouchableOpacity>
             )}
 
-            {/* AIへの指示 */}
-            <Text style={styles.fieldLabel}>AIへの指示（任意）</Text>
+            {/* AIでキャプションを生成 */}
+            <Text style={styles.sectionDivider}>AIでキャプションを作る</Text>
+            <Text style={styles.fieldLabel}>テーマ（任意）</Text>
+            <TextInput
+              style={styles.input}
+              value={feedTheme}
+              onChangeText={setFeedTheme}
+              placeholder="例: 夏の新メニュー紹介、週末セールのお知らせ"
+              placeholderTextColor={COLORS.textMuted}
+            />
+            <View style={{ flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.sm }}>
+              {feedPreviews.length > 0 && (
+                <TouchableOpacity
+                  style={[styles.aiBtn, { flex: 1 }, aiLoading && styles.publishNowBtnDisabled]}
+                  onPress={handleGenerateFeedFromPhoto}
+                  disabled={aiLoading}
+                  activeOpacity={0.85}
+                >
+                  {aiLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.aiBtnText}>📷 写真から生成</Text>}
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                style={[styles.aiBtn, { flex: 1, backgroundColor: COLORS.secondary }, aiLoading && styles.publishNowBtnDisabled]}
+                onPress={handleGenerateFeedText}
+                disabled={aiLoading}
+                activeOpacity={0.85}
+              >
+                {aiLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.aiBtnText}>✨ テーマから生成</Text>}
+              </TouchableOpacity>
+            </View>
+
+            {/* AIへの指示で書き直す */}
+            <Text style={[styles.fieldLabel, { marginTop: SPACING.md }]}>AIへの指示で書き直す（任意）</Text>
             <TextInput
               style={[styles.input, styles.aiInstructionInput]}
               value={aiInstruction}
