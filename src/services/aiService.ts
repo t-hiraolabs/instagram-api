@@ -531,7 +531,8 @@ ${sample}
 
   const res = await axios.post(
     CLAUDE_API_URL,
-    { model: MODEL, messages: [{ role: 'user', content: prompt }], max_tokens: 400 },
+    // skipCount: ブランド分析は通常のAI生成回数を消費しない（裏で別枠の上限あり）
+    { model: MODEL, messages: [{ role: 'user', content: prompt }], max_tokens: 400, skipCount: true },
     { headers }
   );
   const text: string = res.data?.content?.[0]?.text ?? res.data?.text ?? '';
