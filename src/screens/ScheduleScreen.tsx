@@ -233,6 +233,7 @@ export default function ScheduleScreen() {
   const [scheduleModalVisible, setScheduleModalVisible] = useState(false); // 「予約する」で日時入力を別画面表示
   const scheduleFromResult = useRef(false); // 結果画面から予約モーダルを開いたか
   const editingDraftId = useRef<string | null>(null); // 結果画面で既存の下書きを編集中ならそのID
+  const draftOriginalRef = useRef<string | null>(null); // 編集開始時の内容スナップショット（変更検知用）
   const [plan, setPlan] = useState<Plan>('free');
   const [nowSub, setNowSub] = useState<'menu' | 'reel' | 'roster'>('menu'); // 投稿タブ内の表示
 
@@ -910,11 +911,26 @@ export default function ScheduleScreen() {
     // 写真もキャプションもハッシュタグも無ければ、何も聞かずに閉じる
     if (!caption.trim() && feedTags.length === 0 && feedPreviews.length === 0) {
       editingDraftId.current = null;
+      draftOriginalRef.current = null;
       setResultVisible(false);
       return;
     }
-    const discard = () => { editingDraftId.current = null; setResultVisible(false); };
-    const save = async () => { await handleSaveDraft(); setResultVisible(false); };
+    // 既存下書きを編集中で、内容が変わっていなければ何も聞かずに閉じる
+    if (draftOriginalRef.current != null) {
+      const now = JSON.stringify({
+        caption,
+        tags: feedTags.join(' '),
+        images: feedPreviews.join('\n'),
+      });
+      if (now === draftOriginalRef.current) {
+        editingDraftId.current = null;
+        draftOriginalRef.current = null;
+        setResultVisible(false);
+        return;
+      }
+    }
+    const discard = () => { editingDraftId.current = null; draftOriginalRef.current = null; setResultVisible(false); };
+    const save = async () => { await handleSaveDraft(); draftOriginalRef.current = null; setResultVisible(false); };
 
     if (Platform.OS === 'web') {
       // OK=下書き保存 / キャンセル=破棄して閉じる
@@ -1215,6 +1231,12 @@ export default function ScheduleScreen() {
     setImagePreview(urls[0] ?? '');
     setAiInstruction('');
     editingDraftId.current = post.id;
+    // 変更検知用に開始時の内容を記録
+    draftOriginalRef.current = JSON.stringify({
+      caption: post.caption ?? '',
+      tags: (post.hashtags ?? []).join(' '),
+      images: urls.join('\n'),
+    });
     setDetailPost(null);
     setResultVisible(true);
   };
@@ -1272,6 +1294,8 @@ export default function ScheduleScreen() {
   // トリミング編集の完了：合成画像をアップロードして反映し、生成画面（ステップ2）へ
   const handleCropDone = async (results: { blob: Blob; previewUrl: string }[]) => {
     setCropVisible(false);
+    // 追記でなく新規の写真選択なら、下書き編集の変更検知をリセット
+    if (!cropAppendRef.current) draftOriginalRef.current = null;
     cropReturnRef.current = null;
     setModalVisible(false);
     setResultVisible(true); // 写真調整 → キャプション/生成画面へ直行
@@ -2323,7 +2347,7 @@ export default function ScheduleScreen() {
                 {/* 次のステップ（キャプション作成）へ */}
                 <TouchableOpacity
                   style={[styles.aiBtn, { marginTop: SPACING.lg }]}
-                  onPress={() => { setModalVisible(false); setResultVisible(true); }}
+                  onPress={() => { draftOriginalRef.current = null; setModalVisible(false); setResultVisible(true); }}
                   activeOpacity={0.85}
                 >
                   <Text style={styles.aiBtnText}>次へ（キャプション作成）›</Text>
