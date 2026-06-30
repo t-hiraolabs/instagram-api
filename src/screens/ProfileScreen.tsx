@@ -304,6 +304,19 @@ export default function ProfileScreen() {
     return items.map((m) => m.caption ?? '').filter((c) => c.trim().length > 0);
   };
 
+  // 投稿が無い場合のフォールバック：プロフィールの自己紹介文・名前を取得する
+  const fetchProfileText = async (token: string): Promise<string> => {
+    try {
+      const res = await axios.get(
+        `https://graph.instagram.com/me?fields=name,username,biography&access_token=${token}`
+      );
+      const { name, username, biography } = res.data ?? {};
+      return [name, username, biography].filter((v: string) => v && v.trim()).join(' / ');
+    } catch {
+      return '';
+    }
+  };
+
   // 連携済みアカウントの投稿を分析してブランド設定を自動生成する
   const handleAutoBrand = async () => {
     if (!activeCredentials?.accessToken) {
@@ -312,9 +325,23 @@ export default function ProfileScreen() {
     }
     setSaving(true);
     try {
-      const captions = await fetchCaptions(activeCredentials.accessToken);
+      let captions = await fetchCaptions(activeCredentials.accessToken);
+      // 投稿が無い場合：プロフィール情報→手入力の順でフォールバック
       if (captions.length === 0) {
-        Alert.alert('投稿が見つかりません', 'キャプション付きの投稿がないため自動生成できませんでした');
+        const profileText = await fetchProfileText(activeCredentials.accessToken);
+        if (profileText.trim()) captions = [profileText];
+      }
+      if (captions.length === 0 && Platform.OS === 'web') {
+        const desc = window.prompt(
+          '投稿がまだ無いようです。お店・アカウントの内容を一言で入力してください（例：渋谷のまつ毛エクステサロン、30代向け）'
+        );
+        if (desc && desc.trim()) captions = [desc.trim()];
+      }
+      if (captions.length === 0) {
+        Alert.alert(
+          '分析できる情報がありません',
+          '投稿・プロフィール情報が見つかりませんでした。ブランド設定は手動で入力してください。'
+        );
         return;
       }
       const s = await analyzeBrandFromPosts(captions, activeCredentials.username);
