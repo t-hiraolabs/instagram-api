@@ -9,8 +9,9 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 // プランごとの月間AI回数の上限
 const LIMITS: Record<string, number> = { free: 5, pro: 50, business: 300 };
 
-// ブランド分析など「カウント対象外」のAI呼び出しに対する裏の月間上限（不正利用防止）
-const BRAND_HIDDEN_LIMIT = 30;
+// ブランド分析など「カウント対象外」のAI呼び出しに対する裏の上限（不正利用防止）。
+// フリーは累計、Pro/ビジネスは月間でリセット。
+const BRAND_LIMITS: Record<string, number> = { free: 3, pro: 10, business: 10 };
 
 // 同じ月か判定
 function isSameMonth(periodStartStr: string): boolean {
@@ -82,13 +83,15 @@ Deno.serve(async (req) => {
 
   // === カウント対象外（ブランド分析など）: 通常回数を消費せず、裏の上限のみチェック ===
   if (skipCount) {
+    const brandLimit = BRAND_LIMITS[plan];
     const todayStr = new Date().toISOString().slice(0, 10);
     const bStart = profile.brand_ai_period_start ?? todayStr;
-    const bResets = !isSameMonth(bStart);
+    // フリーは累計（リセットなし）、Pro/ビジネスは月が変わったらリセット
+    const bResets = plan !== 'free' && !isSameMonth(bStart);
     const bUsed = bResets ? 0 : (profile.brand_ai_used ?? 0);
     const bPeriodStart = bResets ? todayStr : bStart;
 
-    if (bUsed >= BRAND_HIDDEN_LIMIT) {
+    if (bUsed >= brandLimit) {
       return json(
         { error: 'AI分析の利用が一時的に制限されています。しばらくしてからお試しください。', code: 'BRAND_LIMIT' },
         429
