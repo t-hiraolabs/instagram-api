@@ -1880,9 +1880,15 @@ export default function ScheduleScreen() {
                 <Text style={styles.modalCancel}>閉じる</Text>
               </TouchableOpacity>
               <Text style={styles.modalTitle}>投稿詳細</Text>
-              <TouchableOpacity onPress={() => { setDetailPost(null); openDuplicate(detailPost); }}>
-                <Text style={[styles.modalCancel, { color: COLORS.primary }]}>📄 複製</Text>
-              </TouchableOpacity>
+              {detailPost.status === 'draft' ? (
+                <TouchableOpacity onPress={() => openEditDraftInResult(detailPost)}>
+                  <Text style={[styles.modalCancel, { color: COLORS.primary }]}>✏️ 編集</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity onPress={() => { setDetailPost(null); openDuplicate(detailPost); }}>
+                  <Text style={[styles.modalCancel, { color: COLORS.primary }]}>📄 複製</Text>
+                </TouchableOpacity>
+              )}
             </View>
             <ScrollView style={styles.modalBody} contentContainerStyle={{ paddingBottom: 40 }}>
               {/* 画像（複数枚はInstagram風にスライド） */}
@@ -1983,12 +1989,6 @@ export default function ScheduleScreen() {
                     onPress={() => { const p = detailPost; setDetailPost(null); openScheduleDraft(p); }}
                   >
                     <Text style={styles.modalSaveBtnText}>📅 予約する</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.modalSaveBtn, { backgroundColor: COLORS.surfaceElevated, marginTop: SPACING.sm }]}
-                    onPress={() => { const p = detailPost; openEditDraftInResult(p); }}
-                  >
-                    <Text style={[styles.modalSaveBtnText, { color: COLORS.text }]}>✏️ 編集する</Text>
                   </TouchableOpacity>
                 </>
               )}
