@@ -419,6 +419,7 @@ export default function ProfileScreen() {
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [notifVisible, setNotifVisible] = useState(false);
   const [loggedIn, setLoggedIn] = useState(false);
+  const [accountMenu, setAccountMenu] = useState<1 | 2 | null>(null);
 
   useEffect(() => {
     isPushEnabled().then(setPushEnabled);
@@ -482,10 +483,14 @@ export default function ProfileScreen() {
       >
         <Text style={styles.title}>プロフィール</Text>
 
-        {/* Instagram account card（タップで使用アカウントを切り替え） */}
+        {/* Instagram account card（タップで切り替え/解除メニュー） */}
         <TouchableOpacity
-          style={[styles.accountCard, isConnected && styles.accountCardConnected]}
-          onPress={isConnected ? () => setActiveAccountSlot(1) : undefined}
+          style={[
+            styles.accountCard,
+            isConnected && styles.accountCardConnected,
+            isConnected && activeAccountSlot === 1 && styles.accountCardActive,
+          ]}
+          onPress={isConnected ? () => setAccountMenu(1) : undefined}
           activeOpacity={isConnected ? 0.7 : 1}
         >
           <View style={styles.avatar}>
@@ -507,16 +512,11 @@ export default function ProfileScreen() {
             )}
           </View>
           {isConnected ? (
-            <View style={styles.accountActions}>
-              {activeAccountSlot === 1 && (
-                <View style={styles.activeBadge}>
-                  <Text style={styles.activeBadgeText}>使用中</Text>
-                </View>
-              )}
-              <TouchableOpacity style={styles.disconnectBtn} onPress={handleDisconnect}>
-                <Text style={styles.disconnectBtnText}>解除</Text>
-              </TouchableOpacity>
-            </View>
+            activeAccountSlot === 1 ? (
+              <Text style={styles.activeLabel}>使用中</Text>
+            ) : (
+              <Text style={styles.brandArrow}>›</Text>
+            )
           ) : (
             <TouchableOpacity style={styles.connectBtn} onPress={handleInstagramLogin}>
               <Text style={styles.connectBtnText}>連携する</Text>
@@ -533,8 +533,12 @@ export default function ProfileScreen() {
         {/* Second Instagram account card */}
         <Text style={styles.sectionTitle}>2つ目のアカウント</Text>
         <TouchableOpacity
-          style={[styles.accountCard, isConnected2 && styles.accountCardConnected]}
-          onPress={isConnected2 ? () => setActiveAccountSlot(2) : undefined}
+          style={[
+            styles.accountCard,
+            isConnected2 && styles.accountCardConnected,
+            isConnected2 && activeAccountSlot === 2 && styles.accountCardActive,
+          ]}
+          onPress={isConnected2 ? () => setAccountMenu(2) : undefined}
           activeOpacity={isConnected2 ? 0.7 : 1}
         >
           <View style={styles.avatar}>
@@ -556,16 +560,11 @@ export default function ProfileScreen() {
             )}
           </View>
           {isConnected2 ? (
-            <View style={styles.accountActions}>
-              {activeAccountSlot === 2 && (
-                <View style={styles.activeBadge}>
-                  <Text style={styles.activeBadgeText}>使用中</Text>
-                </View>
-              )}
-              <TouchableOpacity style={styles.disconnectBtn} onPress={handleDisconnect2}>
-                <Text style={styles.disconnectBtnText}>解除</Text>
-              </TouchableOpacity>
-            </View>
+            activeAccountSlot === 2 ? (
+              <Text style={styles.activeLabel}>使用中</Text>
+            ) : (
+              <Text style={styles.brandArrow}>›</Text>
+            )
           ) : (
             <TouchableOpacity style={styles.connectBtn} onPress={handleInstagramLogin2}>
               <Text style={styles.connectBtnText}>連携する</Text>
@@ -836,6 +835,51 @@ export default function ProfileScreen() {
         </ScrollView>
       </Modal>
 
+      {/* アカウント切り替え/解除メニュー（Google風） */}
+      <Modal visible={accountMenu !== null} transparent animationType="fade" onRequestClose={() => setAccountMenu(null)}>
+        <TouchableOpacity style={styles.menuOverlay} activeOpacity={1} onPress={() => setAccountMenu(null)}>
+          <TouchableOpacity activeOpacity={1} style={styles.menuSheet} onPress={(e) => e.stopPropagation?.()}>
+            {(() => {
+              const slot = accountMenu;
+              if (!slot) return null;
+              const creds = slot === 2 ? secondInstagramCredentials : instagramCredentials;
+              const isActive = activeAccountSlot === slot;
+              return (
+                <>
+                  <Text style={styles.menuTitle}>
+                    {creds?.username ? `@${creds.username}` : `アカウント${slot}`}
+                  </Text>
+                  {!isActive && (
+                    <TouchableOpacity
+                      style={styles.menuItem}
+                      onPress={() => { setActiveAccountSlot(slot); setAccountMenu(null); }}
+                    >
+                      <Text style={styles.menuItemText}>✅ このアカウントに切り替える</Text>
+                    </TouchableOpacity>
+                  )}
+                  {isActive && (
+                    <Text style={styles.menuActiveNote}>使用中のアカウントです</Text>
+                  )}
+                  <TouchableOpacity
+                    style={styles.menuItem}
+                    onPress={() => {
+                      setAccountMenu(null);
+                      if (slot === 2) handleDisconnect2();
+                      else handleDisconnect();
+                    }}
+                  >
+                    <Text style={[styles.menuItemText, { color: COLORS.error }]}>🔌 連携を解除する</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.menuCancel} onPress={() => setAccountMenu(null)}>
+                    <Text style={styles.menuCancelText}>キャンセル</Text>
+                  </TouchableOpacity>
+                </>
+              );
+            })()}
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
     </View>
   );
 }
@@ -856,6 +900,8 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
   },
   accountCardConnected: { borderColor: COLORS.primary + '66' },
+  accountCardActive: { borderColor: COLORS.primary, borderWidth: 3 },
+  activeLabel: { color: COLORS.primary, fontSize: 12, fontWeight: '800' },
   avatar: {
     width: 48,
     height: 48,
@@ -891,14 +937,40 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.full,
   },
   disconnectBtnText: { color: COLORS.error, fontWeight: '600', fontSize: 12 },
-  accountActions: { alignItems: 'flex-end', gap: 6 },
-  activeBadge: {
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 6,
-    borderRadius: RADIUS.full,
+  menuOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
   },
-  activeBadgeText: { color: '#fff', fontWeight: '700', fontSize: 12 },
+  menuSheet: {
+    backgroundColor: COLORS.surface,
+    borderTopLeftRadius: RADIUS.lg,
+    borderTopRightRadius: RADIUS.lg,
+    padding: SPACING.lg,
+    paddingBottom: SPACING.xl,
+  },
+  menuTitle: {
+    color: COLORS.text,
+    fontSize: 16,
+    fontWeight: '800',
+    marginBottom: SPACING.md,
+    textAlign: 'center',
+  },
+  menuItem: {
+    paddingVertical: SPACING.md,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
+  menuItemText: { color: COLORS.text, fontSize: 15, fontWeight: '600', textAlign: 'center' },
+  menuActiveNote: {
+    color: COLORS.primary,
+    fontSize: 13,
+    fontWeight: '700',
+    textAlign: 'center',
+    paddingVertical: SPACING.sm,
+  },
+  menuCancel: { paddingVertical: SPACING.md, marginTop: SPACING.sm },
+  menuCancelText: { color: COLORS.textMuted, fontSize: 15, fontWeight: '600', textAlign: 'center' },
   connectedBadge: {
     backgroundColor: COLORS.success + '22',
     borderRadius: RADIUS.md,
