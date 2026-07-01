@@ -34,15 +34,27 @@ export async function composeFeedImage(
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, W, H);
 
-  // 自動背景: 写真を画面いっぱいにcoverで敷いて強くぼかす（余白埋め）
+  // 自動背景: 写真を極小サイズに縮小 → 引き伸ばして描画することで
+  // ブラウザ非依存のぼかし背景にする（ctx.filter が効かない環境対策）
   {
-    const bgCover = Math.max(W / img.width, H / img.height) * 1.15;
-    const bw = img.width * bgCover;
-    const bh = img.height * bgCover;
-    ctx.save();
-    ctx.filter = 'blur(90px)';
-    ctx.drawImage(img, (W - bw) / 2, (H - bh) / 2, bw, bh);
-    ctx.restore();
+    const sw = 48;
+    const sh = Math.max(1, Math.round(sw / ar));
+    const small = document.createElement('canvas');
+    small.width = sw;
+    small.height = sh;
+    const sctx = small.getContext('2d');
+    if (sctx) {
+      const bgCover = Math.max(sw / img.width, sh / img.height);
+      const bw = img.width * bgCover;
+      const bh = img.height * bgCover;
+      sctx.drawImage(img, (sw - bw) / 2, (sh - bh) / 2, bw, bh);
+      ctx.save();
+      ctx.imageSmoothingEnabled = true;
+      // @ts-ignore ベンダー品質指定
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(small, 0, 0, W, H);
+      ctx.restore();
+    }
     // 少し暗くして背景として馴染ませる
     ctx.save();
     ctx.fillStyle = 'rgba(0,0,0,0.25)';
