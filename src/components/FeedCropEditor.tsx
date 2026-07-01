@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Dimensions,
   Platform,
+  ScrollView,
 } from 'react-native';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
 import { FeedTransform, DEFAULT_FEED_TRANSFORM, ASPECTS, AspectKey, composeFeedImage, makeBlurredBackgroundUrl } from '../utils/composeFeed';
@@ -173,6 +174,7 @@ export default function FeedCropEditor({ visible, images, onCancel, onDone }: Pr
           </TouchableOpacity>
         </View>
 
+        <ScrollView contentContainerStyle={{ paddingBottom: SPACING.xl }} showsVerticalScrollIndicator={false}>
         <Text style={styles.hint}>ドラッグで位置・2本指で拡大できます</Text>
 
         {/* 固定フレーム内で写真を動かす（Instagram方式）。枠外も薄く見える */}
@@ -262,6 +264,7 @@ export default function FeedCropEditor({ visible, images, onCancel, onDone }: Pr
             </View>
           </>
         )}
+        </ScrollView>
       </View>
     </Modal>
   );
