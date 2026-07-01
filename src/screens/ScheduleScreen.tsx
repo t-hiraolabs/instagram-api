@@ -1263,10 +1263,11 @@ export default function ScheduleScreen() {
       quality: 0.9,
     });
     if (res.canceled) return;
-    cropAppendRef.current = true;
+    // 既存の写真と新しく選んだ写真をまとめて調整画面へ（置き換え）
+    cropAppendRef.current = false;
     cropReturnRef.current = 'result';
     setResultVisible(false);
-    setCropRawImages(res.assets.map((a) => a.uri));
+    setCropRawImages([...feedPreviews, ...res.assets.map((a) => a.uri)]);
     setCropVisible(true);
   };
 
