@@ -37,7 +37,7 @@ export async function composeFeedImage(
   // 自動背景: 写真を極小サイズに縮小 → 引き伸ばして描画することで
   // ブラウザ非依存のぼかし背景にする（ctx.filter が効かない環境対策）
   {
-    const sw = 10; // 縮小サイズ（小さいほど強くぼける。段階拡大で滑らかさは維持）
+    const sw = 20; // 縮小サイズ（小さいほど強くぼける。段階拡大で滑らかさは維持）
     const sh = Math.max(1, Math.round(sw / ar));
     let cur = document.createElement('canvas');
     cur.width = sw;
@@ -74,6 +74,15 @@ export async function composeFeedImage(
       // @ts-ignore
       ctx.imageSmoothingQuality = 'high';
       ctx.drawImage(cur, 0, 0, W, H);
+      ctx.restore();
+
+      // 周辺減光（ビネット）: 中央は明るく、端に向かって少し暗く
+      ctx.save();
+      const g = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.25, W / 2, H / 2, Math.max(W, H) * 0.75);
+      g.addColorStop(0, 'rgba(0,0,0,0)');
+      g.addColorStop(1, 'rgba(0,0,0,0.45)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, H);
       ctx.restore();
     }
   }
