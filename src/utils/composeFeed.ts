@@ -34,14 +34,19 @@ export async function composeFeedImage(
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, W, H);
 
-  // 自動背景: 写真を画面いっぱいにcoverで敷いてぼかす（余白埋め）
+  // 自動背景: 写真を画面いっぱいにcoverで敷いて強くぼかす（余白埋め）
   {
-    const bgCover = Math.max(W / img.width, H / img.height) * 1.1;
+    const bgCover = Math.max(W / img.width, H / img.height) * 1.15;
     const bw = img.width * bgCover;
     const bh = img.height * bgCover;
     ctx.save();
-    ctx.filter = 'blur(40px)';
+    ctx.filter = 'blur(90px)';
     ctx.drawImage(img, (W - bw) / 2, (H - bh) / 2, bw, bh);
+    ctx.restore();
+    // 少し暗くして背景として馴染ませる
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.fillRect(0, 0, W, H);
     ctx.restore();
   }
 
