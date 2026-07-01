@@ -34,6 +34,7 @@ interface Meta { iw: number; ih: number; }
 export default function FeedCropEditor({ visible, images, onCancel, onDone }: Props) {
   const [aspect, setAspect] = useState<AspectKey>('square');
   const [idx, setIdx] = useState(0);
+  const [imgs, setImgs] = useState<string[]>([]); // 並べ替え可能な内部コピー
   const [transforms, setTransforms] = useState<FeedTransform[]>([]);
   const [metas, setMetas] = useState<(Meta | null)[]>([]);
   const [processing, setProcessing] = useState(false);
@@ -44,14 +45,15 @@ export default function FeedCropEditor({ visible, images, onCancel, onDone }: Pr
 
   // 焼き込みと同じ処理でぼかし背景を生成し、プレビューに使う（端末問わず完全一致）
   useEffect(() => {
-    if (!visible || !images[idx]) { setBgUrl(''); return; }
+    if (!visible || !imgs[idx]) { setBgUrl(''); return; }
     let cancelled = false;
-    makeBlurredBackgroundUrl(images[idx], ar).then((u) => { if (!cancelled) setBgUrl(u); }).catch(() => {});
+    makeBlurredBackgroundUrl(imgs[idx], ar).then((u) => { if (!cancelled) setBgUrl(u); }).catch(() => {});
     return () => { cancelled = true; };
-  }, [visible, images, idx, ar]);
+  }, [visible, imgs, idx, ar]);
 
   useEffect(() => {
     if (!visible) return;
+    setImgs([...images]);
     setTransforms(images.map(() => ({ ...DEFAULT_FEED_TRANSFORM })));
     setIdx(0);
     setAspect('square');
@@ -66,6 +68,21 @@ export default function FeedCropEditor({ visible, images, onCancel, onDone }: Pr
     })();
     return () => { cancelled = true; };
   }, [visible, images]);
+
+  // サムネをドラッグして並べ替える
+  const moveThumb = (from: number, to: number) => {
+    if (from === to) return;
+    const reorder = <T,>(arr: T[]) => {
+      const a = [...arr];
+      const [it] = a.splice(from, 1);
+      a.splice(to, 0, it);
+      return a;
+    };
+    setImgs((a) => reorder(a));
+    setTransforms((a) => reorder(a));
+    setMetas((a) => reorder(a));
+    setIdx(to);
+  };
 
   const cur = transforms[idx] ?? DEFAULT_FEED_TRANSFORM;
   const meta = metas[idx] ?? null;
@@ -134,8 +151,8 @@ export default function FeedCropEditor({ visible, images, onCancel, onDone }: Pr
     setProcessing(true);
     try {
       const results: { blob: Blob; previewUrl: string }[] = [];
-      for (let i = 0; i < images.length; i++) {
-        results.push(await composeFeedImage(images[i], transforms[i] ?? DEFAULT_FEED_TRANSFORM, ar));
+      for (let i = 0; i < imgs.length; i++) {
+        results.push(await composeFeedImage(imgs[i], transforms[i] ?? DEFAULT_FEED_TRANSFORM, ar));
       }
       onDone(results);
     } catch {
@@ -181,9 +198,9 @@ export default function FeedCropEditor({ visible, images, onCancel, onDone }: Pr
                   resizeMode="cover"
                 />
               ) : null}
-              {images[idx] && (
+              {imgs[idx] && (
                 <Image
-                  source={{ uri: images[idx] }}
+                  source={{ uri: imgs[idx] }}
                   style={{
                     position: 'absolute',
                     width: coverW,
@@ -227,17 +244,65 @@ export default function FeedCropEditor({ visible, images, onCancel, onDone }: Pr
           <TouchableOpacity style={styles.zoomBtn} onPress={() => zoom(0.2)}><Text style={styles.zoomBtnText}>＋</Text></TouchableOpacity>
         </View>
 
-        {images.length > 1 && (
-          <View style={styles.thumbRow}>
-            {images.map((uri, i) => (
-              <TouchableOpacity key={i} onPress={() => setIdx(i)} style={[styles.thumb, i === idx && styles.thumbActive]}>
-                <Image source={{ uri }} style={styles.thumbImg} resizeMode="cover" />
-              </TouchableOpacity>
-            ))}
-          </View>
+        {imgs.length > 1 && (
+          <>
+            <Text style={styles.reorderHint}>サムネイルを長押ししてドラッグすると並べ替えできます</Text>
+            <View style={styles.thumbRow}>
+              {imgs.map((uri, i) => (
+                <DraggableThumb
+                  key={uri + i}
+                  uri={uri}
+                  index={i}
+                  active={i === idx}
+                  count={imgs.length}
+                  onSelect={() => setIdx(i)}
+                  onMove={moveThumb}
+                />
+              ))}
+            </View>
+          </>
         )}
       </View>
     </Modal>
+  );
+}
+
+// ドラッグで並べ替え可能なサムネイル
+const THUMB_STEP = 56 + SPACING.sm; // サムネ幅 + 余白
+function DraggableThumb({ uri, index, active, count, onSelect, onMove }: {
+  uri: string; index: number; active: boolean; count: number;
+  onSelect: () => void; onMove: (from: number, to: number) => void;
+}) {
+  const [dragging, setDragging] = useState(false);
+  const dxRef = useRef(0);
+  const [dx, setDx] = useState(0);
+  const pan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_e, g) => Math.abs(g.dx) > 4 || Math.abs(g.dy) > 4,
+      onPanResponderGrant: () => { setDragging(true); dxRef.current = 0; setDx(0); },
+      onPanResponderMove: (_e, g) => { dxRef.current = g.dx; setDx(g.dx); },
+      onPanResponderRelease: (_e, g) => {
+        setDragging(false); setDx(0);
+        if (Math.abs(g.dx) < 6 && Math.abs(g.dy) < 6) { onSelect(); return; }
+        const shift = Math.round(g.dx / THUMB_STEP);
+        const to = Math.max(0, Math.min(count - 1, index + shift));
+        onMove(index, to);
+      },
+      onPanResponderTerminate: () => { setDragging(false); setDx(0); },
+    })
+  ).current;
+  return (
+    <View
+      {...pan.panHandlers}
+      style={[
+        styles.thumb,
+        active && styles.thumbActive,
+        dragging && { transform: [{ translateX: dx }, { scale: 1.1 }], zIndex: 10, opacity: 0.9 },
+      ]}
+    >
+      <Image source={{ uri }} style={styles.thumbImg} resizeMode="cover" />
+    </View>
   );
 }
 
@@ -273,7 +338,8 @@ const styles = StyleSheet.create({
   },
   zoomBtnText: { color: COLORS.text, fontSize: 22, fontWeight: '700' },
   zoomLabel: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600', minWidth: 90, textAlign: 'center' },
-  thumbRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, justifyContent: 'center', marginTop: SPACING.xl, paddingHorizontal: SPACING.md },
+  reorderHint: { color: COLORS.textMuted, fontSize: 11, textAlign: 'center', marginTop: SPACING.xl },
+  thumbRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, justifyContent: 'center', marginTop: SPACING.sm, paddingHorizontal: SPACING.md },
   thumb: { width: 56, height: 56, borderRadius: RADIUS.sm, overflow: 'hidden', borderWidth: 2, borderColor: 'transparent' },
   thumbActive: { borderColor: COLORS.primary },
   thumbImg: { width: '100%', height: '100%' },
