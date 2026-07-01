@@ -1726,25 +1726,6 @@ export default function ScheduleScreen() {
         onDone={handleCropDone}
       />
 
-      {/* キャンセル時の下書き保存確認（キャンセル / いいえ / はい） */}
-      <Modal visible={closeConfirmVisible} transparent animationType="fade" onRequestClose={() => setCloseConfirmVisible(false)}>
-        <View style={styles.confirmOverlay}>
-          <View style={styles.confirmCard}>
-            <Text style={styles.confirmTitle}>内容は破棄されます</Text>
-            <Text style={styles.confirmDesc}>下書きとして保存しますか？</Text>
-            <TouchableOpacity style={styles.confirmYes} onPress={saveResultAsDraft} activeOpacity={0.85}>
-              <Text style={styles.confirmYesText}>はい（下書き保存）</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.confirmNo} onPress={discardResult} activeOpacity={0.85}>
-              <Text style={styles.confirmNoText}>いいえ（保存せず閉じる）</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.confirmCancel} onPress={() => setCloseConfirmVisible(false)} activeOpacity={0.7}>
-              <Text style={styles.confirmCancelText}>キャンセル</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
       {/* AI生成結果モーダル */}
       <Modal visible={resultVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => handleResultClose()}>
         <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.background }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -1968,6 +1949,25 @@ export default function ScheduleScreen() {
             </Text>
 
           </ScrollView>
+
+          {/* キャンセル時の下書き保存確認（生成画面の内側オーバーレイ） */}
+          {closeConfirmVisible && (
+            <View style={styles.confirmOverlay}>
+              <View style={styles.confirmCard}>
+                <Text style={styles.confirmTitle}>内容は破棄されます</Text>
+                <Text style={styles.confirmDesc}>下書きとして保存しますか？</Text>
+                <TouchableOpacity style={styles.confirmYes} onPress={saveResultAsDraft} activeOpacity={0.85}>
+                  <Text style={styles.confirmYesText}>はい（下書き保存）</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.confirmNo} onPress={discardResult} activeOpacity={0.85}>
+                  <Text style={styles.confirmNoText}>いいえ（保存せず閉じる）</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.confirmCancel} onPress={() => setCloseConfirmVisible(false)} activeOpacity={0.7}>
+                  <Text style={styles.confirmCancelText}>キャンセル</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
         </KeyboardAvoidingView>
       </Modal>
 
@@ -2884,7 +2884,8 @@ const styles = StyleSheet.create({
   },
   carouselDotActive: { backgroundColor: COLORS.primary },
   confirmOverlay: {
-    flex: 1,
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
     backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'center',
     alignItems: 'center',
