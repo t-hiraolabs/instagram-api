@@ -257,6 +257,7 @@ export default function ScheduleScreen() {
 
   // AI生成結果画面用
   const [resultVisible, setResultVisible] = useState(false);
+  const [closeConfirmVisible, setCloseConfirmVisible] = useState(false);
   useEffect(() => { setRCarIdx(0); }, [resultVisible]);
 
   // 編集モーダル用
@@ -929,27 +930,21 @@ export default function ScheduleScreen() {
         return;
       }
     }
-    const discard = () => { editingDraftId.current = null; draftOriginalRef.current = null; setResultVisible(false); };
-    const save = async () => { await handleSaveDraft(); draftOriginalRef.current = null; setResultVisible(false); };
+    // キャンセル/いいえ/はい の3択ダイアログ（アプリ内モーダル）
+    setCloseConfirmVisible(true);
+  };
 
-    if (Platform.OS === 'web') {
-      // OK=下書き保存 / キャンセル=破棄して閉じる
-      if (window.confirm('内容は破棄されます。下書きとして保存しますか？\n\n「OK」＝下書き保存　「キャンセル」＝保存せず閉じる')) {
-        save();
-      } else {
-        discard();
-      }
-      return;
-    }
-    Alert.alert(
-      '内容は破棄されます',
-      '下書きとして保存しますか？',
-      [
-        { text: '編集に戻る', style: 'cancel' },
-        { text: '保存せず閉じる', style: 'destructive', onPress: discard },
-        { text: '下書き保存', onPress: save },
-      ],
-    );
+  const discardResult = () => {
+    editingDraftId.current = null;
+    draftOriginalRef.current = null;
+    setCloseConfirmVisible(false);
+    setResultVisible(false);
+  };
+  const saveResultAsDraft = async () => {
+    setCloseConfirmVisible(false);
+    await handleSaveDraft();
+    draftOriginalRef.current = null;
+    setResultVisible(false);
   };
 
   // テンプレートを作成画面に読み込む（編集して再利用できる）
@@ -1730,6 +1725,25 @@ export default function ScheduleScreen() {
         onCancel={handleCropCancel}
         onDone={handleCropDone}
       />
+
+      {/* キャンセル時の下書き保存確認（キャンセル / いいえ / はい） */}
+      <Modal visible={closeConfirmVisible} transparent animationType="fade" onRequestClose={() => setCloseConfirmVisible(false)}>
+        <View style={styles.confirmOverlay}>
+          <View style={styles.confirmCard}>
+            <Text style={styles.confirmTitle}>内容は破棄されます</Text>
+            <Text style={styles.confirmDesc}>下書きとして保存しますか？</Text>
+            <TouchableOpacity style={styles.confirmYes} onPress={saveResultAsDraft} activeOpacity={0.85}>
+              <Text style={styles.confirmYesText}>はい（下書き保存）</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.confirmNo} onPress={discardResult} activeOpacity={0.85}>
+              <Text style={styles.confirmNoText}>いいえ（保存せず閉じる）</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.confirmCancel} onPress={() => setCloseConfirmVisible(false)} activeOpacity={0.7}>
+              <Text style={styles.confirmCancelText}>キャンセル</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* AI生成結果モーダル */}
       <Modal visible={resultVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => handleResultClose()}>
@@ -2869,6 +2883,30 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.border,
   },
   carouselDotActive: { backgroundColor: COLORS.primary },
+  confirmOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: SPACING.lg,
+  },
+  confirmCard: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  confirmTitle: { color: COLORS.text, fontSize: 17, fontWeight: '800', textAlign: 'center', marginBottom: SPACING.sm },
+  confirmDesc: { color: COLORS.textSecondary, fontSize: 14, textAlign: 'center', marginBottom: SPACING.lg },
+  confirmYes: { backgroundColor: COLORS.primary, borderRadius: RADIUS.full, paddingVertical: SPACING.md, alignItems: 'center' },
+  confirmYesText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  confirmNo: { marginTop: SPACING.sm, borderWidth: 1, borderColor: COLORS.error, borderRadius: RADIUS.full, paddingVertical: SPACING.md, alignItems: 'center' },
+  confirmNoText: { color: COLORS.error, fontSize: 15, fontWeight: '700' },
+  confirmCancel: { marginTop: SPACING.sm, paddingVertical: SPACING.md, alignItems: 'center' },
+  confirmCancelText: { color: COLORS.textMuted, fontSize: 14, fontWeight: '600' },
   carouselRemove: {
     position: 'absolute',
     top: SPACING.sm,
