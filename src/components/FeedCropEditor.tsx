@@ -151,8 +151,6 @@ export default function FeedCropEditor({ visible, images, onCancel, onDone }: Pr
     })
   ).current;
 
-  const zoom = (delta: number) => setT({ scale: cur.scale + delta });
-
   const handleDone = async () => {
     setProcessing(true);
     try {
@@ -246,11 +244,15 @@ export default function FeedCropEditor({ visible, images, onCancel, onDone }: Pr
           </TouchableOpacity>
         </View>
 
-        {/* ズーム補助 */}
-        <View style={styles.zoomRow}>
-          <TouchableOpacity style={styles.zoomBtn} onPress={() => zoom(-0.2)}><Text style={styles.zoomBtnText}>－</Text></TouchableOpacity>
+        {/* ズーム（スライダー） */}
+        <View style={styles.zoomWrap}>
           <Text style={styles.zoomLabel}>拡大 {Math.round(cur.scale * 100)}%</Text>
-          <TouchableOpacity style={styles.zoomBtn} onPress={() => zoom(0.2)}><Text style={styles.zoomBtnText}>＋</Text></TouchableOpacity>
+          <SliderBar
+            value={cur.scale}
+            min={MIN_SCALE}
+            max={MAX_SCALE}
+            onChange={(v) => setT({ scale: v })}
+          />
         </View>
 
         {imgs.length > 1 && (
@@ -274,6 +276,33 @@ export default function FeedCropEditor({ visible, images, onCancel, onDone }: Pr
         </ScrollView>
       </View>
     </Modal>
+  );
+}
+
+// 自作の拡大率スライダー（タップ／ドラッグで操作）
+function SliderBar({ value, min, max, onChange }: {
+  value: number; min: number; max: number; onChange: (v: number) => void;
+}) {
+  const [w, setW] = useState(0);
+  const setFromX = (x: number) => {
+    if (w <= 0) return;
+    const r = clamp(x / w, 0, 1);
+    onChange(min + r * (max - min));
+  };
+  const ratio = (value - min) / (max - min);
+  return (
+    <View
+      style={styles.sliderTrack}
+      onLayout={(e) => setW(e.nativeEvent.layout.width)}
+      onStartShouldSetResponder={() => true}
+      onMoveShouldSetResponder={() => true}
+      onResponderGrant={(e) => setFromX(e.nativeEvent.locationX)}
+      onResponderMove={(e) => setFromX(e.nativeEvent.locationX)}
+    >
+      <View style={styles.sliderBg} />
+      <View style={[styles.sliderFill, { width: Math.max(0, w * ratio) }]} />
+      <View style={[styles.sliderKnob, { left: clamp(w * ratio - 11, 0, Math.max(0, w - 22)) }]} pointerEvents="none" />
+    </View>
   );
 }
 
@@ -342,13 +371,21 @@ const styles = StyleSheet.create({
   aspectBtnActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   aspectText: { color: COLORS.textSecondary, fontSize: 14, fontWeight: '700' },
   aspectTextActive: { color: '#fff' },
-  zoomRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.md, marginTop: SPACING.md },
-  zoomBtn: {
-    width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.surface,
-    alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.border,
+  zoomWrap: { marginTop: SPACING.lg, paddingHorizontal: SPACING.xl, alignItems: 'center' },
+  zoomLabel: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600', textAlign: 'center', marginBottom: SPACING.sm },
+  sliderTrack: {
+    width: '100%',
+    maxWidth: 320,
+    height: 32,
+    justifyContent: 'center',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer', touchAction: 'none' } as object) : {}),
   },
-  zoomBtnText: { color: COLORS.text, fontSize: 22, fontWeight: '700' },
-  zoomLabel: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600', minWidth: 90, textAlign: 'center' },
+  sliderBg: { position: 'absolute', left: 0, right: 0, height: 5, borderRadius: 3, backgroundColor: COLORS.border },
+  sliderFill: { position: 'absolute', left: 0, height: 5, borderRadius: 3, backgroundColor: COLORS.primary },
+  sliderKnob: {
+    position: 'absolute', width: 22, height: 22, borderRadius: 11,
+    backgroundColor: '#fff', borderWidth: 2, borderColor: COLORS.primary,
+  },
   reorderHint: { color: COLORS.textMuted, fontSize: 11, textAlign: 'center', marginTop: SPACING.xl },
   thumbRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, justifyContent: 'center', marginTop: SPACING.sm, paddingHorizontal: SPACING.md },
   thumb: { width: 56, height: 56, borderRadius: RADIUS.sm, overflow: 'hidden', borderWidth: 2, borderColor: 'transparent' },
