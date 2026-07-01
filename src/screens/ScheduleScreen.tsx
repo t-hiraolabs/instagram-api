@@ -432,6 +432,12 @@ export default function ScheduleScreen() {
     setModalVisible(true);
   };
 
+  // 「投稿を作成」：作成モーダルを開きつつ、すぐ写真選択→調整画面へ進む
+  const startNewPost = () => {
+    openModal();
+    setTimeout(() => { pickFeedImages(); }, 0);
+  };
+
   const alertMsg = (msg: string, title = 'エラー') => {
     if (Platform.OS === 'web') window.alert(msg);
     else Alert.alert(title, msg);
@@ -474,6 +480,18 @@ export default function ScheduleScreen() {
     }
 
     // フィードは複数選択OK（カルーセル投稿）→ まずトリミング編集へ
+    await pickFeedImages();
+  };
+
+  // フィード写真を選んで、そのまま「写真を調整する画面」へ
+  const pickFeedImages = async () => {
+    if (Platform.OS !== 'web') {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('権限エラー', '写真へのアクセスを許可してください');
+        return;
+      }
+    }
     const res = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsMultipleSelection: true,
@@ -1555,7 +1573,7 @@ export default function ScheduleScreen() {
       >
         <View style={styles.header}>
           <Text style={styles.title}>投稿</Text>
-          <TouchableOpacity style={styles.addBtn} onPress={openModal}>
+          <TouchableOpacity style={styles.addBtn} onPress={startNewPost}>
             <Text style={styles.addBtnText}>＋ 投稿を作成</Text>
           </TouchableOpacity>
         </View>
@@ -1627,7 +1645,7 @@ export default function ScheduleScreen() {
                 <Text style={styles.emptyEmoji}>📭</Text>
                 <Text style={styles.emptyTitle}>まだ投稿がありません</Text>
                 <Text style={styles.emptyDesc}>今すぐ投稿も、予約投稿もここに履歴として残ります</Text>
-                <TouchableOpacity style={styles.emptyAddBtn} onPress={openModal}>
+                <TouchableOpacity style={styles.emptyAddBtn} onPress={startNewPost}>
                   <Text style={styles.emptyAddBtnText}>＋ 最初の投稿を作成する</Text>
                 </TouchableOpacity>
               </View>
