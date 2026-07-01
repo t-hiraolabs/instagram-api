@@ -162,13 +162,13 @@ export default function FeedCropEditor({ visible, images, onCancel, onDone }: Pr
               {images[idx] && (
                 <Image
                   source={{ uri: images[idx] }}
+                  blurRadius={Platform.OS === 'web' ? 24 : 12}
                   style={{
                     position: 'absolute',
                     left: frameLeft,
                     top: frameTop,
                     width: FRAME_W,
                     height: frameH,
-                    ...(Platform.OS === 'web' ? ({ filter: 'blur(18px)', transform: 'scale(1.1)' } as object) : {}),
                   }}
                   resizeMode="cover"
                 />
