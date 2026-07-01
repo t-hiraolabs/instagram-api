@@ -30,6 +30,11 @@ const MAX_SCALE = 4;
 
 function clamp(v: number, min: number, max: number) { return Math.max(min, Math.min(max, v)); }
 
+// iOS Safari の長押しメニュー（共有/保存）や選択を無効化するWeb用スタイル
+const NO_CALLOUT = Platform.OS === 'web'
+  ? ({ WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none', touchAction: 'none' } as object)
+  : {};
+
 interface Meta { iw: number; ih: number; }
 
 export default function FeedCropEditor({ visible, images, onCancel, onDone }: Props) {
@@ -185,7 +190,7 @@ export default function FeedCropEditor({ visible, images, onCancel, onDone }: Pr
           const frameLeft = (stageW - FRAME_W) / 2;
           const frameTop = MARGIN;
           return (
-            <View style={[styles.stage, { width: stageW, height: stageH }]} {...pan.panHandlers}>
+            <View style={[styles.stage, NO_CALLOUT, { width: stageW, height: stageH }]} {...pan.panHandlers}>
               {/* 自動背景（焼き込みと同一処理で生成）。縮小時の余白を埋める */}
               {bgUrl ? (
                 <Image
@@ -216,6 +221,8 @@ export default function FeedCropEditor({ visible, images, onCancel, onDone }: Pr
                     ],
                   }}
                   resizeMode="cover"
+                  draggable={false}
+                  pointerEvents="none"
                 />
               )}
               {/* 枠外の薄暗いマスク */}
@@ -300,11 +307,12 @@ function DraggableThumb({ uri, index, active, count, onSelect, onMove }: {
       {...pan.panHandlers}
       style={[
         styles.thumb,
+        NO_CALLOUT,
         active && styles.thumbActive,
         dragging && { transform: [{ translateX: dx }, { scale: 1.1 }], zIndex: 10, opacity: 0.9 },
       ]}
     >
-      <Image source={{ uri }} style={styles.thumbImg} resizeMode="cover" />
+      <Image source={{ uri }} style={styles.thumbImg} resizeMode="cover" draggable={false} pointerEvents="none" />
     </View>
   );
 }
