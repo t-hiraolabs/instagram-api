@@ -30,28 +30,8 @@ function drawBlurredBackground(
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, W, H);
 
-  // ctx.filter が使えるなら真のガウスぼかし（プレビューの blurRadius と同じ見た目）
-  const supportsFilter = (() => {
-    try {
-      ctx.filter = 'blur(2px)';
-      const ok = ctx.filter === 'blur(2px)';
-      ctx.filter = 'none';
-      return ok;
-    } catch { return false; }
-  })();
-
-  if (supportsFilter) {
-    const cover = Math.max(W / img.width, H / img.height) * 1.1;
-    const bw = img.width * cover;
-    const bh = img.height * cover;
-    ctx.save();
-    ctx.filter = 'blur(90px)';
-    ctx.drawImage(img, (W - bw) / 2, (H - bh) / 2, bw, bh);
-    ctx.restore();
-    return;
-  }
-
-  const sw = 20;
+  // どの端末でも確実にぼけるよう、縮小→段階拡大方式で背景を作る
+  const sw = 14;
   const sh = Math.max(1, Math.round(sw / ar));
   let cur = document.createElement('canvas');
   cur.width = sw;
