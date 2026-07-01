@@ -37,7 +37,7 @@ export async function composeFeedImage(
   // 自動背景: 写真を極小サイズに縮小 → 引き伸ばして描画することで
   // ブラウザ非依存のぼかし背景にする（ctx.filter が効かない環境対策）
   {
-    const sw = 16; // 小さいほど強くぼける
+    const sw = 24; // 小さいほど強くぼける（調整プレビューと同程度）
     const sh = Math.max(1, Math.round(sw / ar));
     const small = document.createElement('canvas');
     small.width = sw;
@@ -55,11 +55,6 @@ export async function composeFeedImage(
       ctx.drawImage(small, 0, 0, W, H);
       ctx.restore();
     }
-    // 少し暗くして背景として馴染ませる
-    ctx.save();
-    ctx.fillStyle = 'rgba(0,0,0,0.25)';
-    ctx.fillRect(0, 0, W, H);
-    ctx.restore();
   }
 
   const cover = Math.max(W / img.width, H / img.height);
