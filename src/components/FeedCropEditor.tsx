@@ -19,6 +19,7 @@ import { loadImage } from '../utils/composeStory';
 interface Props {
   visible: boolean;
   images: string[];
+  initialIndex?: number; // 最初に選択（表示）する写真のインデックス
   onCancel: () => void;
   onDone: (results: { blob: Blob; previewUrl: string }[]) => void;
 }
@@ -37,7 +38,7 @@ const NO_CALLOUT = Platform.OS === 'web'
 
 interface Meta { iw: number; ih: number; }
 
-export default function FeedCropEditor({ visible, images, onCancel, onDone }: Props) {
+export default function FeedCropEditor({ visible, images, initialIndex = 0, onCancel, onDone }: Props) {
   const [aspect, setAspect] = useState<AspectKey>('square');
   const [idx, setIdx] = useState(0);
   const [imgs, setImgs] = useState<string[]>([]); // 並べ替え可能な内部コピー
@@ -61,7 +62,7 @@ export default function FeedCropEditor({ visible, images, onCancel, onDone }: Pr
     if (!visible) return;
     setImgs([...images]);
     setTransforms(images.map(() => ({ ...DEFAULT_FEED_TRANSFORM })));
-    setIdx(0);
+    setIdx(Math.max(0, Math.min(initialIndex, images.length - 1)));
     setAspect('square');
     let cancelled = false;
     (async () => {

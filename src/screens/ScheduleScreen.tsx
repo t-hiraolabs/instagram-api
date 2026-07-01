@@ -252,6 +252,7 @@ export default function ScheduleScreen() {
   // 写真トリミング編集（選択→調整→AI生成の流れ）
   const [cropVisible, setCropVisible] = useState(false);
   const [cropRawImages, setCropRawImages] = useState<string[]>([]);
+  const [cropInitialIndex, setCropInitialIndex] = useState(0);
   const cropAppendRef = useRef(false); // 追加（追記）モードか、置き換えモードか
   const cropReturnRef = useRef<'create' | 'result' | null>(null); // 編集後に戻るモーダル
 
@@ -502,6 +503,7 @@ export default function ScheduleScreen() {
 
     cropAppendRef.current = false;
     cropReturnRef.current = 'create';
+    setCropInitialIndex(0);
     setModalVisible(false); // 下のモーダルと重なってz-indexで隠れるのを防ぐ
     setCropRawImages(res.assets.map((a) => a.uri));
     setCropVisible(true);
@@ -1263,10 +1265,11 @@ export default function ScheduleScreen() {
       quality: 0.9,
     });
     if (res.canceled) return;
-    // 既存の写真と新しく選んだ写真をまとめて調整画面へ（置き換え）
+    // 既存の写真と新しく選んだ写真をまとめて調整画面へ（置き換え）。追加分を選択状態で開く
     cropAppendRef.current = false;
     cropReturnRef.current = 'result';
     setResultVisible(false);
+    setCropInitialIndex(feedPreviews.length); // 最初の追加写真を選択
     setCropRawImages([...feedPreviews, ...res.assets.map((a) => a.uri)]);
     setCropVisible(true);
   };
@@ -1277,6 +1280,7 @@ export default function ScheduleScreen() {
     if (src.length === 0) return;
     cropAppendRef.current = false;
     cropReturnRef.current = 'create';
+    setCropInitialIndex(0);
     setCropRawImages(src);
     setModalVisible(false);
     setCropVisible(true);
@@ -1287,6 +1291,7 @@ export default function ScheduleScreen() {
     if (feedPreviews.length === 0) return;
     cropAppendRef.current = false;
     cropReturnRef.current = 'result';
+    setCropInitialIndex(0);
     setResultVisible(false);
     setCropRawImages(feedPreviews);
     setCropVisible(true);
@@ -1741,6 +1746,7 @@ export default function ScheduleScreen() {
       <FeedCropEditor
         visible={cropVisible}
         images={cropRawImages}
+        initialIndex={cropInitialIndex}
         onCancel={handleCropCancel}
         onDone={handleCropDone}
       />
