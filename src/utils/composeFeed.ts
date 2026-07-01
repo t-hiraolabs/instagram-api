@@ -37,22 +37,43 @@ export async function composeFeedImage(
   // 自動背景: 写真を極小サイズに縮小 → 引き伸ばして描画することで
   // ブラウザ非依存のぼかし背景にする（ctx.filter が効かない環境対策）
   {
-    const sw = 12; // 小さいほど強くぼける
+    const sw = 32; // 縮小サイズ（小さいほど強くぼける）
     const sh = Math.max(1, Math.round(sw / ar));
-    const small = document.createElement('canvas');
-    small.width = sw;
-    small.height = sh;
-    const sctx = small.getContext('2d');
+    let cur = document.createElement('canvas');
+    cur.width = sw;
+    cur.height = sh;
+    const sctx = cur.getContext('2d');
     if (sctx) {
       const bgCover = Math.max(sw / img.width, sh / img.height);
       const bw = img.width * bgCover;
       const bh = img.height * bgCover;
+      sctx.imageSmoothingEnabled = true;
       sctx.drawImage(img, (sw - bw) / 2, (sh - bh) / 2, bw, bh);
+
+      // 段階的に2倍ずつ拡大して、なめらかなぼかしにする（ブロック状のムラ防止）
+      let cw = sw;
+      let ch = sh;
+      while (cw < W) {
+        const nw = Math.min(W, cw * 2);
+        const nh = Math.min(H, ch * 2);
+        const next = document.createElement('canvas');
+        next.width = nw;
+        next.height = nh;
+        const nctx = next.getContext('2d');
+        if (!nctx) break;
+        nctx.imageSmoothingEnabled = true;
+        // @ts-ignore
+        nctx.imageSmoothingQuality = 'high';
+        nctx.drawImage(cur, 0, 0, nw, nh);
+        cur = next;
+        cw = nw;
+        ch = nh;
+      }
       ctx.save();
       ctx.imageSmoothingEnabled = true;
-      // @ts-ignore ベンダー品質指定
+      // @ts-ignore
       ctx.imageSmoothingQuality = 'high';
-      ctx.drawImage(small, 0, 0, W, H);
+      ctx.drawImage(cur, 0, 0, W, H);
       ctx.restore();
     }
   }
