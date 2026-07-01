@@ -348,6 +348,12 @@ export default function ScheduleScreen() {
     ...DEFAULT_TRANSFORM,
   });
   const [feedTheme, setFeedTheme] = useState('');
+  // タグ・場所
+  const [userTags, setUserTags] = useState<string[]>([]);
+  const [newUserTag, setNewUserTag] = useState('');
+  const [productTags, setProductTags] = useState<string[]>([]);
+  const [newProductTag, setNewProductTag] = useState('');
+  const [locationId, setLocationId] = useState('');
   const [aiInstruction, setAiInstruction] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const [composing, setComposing] = useState(false);
@@ -429,6 +435,11 @@ export default function ScheduleScreen() {
     setStoryTextColor('#FFFFFF');
     setStoryTransform({ ...DEFAULT_TRANSFORM });
     setRepeat('none');
+    setUserTags([]);
+    setNewUserTag('');
+    setProductTags([]);
+    setNewProductTag('');
+    setLocationId('');
     setScheduleModalVisible(false);
     setModalVisible(true);
   };
@@ -1036,6 +1047,9 @@ export default function ScheduleScreen() {
         type,
         instagram_user_id: instagramCredentials.userId,
         access_token: instagramCredentials.accessToken,
+        user_tags: type === 'feed' && userTags.length > 0 ? userTags : undefined,
+        product_tags: type === 'feed' && productTags.length > 0 ? productTags : undefined,
+        location_id: type === 'feed' && locationId.trim() ? locationId.trim() : undefined,
       });
       // 投稿履歴として記録（status:'published'。pendingではないので無料の予約2件制限には当たらない）
       try {
@@ -1122,6 +1136,9 @@ export default function ScheduleScreen() {
         repeat,
         instagram_user_id: instagramCredentials?.userId || undefined,
         access_token: instagramCredentials?.accessToken || undefined,
+        user_tags: type === 'feed' && userTags.length > 0 ? userTags : undefined,
+        product_tags: type === 'feed' && productTags.length > 0 ? productTags : undefined,
+        location_id: type === 'feed' && locationId.trim() ? locationId.trim() : undefined,
       });
       await finishDraftEdit();
       clearDraft();
@@ -1174,6 +1191,9 @@ export default function ScheduleScreen() {
         status: 'draft',
         instagram_user_id: instagramCredentials?.userId || undefined,
         access_token: instagramCredentials?.accessToken || undefined,
+        user_tags: type === 'feed' && userTags.length > 0 ? userTags : undefined,
+        product_tags: type === 'feed' && productTags.length > 0 ? productTags : undefined,
+        location_id: type === 'feed' && locationId.trim() ? locationId.trim() : undefined,
       });
       await finishDraftEdit();
       clearDraft();
@@ -1245,6 +1265,9 @@ export default function ScheduleScreen() {
     setFeedPreviews(urls);
     setImagePreview(urls[0] ?? '');
     setAiInstruction('');
+    setUserTags((post as { user_tags?: string[] }).user_tags ?? []);
+    setProductTags((post as { product_tags?: string[] }).product_tags ?? []);
+    setLocationId((post as { location_id?: string }).location_id ?? '');
     editingDraftId.current = post.id;
     // 変更検知用に開始時の内容を記録
     draftOriginalRef.current = JSON.stringify({
@@ -1926,6 +1949,75 @@ export default function ScheduleScreen() {
                 returnKeyType="done"
               />
               <TouchableOpacity style={styles.tagAddBtn} onPress={addFeedTag}>
+                <Text style={styles.tagAddBtnText}>追加</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* タグ・場所（フィードのみ） */}
+            <Text style={[styles.sectionDivider, { marginTop: SPACING.lg }]}>タグ・場所（任意）</Text>
+
+            <Text style={styles.fieldLabel}>アカウントをタグ付け</Text>
+            <View style={styles.tagWrap}>
+              {userTags.map((u, i) => (
+                <View key={`${u}-${i}`} style={styles.tagChip}>
+                  <Text style={styles.tagChipText}>@{u}</Text>
+                  <TouchableOpacity onPress={() => setUserTags(userTags.filter((_, j) => j !== i))} hitSlop={{ top: 8, bottom: 8, left: 4, right: 8 }}>
+                    <Text style={styles.tagChipRemove}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+              {userTags.length === 0 && <Text style={styles.tagEmpty}>なし</Text>}
+            </View>
+            <View style={styles.tagAddRow}>
+              <TextInput
+                style={styles.tagInput}
+                value={newUserTag}
+                onChangeText={setNewUserTag}
+                onSubmitEditing={() => { const v = newUserTag.replace(/^@/, '').trim(); if (v) { setUserTags([...userTags, v]); setNewUserTag(''); } }}
+                placeholder="ユーザー名（@なし）"
+                placeholderTextColor={COLORS.textMuted}
+                autoCapitalize="none"
+                returnKeyType="done"
+              />
+              <TouchableOpacity style={styles.tagAddBtn} onPress={() => { const v = newUserTag.replace(/^@/, '').trim(); if (v) { setUserTags([...userTags, v]); setNewUserTag(''); } }}>
+                <Text style={styles.tagAddBtnText}>追加</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={[styles.fieldLabel, { marginTop: SPACING.md }]}>場所ID（Facebook Place ID）</Text>
+            <TextInput
+              style={styles.input}
+              value={locationId}
+              onChangeText={setLocationId}
+              placeholder="例: 123456789012345"
+              placeholderTextColor={COLORS.textMuted}
+              keyboardType="number-pad"
+            />
+
+            <Text style={[styles.fieldLabel, { marginTop: SPACING.md }]}>商品タグ（商品ID・要ショッピング設定）</Text>
+            <View style={styles.tagWrap}>
+              {productTags.map((p, i) => (
+                <View key={`${p}-${i}`} style={styles.tagChip}>
+                  <Text style={styles.tagChipText}>{p}</Text>
+                  <TouchableOpacity onPress={() => setProductTags(productTags.filter((_, j) => j !== i))} hitSlop={{ top: 8, bottom: 8, left: 4, right: 8 }}>
+                    <Text style={styles.tagChipRemove}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+              {productTags.length === 0 && <Text style={styles.tagEmpty}>なし</Text>}
+            </View>
+            <View style={styles.tagAddRow}>
+              <TextInput
+                style={styles.tagInput}
+                value={newProductTag}
+                onChangeText={setNewProductTag}
+                onSubmitEditing={() => { const v = newProductTag.trim(); if (v) { setProductTags([...productTags, v]); setNewProductTag(''); } }}
+                placeholder="商品ID"
+                placeholderTextColor={COLORS.textMuted}
+                autoCapitalize="none"
+                returnKeyType="done"
+              />
+              <TouchableOpacity style={styles.tagAddBtn} onPress={() => { const v = newProductTag.trim(); if (v) { setProductTags([...productTags, v]); setNewProductTag(''); } }}>
                 <Text style={styles.tagAddBtnText}>追加</Text>
               </TouchableOpacity>
             </View>

@@ -11,6 +11,9 @@ export interface PublishNowInput {
   type: 'feed' | 'story' | 'reel';
   instagram_user_id: string;
   access_token: string;
+  user_tags?: string[];    // タグ付けするアカウント名（@なし）
+  product_tags?: string[]; // 商品ID（Instagramショッピング）
+  location_id?: string;    // 場所ID（Facebook Place ID）
 }
 
 export interface PublishNowResult {

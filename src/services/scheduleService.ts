@@ -27,6 +27,9 @@ export interface CreateScheduledPostInput {
   instagram_user_id?: string;
   access_token?: string;
   status?: 'pending' | 'draft' | 'published';
+  user_tags?: string[];
+  product_tags?: string[];
+  location_id?: string;
 }
 
 export async function getScheduledPosts(instagramUserId?: string): Promise<ScheduledPost[]> {
