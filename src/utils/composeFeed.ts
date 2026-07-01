@@ -37,7 +37,7 @@ export async function composeFeedImage(
   // 自動背景: 写真を極小サイズに縮小 → 引き伸ばして描画することで
   // ブラウザ非依存のぼかし背景にする（ctx.filter が効かない環境対策）
   {
-    const sw = 32; // 縮小サイズ（小さいほど強くぼける）
+    const sw = 10; // 縮小サイズ（小さいほど強くぼける。段階拡大で滑らかさは維持）
     const sh = Math.max(1, Math.round(sw / ar));
     let cur = document.createElement('canvas');
     cur.width = sw;
