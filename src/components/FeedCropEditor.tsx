@@ -12,7 +12,7 @@ import {
   Platform,
 } from 'react-native';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
-import { FeedTransform, DEFAULT_FEED_TRANSFORM, ASPECTS, AspectKey, composeFeedImage } from '../utils/composeFeed';
+import { FeedTransform, DEFAULT_FEED_TRANSFORM, ASPECTS, AspectKey, composeFeedImage, makeBlurredBackgroundUrl } from '../utils/composeFeed';
 import { loadImage } from '../utils/composeStory';
 
 interface Props {
@@ -37,9 +37,18 @@ export default function FeedCropEditor({ visible, images, onCancel, onDone }: Pr
   const [transforms, setTransforms] = useState<FeedTransform[]>([]);
   const [metas, setMetas] = useState<(Meta | null)[]>([]);
   const [processing, setProcessing] = useState(false);
+  const [bgUrl, setBgUrl] = useState('');
 
   const ar = ASPECTS[aspect];
   const frameH = FRAME_W / ar;
+
+  // ぼかし背景を焼き込みと同じ処理で生成し、プレビューに使う（完全一致）
+  useEffect(() => {
+    if (!visible || !images[idx]) { setBgUrl(''); return; }
+    let cancelled = false;
+    makeBlurredBackgroundUrl(images[idx], ar).then((u) => { if (!cancelled) setBgUrl(u); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [visible, images, idx, ar]);
 
   useEffect(() => {
     if (!visible) return;
@@ -158,11 +167,10 @@ export default function FeedCropEditor({ visible, images, onCancel, onDone }: Pr
           const frameTop = MARGIN;
           return (
             <View style={[styles.stage, { width: stageW, height: stageH }]} {...pan.panHandlers}>
-              {/* 自動背景（ぼかし）。縮小時の余白を埋める */}
-              {images[idx] && (
+              {/* 自動背景（焼き込みと同一処理で生成したぼかし画像）。縮小時の余白を埋める */}
+              {bgUrl ? (
                 <Image
-                  source={{ uri: images[idx] }}
-                  blurRadius={Platform.OS === 'web' ? 30 : 16}
+                  source={{ uri: bgUrl }}
                   style={{
                     position: 'absolute',
                     left: frameLeft,
@@ -172,7 +180,7 @@ export default function FeedCropEditor({ visible, images, onCancel, onDone }: Pr
                   }}
                   resizeMode="cover"
                 />
-              )}
+              ) : null}
               {images[idx] && (
                 <Image
                   source={{ uri: images[idx] }}

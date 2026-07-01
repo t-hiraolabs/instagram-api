@@ -16,6 +16,82 @@ export type AspectKey = keyof typeof ASPECTS;
 
 export const FEED_W = 1080;
 
+/**
+ * ぼかし背景をキャンバスに描画する（プレビュー・焼き込みで共通利用＝完全一致）。
+ * 極小に縮小→段階的に拡大でなめらかにぼかし、周辺減光を加える。
+ */
+function drawBlurredBackground(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  W: number,
+  H: number
+) {
+  const ar = W / H;
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+
+  const sw = 20;
+  const sh = Math.max(1, Math.round(sw / ar));
+  let cur = document.createElement('canvas');
+  cur.width = sw;
+  cur.height = sh;
+  const sctx = cur.getContext('2d');
+  if (!sctx) return;
+  const bgCover = Math.max(sw / img.width, sh / img.height);
+  const bw = img.width * bgCover;
+  const bh = img.height * bgCover;
+  sctx.imageSmoothingEnabled = true;
+  sctx.drawImage(img, (sw - bw) / 2, (sh - bh) / 2, bw, bh);
+
+  let cw = sw;
+  let ch = sh;
+  while (cw < W) {
+    const nw = Math.min(W, cw * 2);
+    const nh = Math.min(H, ch * 2);
+    const next = document.createElement('canvas');
+    next.width = nw;
+    next.height = nh;
+    const nctx = next.getContext('2d');
+    if (!nctx) break;
+    nctx.imageSmoothingEnabled = true;
+    // @ts-ignore
+    nctx.imageSmoothingQuality = 'high';
+    nctx.drawImage(cur, 0, 0, nw, nh);
+    cur = next;
+    cw = nw;
+    ch = nh;
+  }
+  ctx.save();
+  ctx.imageSmoothingEnabled = true;
+  // @ts-ignore
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(cur, 0, 0, W, H);
+  ctx.restore();
+
+  // 周辺減光（ビネット）
+  ctx.save();
+  const g = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.25, W / 2, H / 2, Math.max(W, H) * 0.75);
+  g.addColorStop(0, 'rgba(0,0,0,0)');
+  g.addColorStop(1, 'rgba(0,0,0,0.45)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+  ctx.restore();
+}
+
+/** ぼかし背景だけを生成してdataURLで返す（プレビュー用。焼き込みと同一の見た目） */
+export async function makeBlurredBackgroundUrl(imageUri: string, ar: number): Promise<string> {
+  const W = FEED_W;
+  const H = Math.round(FEED_W / ar);
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return '';
+  const img = await loadImage(imageUri);
+  drawBlurredBackground(ctx, img, W, H);
+  return canvas.toDataURL('image/jpeg', 0.9);
+}
+
 /** 写真URI＋transform＋比率 から画像を生成。Blob（アップロード用）とプレビューURLを返す */
 export async function composeFeedImage(
   imageUri: string,
@@ -31,61 +107,7 @@ export async function composeFeedImage(
   if (!ctx) throw new Error('Canvasを利用できません');
 
   const img = await loadImage(imageUri);
-  ctx.fillStyle = '#000';
-  ctx.fillRect(0, 0, W, H);
-
-  // 自動背景: 写真を極小サイズに縮小 → 引き伸ばして描画することで
-  // ブラウザ非依存のぼかし背景にする（ctx.filter が効かない環境対策）
-  {
-    const sw = 20; // 縮小サイズ（小さいほど強くぼける。段階拡大で滑らかさは維持）
-    const sh = Math.max(1, Math.round(sw / ar));
-    let cur = document.createElement('canvas');
-    cur.width = sw;
-    cur.height = sh;
-    const sctx = cur.getContext('2d');
-    if (sctx) {
-      const bgCover = Math.max(sw / img.width, sh / img.height);
-      const bw = img.width * bgCover;
-      const bh = img.height * bgCover;
-      sctx.imageSmoothingEnabled = true;
-      sctx.drawImage(img, (sw - bw) / 2, (sh - bh) / 2, bw, bh);
-
-      // 段階的に2倍ずつ拡大して、なめらかなぼかしにする（ブロック状のムラ防止）
-      let cw = sw;
-      let ch = sh;
-      while (cw < W) {
-        const nw = Math.min(W, cw * 2);
-        const nh = Math.min(H, ch * 2);
-        const next = document.createElement('canvas');
-        next.width = nw;
-        next.height = nh;
-        const nctx = next.getContext('2d');
-        if (!nctx) break;
-        nctx.imageSmoothingEnabled = true;
-        // @ts-ignore
-        nctx.imageSmoothingQuality = 'high';
-        nctx.drawImage(cur, 0, 0, nw, nh);
-        cur = next;
-        cw = nw;
-        ch = nh;
-      }
-      ctx.save();
-      ctx.imageSmoothingEnabled = true;
-      // @ts-ignore
-      ctx.imageSmoothingQuality = 'high';
-      ctx.drawImage(cur, 0, 0, W, H);
-      ctx.restore();
-
-      // 周辺減光（ビネット）: 中央は明るく、端に向かって少し暗く
-      ctx.save();
-      const g = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.25, W / 2, H / 2, Math.max(W, H) * 0.75);
-      g.addColorStop(0, 'rgba(0,0,0,0)');
-      g.addColorStop(1, 'rgba(0,0,0,0.45)');
-      ctx.fillStyle = g;
-      ctx.fillRect(0, 0, W, H);
-      ctx.restore();
-    }
-  }
+  drawBlurredBackground(ctx, img, W, H);
 
   const cover = Math.max(W / img.width, H / img.height);
   const scale = cover * t.scale;
