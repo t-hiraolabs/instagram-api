@@ -578,6 +578,10 @@ export async function chatWithAssistant(history: ChatTurn[]): Promise<string> {
     'ユーザーと会話しながら、投稿のアイデア出し、簡単な分析やアドバイス、そして「どんな画像を作りたいか」を一緒に具体化します。' +
     '画像生成のプロンプトを聞かれたら、被写体・構図・雰囲気・色・スタイルを含む具体的な指示を1〜2文で提案してください。' +
     '回答は簡潔に、絵文字は控えめに。';
+  const msgs = history.map((h) => ({ role: h.role, content: h.content }));
+  if (msgs.length === 0 || msgs[msgs.length - 1].role !== 'user') {
+    msgs.push({ role: 'user', content: '続けてください。' });
+  }
   try {
     const res = await axios.post(
       CLAUDE_API_URL,
@@ -585,7 +589,7 @@ export async function chatWithAssistant(history: ChatTurn[]): Promise<string> {
         model: MODEL,
         system,
         max_tokens: 700,
-        messages: history.map((h) => ({ role: h.role, content: h.content })),
+        messages: msgs,
         chat: true,
       },
       { headers }
@@ -599,6 +603,11 @@ export async function chatWithAssistant(history: ChatTurn[]): Promise<string> {
 /** 会話から、画像生成用のプロンプト（1〜2文）を作る */
 export async function buildImagePrompt(history: ChatTurn[]): Promise<string> {
   const headers = await getAuthHeaders();
+  // 会話は user メッセージで終わる必要がある（末尾がassistantなら指示のuserを足す）
+  const msgs = history.map((h) => ({ role: h.role, content: h.content }));
+  if (msgs.length === 0 || msgs[msgs.length - 1].role !== 'user') {
+    msgs.push({ role: 'user', content: 'これまでの会話をもとに、画像生成用のプロンプトを1つだけ作ってください。' });
+  }
   try {
     const res = await axios.post(
       CLAUDE_API_URL,
@@ -608,7 +617,7 @@ export async function buildImagePrompt(history: ChatTurn[]): Promise<string> {
           'これまでの会話をもとに、画像生成AIに渡す画像プロンプトを1つだけ作ってください。' +
           '被写体・構図・雰囲気・色・スタイルを含め、日本語で1〜2文。前置きや説明は書かず、プロンプト本文のみを返してください。',
         max_tokens: 300,
-        messages: history.map((h) => ({ role: h.role, content: h.content })),
+        messages: msgs,
         chat: true,
       },
       { headers }
