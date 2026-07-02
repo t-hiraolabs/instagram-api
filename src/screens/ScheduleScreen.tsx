@@ -92,7 +92,7 @@ import {
 import { ensureLoggedIn } from '../utils/requireLogin';
 import { useAppStore } from '../store/appStore';
 import { publishNow } from '../services/publishNow';
-import { generateImage } from '../services/imageGenService';
+import ImageGenChat from '../components/ImageGenChat';
 import { Plan, canRecurring } from '../utils/plans';
 
 type Filter = 'all' | 'draft' | 'pending' | 'published' | 'failed';
@@ -355,9 +355,8 @@ export default function ScheduleScreen() {
   const [productTags, setProductTags] = useState<string[]>([]);
   const [newProductTag, setNewProductTag] = useState('');
   const [locationId, setLocationId] = useState('');
-  // AI画像生成
-  const [imgPrompt, setImgPrompt] = useState('');
-  const [imgGenerating, setImgGenerating] = useState(false);
+  // AI画像生成（チャット）
+  const [imgChatVisible, setImgChatVisible] = useState(false);
   const [aiInstruction, setAiInstruction] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const [composing, setComposing] = useState(false);
@@ -499,28 +498,21 @@ export default function ScheduleScreen() {
     await pickFeedImages();
   };
 
-  // AIで画像を生成して、そのまま「写真を調整する画面」へ
-  const handleGenerateImage = async () => {
-    if (!imgPrompt.trim()) {
-      alertMsg('作りたい画像の内容を入力してください（例: 夏の新作パフェ、明るい店内）');
-      return;
-    }
+  // 画像生成チャットを開く（作成モーダルは隠してz-index競合を防ぐ）
+  const openImgChat = async () => {
     if (!(await ensureLoggedIn('画像生成を使うにはログインが必要です'))) return;
-    setImgGenerating(true);
-    try {
-      const dataUrl = await generateImage(imgPrompt.trim());
-      cropAppendRef.current = false;
-      cropReturnRef.current = 'create';
-      setCropInitialIndex(0);
-      setModalVisible(false);
-      setCropRawImages([dataUrl]);
-      setCropVisible(true);
-      setImgPrompt('');
-    } catch (e) {
-      alertMsg(e instanceof Error ? e.message : '画像生成に失敗しました');
-    } finally {
-      setImgGenerating(false);
-    }
+    setModalVisible(false);
+    setImgChatVisible(true);
+  };
+
+  // チャットで生成した画像を使って調整画面へ
+  const handleUseGeneratedImage = (dataUrl: string) => {
+    setImgChatVisible(false);
+    cropAppendRef.current = false;
+    cropReturnRef.current = 'create';
+    setCropInitialIndex(0);
+    setCropRawImages([dataUrl]);
+    setCropVisible(true);
   };
 
   // フィード写真を選んで、そのまま「写真を調整する画面」へ
@@ -1802,6 +1794,13 @@ export default function ScheduleScreen() {
         onDone={handleCropDone}
       />
 
+      {/* AI画像生成チャット */}
+      <ImageGenChat
+        visible={imgChatVisible}
+        onClose={() => { setImgChatVisible(false); setModalVisible(true); }}
+        onUseImage={handleUseGeneratedImage}
+      />
+
       {/* AI生成結果モーダル */}
       <Modal visible={resultVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => handleResultClose()}>
         <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.background }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -2342,22 +2341,14 @@ export default function ScheduleScreen() {
                   </TouchableOpacity>
                 )}
 
-                {/* AIで画像を生成 */}
+                {/* AIで画像を生成（チャット） */}
                 <Text style={[styles.sectionDivider, { marginTop: SPACING.lg }]}>または AIで画像を作る</Text>
-                <TextInput
-                  style={styles.input}
-                  value={imgPrompt}
-                  onChangeText={setImgPrompt}
-                  placeholder="例: 夏の新作パフェ、明るいカフェの店内、写実的に"
-                  placeholderTextColor={COLORS.textMuted}
-                />
                 <TouchableOpacity
-                  style={[styles.aiBtn, { marginTop: SPACING.sm, backgroundColor: COLORS.secondary }, imgGenerating && styles.publishNowBtnDisabled]}
-                  onPress={handleGenerateImage}
-                  disabled={imgGenerating}
+                  style={[styles.aiBtn, { backgroundColor: COLORS.secondary }]}
+                  onPress={openImgChat}
                   activeOpacity={0.85}
                 >
-                  {imgGenerating ? <ActivityIndicator color="#fff" /> : <Text style={styles.aiBtnText}>🎨 AIで画像を生成</Text>}
+                  <Text style={styles.aiBtnText}>🎨 AIで画像を作る（チャット）</Text>
                 </TouchableOpacity>
               </>
             ) : (
