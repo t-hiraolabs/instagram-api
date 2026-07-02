@@ -13,8 +13,8 @@ const LIMITS: Record<string, number> = { free: 5, pro: 50, business: 300 };
 // フリーは累計、Pro/ビジネスは月間でリセット。
 const BRAND_LIMITS: Record<string, number> = { free: 3, pro: 10, business: 10 };
 
-// チャット会話の月間上限（メッセージ数）。表示は「% 使用」で見せる。
-const CHAT_LIMITS: Record<string, number> = { free: 30, pro: 300, business: 1000 };
+// チャット会話の月間上限（トークン数：入力+出力の合計）。表示は「% 使用」で見せる。
+const CHAT_TOKEN_LIMITS: Record<string, number> = { free: 50000, pro: 500000, business: 1500000 };
 
 // 同じ月か判定
 function isSameMonth(periodStartStr: string): boolean {
@@ -86,13 +86,13 @@ Deno.serve(async (req) => {
   const plan = profile.plan === 'pro' || profile.plan === 'business' ? profile.plan : 'free';
   const limit = LIMITS[plan];
 
-  // === チャット会話：月間上限（%で管理）。テキストのみで安価 ===
+  // === チャット会話：月間トークン上限（%で管理）===
   if (isChat) {
-    const chatLimit = CHAT_LIMITS[plan];
+    const chatLimit = CHAT_TOKEN_LIMITS[plan];
     const todayStr = new Date().toISOString().slice(0, 10);
     const cStart = profile.chat_period_start ?? todayStr;
     const cResets = !isSameMonth(cStart);
-    const cUsed = cResets ? 0 : (profile.chat_used ?? 0);
+    const cUsed = cResets ? 0 : (profile.chat_used ?? 0); // chat_used はトークン累計
     const cPeriodStart = cResets ? todayStr : cStart;
     if (cUsed >= chatLimit) {
       return json({ error: '今月のチャット利用量の上限に達しました。来月またご利用いただけます。', code: 'CHAT_LIMIT' }, 429);
@@ -109,7 +109,12 @@ Deno.serve(async (req) => {
       });
       const data = await res.text();
       if (res.ok) {
-        await admin.from('profiles').update({ chat_used: cUsed + 1, chat_period_start: cPeriodStart }).eq('id', user.id);
+        let toks = 0;
+        try {
+          const parsed = JSON.parse(data);
+          toks = (parsed?.usage?.input_tokens ?? 0) + (parsed?.usage?.output_tokens ?? 0);
+        } catch { /* usage取得失敗時は加算なし */ }
+        await admin.from('profiles').update({ chat_used: cUsed + toks, chat_period_start: cPeriodStart }).eq('id', user.id);
       }
       return new Response(data, { status: res.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     } catch (err) {
