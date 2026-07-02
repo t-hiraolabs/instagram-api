@@ -92,6 +92,7 @@ import {
 import { ensureLoggedIn } from '../utils/requireLogin';
 import { useAppStore } from '../store/appStore';
 import { publishNow } from '../services/publishNow';
+import { generateImage } from '../services/imageGenService';
 import { Plan, canRecurring } from '../utils/plans';
 
 type Filter = 'all' | 'draft' | 'pending' | 'published' | 'failed';
@@ -354,6 +355,9 @@ export default function ScheduleScreen() {
   const [productTags, setProductTags] = useState<string[]>([]);
   const [newProductTag, setNewProductTag] = useState('');
   const [locationId, setLocationId] = useState('');
+  // AI画像生成
+  const [imgPrompt, setImgPrompt] = useState('');
+  const [imgGenerating, setImgGenerating] = useState(false);
   const [aiInstruction, setAiInstruction] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const [composing, setComposing] = useState(false);
@@ -493,6 +497,30 @@ export default function ScheduleScreen() {
 
     // フィードは複数選択OK（カルーセル投稿）→ まずトリミング編集へ
     await pickFeedImages();
+  };
+
+  // AIで画像を生成して、そのまま「写真を調整する画面」へ
+  const handleGenerateImage = async () => {
+    if (!imgPrompt.trim()) {
+      alertMsg('作りたい画像の内容を入力してください（例: 夏の新作パフェ、明るい店内）');
+      return;
+    }
+    if (!(await ensureLoggedIn('画像生成を使うにはログインが必要です'))) return;
+    setImgGenerating(true);
+    try {
+      const dataUrl = await generateImage(imgPrompt.trim());
+      cropAppendRef.current = false;
+      cropReturnRef.current = 'create';
+      setCropInitialIndex(0);
+      setModalVisible(false);
+      setCropRawImages([dataUrl]);
+      setCropVisible(true);
+      setImgPrompt('');
+    } catch (e) {
+      alertMsg(e instanceof Error ? e.message : '画像生成に失敗しました');
+    } finally {
+      setImgGenerating(false);
+    }
   };
 
   // フィード写真を選んで、そのまま「写真を調整する画面」へ
@@ -2313,6 +2341,24 @@ export default function ScheduleScreen() {
                     <Text style={styles.aiBtnGhostText}>✏️ 写真を調整する</Text>
                   </TouchableOpacity>
                 )}
+
+                {/* AIで画像を生成 */}
+                <Text style={[styles.sectionDivider, { marginTop: SPACING.lg }]}>または AIで画像を作る</Text>
+                <TextInput
+                  style={styles.input}
+                  value={imgPrompt}
+                  onChangeText={setImgPrompt}
+                  placeholder="例: 夏の新作パフェ、明るいカフェの店内、写実的に"
+                  placeholderTextColor={COLORS.textMuted}
+                />
+                <TouchableOpacity
+                  style={[styles.aiBtn, { marginTop: SPACING.sm, backgroundColor: COLORS.secondary }, imgGenerating && styles.publishNowBtnDisabled]}
+                  onPress={handleGenerateImage}
+                  disabled={imgGenerating}
+                  activeOpacity={0.85}
+                >
+                  {imgGenerating ? <ActivityIndicator color="#fff" /> : <Text style={styles.aiBtnText}>🎨 AIで画像を生成</Text>}
+                </TouchableOpacity>
               </>
             ) : (
               <>
