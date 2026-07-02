@@ -15,7 +15,10 @@ import {
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
 import { generateImages, getImageUsage, ImageSize } from '../services/imageGenService';
 import { chatWithAssistant, buildImagePrompts, getChatUsagePercent, ChatTurn } from '../services/aiService';
-import { loadChatHistory, saveChatMessage, clearChatHistory } from '../services/chatHistoryService';
+import {
+  listConversations, createConversation, renameConversation, deleteConversation,
+  loadMessages, saveMessage, Conversation,
+} from '../services/chatHistoryService';
 import { uploadBlob } from '../services/storage';
 
 interface Props {
@@ -45,6 +48,9 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
   const [chatting, setChatting] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [optVisible, setOptVisible] = useState(false);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [convId, setConvId] = useState<string | null>(null);
+  const [listVisible, setListVisible] = useState(false);
   const [remaining, setRemaining] = useState<number | null>(null);
   const [chatRemainPct, setChatRemainPct] = useState<number | null>(null);
   const scrollRef = useRef<ScrollView>(null);
@@ -57,16 +63,48 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
   useEffect(() => {
     if (visible) {
       refreshUsage();
-      // 保存済みの会話履歴を復元
-      loadChatHistory().then((rows) => {
-        const restored: Msg[] = rows.map((r) =>
-          r.role === 'image' ? { role: 'image', uri: r.content } : { role: r.role as 'user' | 'assistant', text: r.content }
-        );
-        setMessages(restored);
-        setTimeout(() => scrollRef.current?.scrollToEnd({ animated: false }), 100);
-      }).catch(() => {});
+      (async () => {
+        const convs = await listConversations();
+        setConversations(convs);
+        // 直近の会話を開く。無ければ新規作成
+        const id = convs[0]?.id ?? (await createConversation());
+        if (id) {
+          setConvId(id);
+          if (!convs[0]) setConversations(await listConversations());
+          await openConversation(id);
+        }
+      })().catch(() => {});
     }
   }, [visible]);
+
+  const openConversation = async (id: string) => {
+    setConvId(id);
+    setListVisible(false);
+    const rows = await loadMessages(id);
+    setMessages(rows.map((r) =>
+      r.role === 'image' ? { role: 'image', uri: r.content } : { role: r.role as 'user' | 'assistant', text: r.content }
+    ));
+    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: false }), 100);
+  };
+
+  const newConversation = async () => {
+    const id = await createConversation();
+    if (!id) return;
+    setConvId(id);
+    setMessages([]);
+    setListVisible(false);
+    setConversations(await listConversations());
+  };
+
+  const removeConversation = async (id: string) => {
+    await deleteConversation(id);
+    const convs = await listConversations();
+    setConversations(convs);
+    if (id === convId) {
+      const nextId = convs[0]?.id ?? (await createConversation());
+      if (nextId) await openConversation(nextId);
+    }
+  };
 
   const toEnd = () => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
 
@@ -80,9 +118,20 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
     const text = input.trim();
     if (!text || chatting) return;
     setInput('');
+    let id = convId;
+    if (!id) { id = await createConversation(); setConvId(id); }
+    const isFirst = messages.length === 0;
     const next = [...messages, { role: 'user' as const, text }];
     setMessages(next);
-    saveChatMessage('user', text).catch(() => {});
+    if (id) {
+      saveMessage(id, 'user', text).catch(() => {});
+      // 最初のメッセージを会話タイトルに
+      if (isFirst) {
+        const title = text.slice(0, 30);
+        renameConversation(id, title).catch(() => {});
+        setConversations((cs) => cs.map((c) => (c.id === id ? { ...c, title } : c)));
+      }
+    }
     setChatting(true);
     toEnd();
     try {
@@ -91,7 +140,7 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
           .map((m) => ({ role: m.role, content: m.text }))
       );
       setMessages((m) => [...m, { role: 'assistant', text: reply }]);
-      saveChatMessage('assistant', reply).catch(() => {});
+      if (id) saveMessage(id, 'assistant', reply).catch(() => {});
       getChatUsagePercent().then((c) => setChatRemainPct(c.remainingPct)).catch(() => {});
     } catch (e) {
       setMessages((m) => [...m, { role: 'error', text: e instanceof Error ? e.message : '応答に失敗しました' }]);
@@ -125,7 +174,7 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
         ? `以下の内容で${count}枚生成します：\n` + prompts.map((p, i) => `${i + 1}. ${p}`).join('\n')
         : `この内容で生成します：\n「${prompts[0]}」`;
       setMessages((m) => [...m, { role: 'assistant', text: listText }]);
-      saveChatMessage('assistant', listText).catch(() => {});
+      if (convId) saveMessage(convId, 'assistant', listText).catch(() => {});
       toEnd();
       // 各プロンプトを1枚ずつ生成（枚数=プロンプト数）
       let rem = 0;
@@ -141,7 +190,7 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
             stored = await uploadBlob(blob);
           } catch { /* アップ失敗時はdata URLのまま表示 */ }
           setMessages((m) => [...m, { role: 'image', uri: stored }]);
-          saveChatMessage('image', stored).catch(() => {});
+          if (convId) saveMessage(convId, 'image', stored).catch(() => {});
         }
         toEnd();
       }
@@ -157,8 +206,10 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={onClose}><Text style={styles.cancel}>閉じる</Text></TouchableOpacity>
-          <Text style={styles.title}>🎨 AIアシスタント</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md }}>
+            <TouchableOpacity onPress={onClose}><Text style={styles.cancel}>閉じる</Text></TouchableOpacity>
+            <TouchableOpacity onPress={() => setListVisible(true)}><Text style={styles.menuBtn}>☰</Text></TouchableOpacity>
+          </View>
           <View style={{ alignItems: 'flex-end' }}>
             <Text style={styles.remain}>{chatRemainPct == null ? '' : `会話 残り${chatRemainPct}%`}</Text>
             <Text style={styles.remainSub}>{remaining == null ? '' : `画像 残り${remaining}枚`}</Text>
@@ -166,18 +217,6 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
         </View>
 
         <ScrollView ref={scrollRef} style={styles.body} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xl }}>
-          {messages.length > 0 && (
-            <TouchableOpacity
-              style={styles.clearBtn}
-              onPress={() => {
-                const run = () => { clearChatHistory().catch(() => {}); setMessages([]); };
-                if (Platform.OS === 'web') { if (window.confirm('会話履歴をすべて削除しますか？')) run(); }
-                else run();
-              }}
-            >
-              <Text style={styles.clearText}>🗑 会話履歴を消す</Text>
-            </TouchableOpacity>
-          )}
           {messages.length === 0 && (
             <View style={styles.empty}>
               <Text style={styles.emptyIcon}>💬</Text>
@@ -276,6 +315,42 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
             <Text style={styles.sendBtnText}>送信</Text>
           </TouchableOpacity>
         </View>
+
+        {/* 会話一覧（Claude風） */}
+        {listVisible && (
+          <View style={styles.listOverlay}>
+            <TouchableOpacity style={styles.listBackdrop} activeOpacity={1} onPress={() => setListVisible(false)} />
+            <View style={styles.listPanel}>
+              <View style={styles.listHeader}>
+                <Text style={styles.listTitle}>会話</Text>
+                <TouchableOpacity onPress={() => setListVisible(false)}><Text style={styles.listClose}>✕</Text></TouchableOpacity>
+              </View>
+              <TouchableOpacity style={styles.newBtn} onPress={newConversation}>
+                <Text style={styles.newBtnText}>＋ 新しい会話</Text>
+              </TouchableOpacity>
+              <ScrollView style={{ flex: 1 }}>
+                {conversations.map((c) => (
+                  <View key={c.id} style={[styles.convRow, c.id === convId && styles.convRowActive]}>
+                    <TouchableOpacity style={{ flex: 1 }} onPress={() => openConversation(c.id)}>
+                      <Text style={styles.convTitle} numberOfLines={1}>{c.title || '新しい会話'}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => {
+                        const run = () => removeConversation(c.id);
+                        if (Platform.OS === 'web') { if (window.confirm('この会話を削除しますか？')) run(); }
+                        else run();
+                      }}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Text style={styles.convDelete}>🗑</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
+                {conversations.length === 0 && <Text style={styles.convEmpty}>会話はまだありません</Text>}
+              </ScrollView>
+            </View>
+          </View>
+        )}
       </KeyboardAvoidingView>
     </Modal>
   );
@@ -293,8 +368,20 @@ const styles = StyleSheet.create({
   remain: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '700', textAlign: 'right' },
   remainSub: { color: COLORS.textMuted, fontSize: 10, textAlign: 'right', marginTop: 1 },
   body: { flex: 1 },
-  clearBtn: { alignSelf: 'center', paddingVertical: 6, paddingHorizontal: SPACING.md, marginBottom: SPACING.sm },
-  clearText: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600' },
+  menuBtn: { color: COLORS.text, fontSize: 20, fontWeight: '700' },
+  listOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, flexDirection: 'row' },
+  listBackdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)' },
+  listPanel: { width: '78%', maxWidth: 320, backgroundColor: COLORS.background, borderRightWidth: 1, borderRightColor: COLORS.border, paddingTop: SPACING.lg },
+  listHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: SPACING.md, paddingBottom: SPACING.sm },
+  listTitle: { color: COLORS.text, fontSize: 16, fontWeight: '800' },
+  listClose: { color: COLORS.textMuted, fontSize: 16 },
+  newBtn: { margin: SPACING.md, backgroundColor: COLORS.primary, borderRadius: RADIUS.full, paddingVertical: SPACING.sm, alignItems: 'center' },
+  newBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  convRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACING.md, paddingVertical: SPACING.md, borderTopWidth: 1, borderTopColor: COLORS.border, gap: SPACING.sm },
+  convRowActive: { backgroundColor: COLORS.surface },
+  convTitle: { color: COLORS.text, fontSize: 14 },
+  convDelete: { fontSize: 15 },
+  convEmpty: { color: COLORS.textMuted, fontSize: 13, textAlign: 'center', marginTop: SPACING.xl },
   empty: { alignItems: 'center', marginTop: SPACING.xxl, paddingHorizontal: SPACING.lg },
   emptyIcon: { fontSize: 40, marginBottom: SPACING.md },
   emptyText: { color: COLORS.textMuted, fontSize: 13, textAlign: 'center', lineHeight: 20 },
