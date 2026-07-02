@@ -543,6 +543,30 @@ ${sample}
 
 export interface ChatTurn { role: 'user' | 'assistant'; content: string; }
 
+// クライアント表示用（サーバーの CHAT_LIMITS と揃える）
+const CHAT_LIMITS: Record<string, number> = { free: 30, pro: 300, business: 1000 };
+
+/** チャット利用量を % で返す（used/limit）。Claude風の残量表示に使う */
+export async function getChatUsagePercent(): Promise<{ usedPct: number; remainingPct: number }> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { usedPct: 0, remainingPct: 100 };
+  const { data } = await supabase
+    .from('profiles')
+    .select('plan, chat_used, chat_period_start')
+    .eq('id', user.id)
+    .maybeSingle();
+  const plan = data?.plan === 'pro' || data?.plan === 'business' ? data.plan : 'free';
+  const limit = CHAT_LIMITS[plan];
+  const start = data?.chat_period_start ?? new Date().toISOString().slice(0, 10);
+  const sameMonth = (() => {
+    const t = new Date(); const p = new Date(`${start}T00:00:00Z`);
+    return t.getUTCFullYear() === p.getUTCFullYear() && t.getUTCMonth() === p.getUTCMonth();
+  })();
+  const used = sameMonth ? (data?.chat_used ?? 0) : 0;
+  const usedPct = Math.min(100, Math.round((used / limit) * 100));
+  return { usedPct, remainingPct: 100 - usedPct };
+}
+
 /**
  * アシスタントとの会話（画像の相談・分析など）。回数消費なし（chat:true）。
  * 画像を生成したいときのために、会話から画像プロンプトを作る補助にも使える。

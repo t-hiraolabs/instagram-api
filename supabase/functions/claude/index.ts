@@ -13,6 +13,9 @@ const LIMITS: Record<string, number> = { free: 5, pro: 50, business: 300 };
 // フリーは累計、Pro/ビジネスは月間でリセット。
 const BRAND_LIMITS: Record<string, number> = { free: 3, pro: 10, business: 10 };
 
+// チャット会話の月間上限（メッセージ数）。表示は「% 使用」で見せる。
+const CHAT_LIMITS: Record<string, number> = { free: 30, pro: 300, business: 1000 };
+
 // 同じ月か判定
 function isSameMonth(periodStartStr: string): boolean {
   const today = new Date();
@@ -60,12 +63,40 @@ Deno.serve(async (req) => {
     return json({ error: 'リクエストの形式が不正です' }, 400);
   }
   const skipCount = body.skipCount === true;
-  const isChat = body.chat === true; // アシスタント会話（テキストのみ・カウント対象外）
+  const isChat = body.chat === true; // アシスタント会話（月間上限を%で管理）
   delete body.skipCount; // Anthropicへは渡さない
   delete body.chat;
 
-  // チャット会話はテキストのみで安価なため、回数を消費せず制限もしない
+  // --- プラン・使用回数を確認（service roleでprofilesを読み書き）---
+  const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+  let { data: profile } = await admin
+    .from('profiles')
+    .select('plan, ai_used, ai_period_start, brand_ai_used, brand_ai_period_start, chat_used, chat_period_start')
+    .eq('id', user.id)
+    .maybeSingle();
+
+  // 念のため: profilesが無ければ作る
+  if (!profile) {
+    await admin.from('profiles').insert({ id: user.id }).select();
+    const td = new Date().toISOString().slice(0, 10);
+    profile = { plan: 'free', ai_used: 0, ai_period_start: td, brand_ai_used: 0, brand_ai_period_start: td, chat_used: 0, chat_period_start: td };
+  }
+
+  const plan = profile.plan === 'pro' || profile.plan === 'business' ? profile.plan : 'free';
+  const limit = LIMITS[plan];
+
+  // === チャット会話：月間上限（%で管理）。テキストのみで安価 ===
   if (isChat) {
+    const chatLimit = CHAT_LIMITS[plan];
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const cStart = profile.chat_period_start ?? todayStr;
+    const cResets = !isSameMonth(cStart);
+    const cUsed = cResets ? 0 : (profile.chat_used ?? 0);
+    const cPeriodStart = cResets ? todayStr : cStart;
+    if (cUsed >= chatLimit) {
+      return json({ error: '今月のチャット利用量の上限に達しました。来月またご利用いただけます。', code: 'CHAT_LIMIT' }, 429);
+    }
     try {
       const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
@@ -77,30 +108,14 @@ Deno.serve(async (req) => {
         body: JSON.stringify(body),
       });
       const data = await res.text();
+      if (res.ok) {
+        await admin.from('profiles').update({ chat_used: cUsed + 1, chat_period_start: cPeriodStart }).eq('id', user.id);
+      }
       return new Response(data, { status: res.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     } catch (err) {
       return json({ error: String(err) }, 500);
     }
   }
-
-  // --- プラン・使用回数を確認（service roleでprofilesを読み書き）---
-  const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-
-  let { data: profile } = await admin
-    .from('profiles')
-    .select('plan, ai_used, ai_period_start, brand_ai_used, brand_ai_period_start')
-    .eq('id', user.id)
-    .maybeSingle();
-
-  // 念のため: profilesが無ければ作る
-  if (!profile) {
-    await admin.from('profiles').insert({ id: user.id }).select();
-    const td = new Date().toISOString().slice(0, 10);
-    profile = { plan: 'free', ai_used: 0, ai_period_start: td, brand_ai_used: 0, brand_ai_period_start: td };
-  }
-
-  const plan = profile.plan === 'pro' || profile.plan === 'business' ? profile.plan : 'free';
-  const limit = LIMITS[plan];
 
   // === カウント対象外（ブランド分析など）: 通常回数を消費せず、裏の上限のみチェック ===
   if (skipCount) {

@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
 import { generateImages, getImageUsage, ImageSize } from '../services/imageGenService';
-import { chatWithAssistant, buildImagePrompt, ChatTurn } from '../services/aiService';
+import { chatWithAssistant, buildImagePrompt, getChatUsagePercent, ChatTurn } from '../services/aiService';
 
 interface Props {
   visible: boolean;
@@ -43,12 +43,16 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
   const [chatting, setChatting] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [remaining, setRemaining] = useState<number | null>(null);
+  const [chatRemainPct, setChatRemainPct] = useState<number | null>(null);
   const scrollRef = useRef<ScrollView>(null);
 
+  const refreshUsage = () => {
+    getImageUsage().then((u) => setRemaining(u.remaining)).catch(() => {});
+    getChatUsagePercent().then((c) => setChatRemainPct(c.remainingPct)).catch(() => {});
+  };
+
   useEffect(() => {
-    if (visible) {
-      getImageUsage().then((u) => setRemaining(u.remaining)).catch(() => {});
-    }
+    if (visible) refreshUsage();
   }, [visible]);
 
   const toEnd = () => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
@@ -73,6 +77,7 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
           .map((m) => ({ role: m.role, content: m.text }))
       );
       setMessages((m) => [...m, { role: 'assistant', text: reply }]);
+      getChatUsagePercent().then((c) => setChatRemainPct(c.remainingPct)).catch(() => {});
     } catch (e) {
       setMessages((m) => [...m, { role: 'error', text: e instanceof Error ? e.message : '応答に失敗しました' }]);
     } finally {
@@ -112,7 +117,10 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
         <View style={styles.header}>
           <TouchableOpacity onPress={onClose}><Text style={styles.cancel}>閉じる</Text></TouchableOpacity>
           <Text style={styles.title}>🎨 AIアシスタント</Text>
-          <Text style={styles.remain}>{remaining == null ? '' : `残り${remaining}枚`}</Text>
+          <View style={{ alignItems: 'flex-end' }}>
+            <Text style={styles.remain}>{chatRemainPct == null ? '' : `会話 残り${chatRemainPct}%`}</Text>
+            <Text style={styles.remainSub}>{remaining == null ? '' : `画像 残り${remaining}枚`}</Text>
+          </View>
         </View>
 
         <ScrollView ref={scrollRef} style={styles.body} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xl }}>
@@ -209,7 +217,8 @@ const styles = StyleSheet.create({
   },
   cancel: { color: COLORS.textMuted, fontSize: 15, fontWeight: '600' },
   title: { color: COLORS.text, fontSize: 16, fontWeight: '800' },
-  remain: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '700', minWidth: 56, textAlign: 'right' },
+  remain: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '700', textAlign: 'right' },
+  remainSub: { color: COLORS.textMuted, fontSize: 10, textAlign: 'right', marginTop: 1 },
   body: { flex: 1 },
   empty: { alignItems: 'center', marginTop: SPACING.xxl, paddingHorizontal: SPACING.lg },
   emptyIcon: { fontSize: 40, marginBottom: SPACING.md },
