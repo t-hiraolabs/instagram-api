@@ -578,35 +578,56 @@ export async function chatWithAssistant(history: ChatTurn[]): Promise<string> {
     'ユーザーと会話しながら、投稿のアイデア出し、簡単な分析やアドバイス、そして「どんな画像を作りたいか」を一緒に具体化します。' +
     '画像生成のプロンプトを聞かれたら、被写体・構図・雰囲気・色・スタイルを含む具体的な指示を1〜2文で提案してください。' +
     '回答は簡潔に、絵文字は控えめに。';
-  const res = await axios.post(
-    CLAUDE_API_URL,
-    {
-      model: MODEL,
-      system,
-      max_tokens: 700,
-      messages: history.map((h) => ({ role: h.role, content: h.content })),
-      chat: true,
-    },
-    { headers }
-  );
-  return res.data?.content?.[0]?.text ?? res.data?.text ?? '';
+  try {
+    const res = await axios.post(
+      CLAUDE_API_URL,
+      {
+        model: MODEL,
+        system,
+        max_tokens: 700,
+        messages: history.map((h) => ({ role: h.role, content: h.content })),
+        chat: true,
+      },
+      { headers }
+    );
+    return res.data?.content?.[0]?.text ?? res.data?.text ?? '';
+  } catch (err) {
+    throw new Error(detailError(err));
+  }
 }
 
 /** 会話から、画像生成用のプロンプト（1〜2文）を作る */
 export async function buildImagePrompt(history: ChatTurn[]): Promise<string> {
   const headers = await getAuthHeaders();
-  const res = await axios.post(
-    CLAUDE_API_URL,
-    {
-      model: MODEL,
-      system:
-        'これまでの会話をもとに、画像生成AIに渡す画像プロンプトを1つだけ作ってください。' +
-        '被写体・構図・雰囲気・色・スタイルを含め、日本語で1〜2文。前置きや説明は書かず、プロンプト本文のみを返してください。',
-      max_tokens: 300,
-      messages: history.map((h) => ({ role: h.role, content: h.content })),
-      chat: true,
-    },
-    { headers }
-  );
-  return (res.data?.content?.[0]?.text ?? res.data?.text ?? '').trim();
+  try {
+    const res = await axios.post(
+      CLAUDE_API_URL,
+      {
+        model: MODEL,
+        system:
+          'これまでの会話をもとに、画像生成AIに渡す画像プロンプトを1つだけ作ってください。' +
+          '被写体・構図・雰囲気・色・スタイルを含め、日本語で1〜2文。前置きや説明は書かず、プロンプト本文のみを返してください。',
+        max_tokens: 300,
+        messages: history.map((h) => ({ role: h.role, content: h.content })),
+        chat: true,
+      },
+      { headers }
+    );
+    return (res.data?.content?.[0]?.text ?? res.data?.text ?? '').trim();
+  } catch (err) {
+    throw new Error(detailError(err));
+  }
+}
+
+// サーバー/Anthropicのエラー本文をできるだけ具体的に取り出す
+function detailError(err: unknown): string {
+  if (axios.isAxiosError(err)) {
+    const d = err.response?.data as { error?: unknown } | undefined;
+    const e = d?.error;
+    if (e && typeof e === 'object' && 'message' in e) return String((e as { message: unknown }).message);
+    if (typeof e === 'string') return e;
+    if (d) return JSON.stringify(d);
+    return err.message;
+  }
+  return err instanceof Error ? err.message : 'AIの呼び出しに失敗しました';
 }
