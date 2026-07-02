@@ -53,7 +53,8 @@ Deno.serve(async (req) => {
   const used = resets ? 0 : (profile.img_used ?? 0);
   const periodStart = resets ? todayStr : start;
 
-  if (used >= limit) {
+  const remaining = Math.max(0, limit - used);
+  if (remaining <= 0) {
     const msg = plan === 'free'
       ? `無料プランの画像生成は月${limit}枚までです。Proなら月${IMG_LIMITS.pro}枚、ビジネスなら月${IMG_LIMITS.business}枚使えます。`
       : `今月の画像生成の上限（${limit}枚）に達しました。来月またご利用いただけます。`;
@@ -61,8 +62,13 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { prompt, size } = await req.json();
+    const { prompt, size, n } = await req.json();
     if (!prompt || !String(prompt).trim()) return json({ error: 'プロンプトを入力してください' }, 400);
+
+    const count = Math.max(1, Math.min(Number(n) || 1, 4));
+    if (count > remaining) {
+      return json({ error: `残り${remaining}枚です。${count}枚は生成できません。`, code: 'IMG_LIMIT' }, 429);
+    }
 
     const res = await fetch('https://api.openai.com/v1/images/generations', {
       method: 'POST',
@@ -71,19 +77,23 @@ Deno.serve(async (req) => {
         model: 'gpt-image-1',
         prompt: String(prompt),
         size: size === '1024x1536' || size === '1536x1024' ? size : '1024x1024',
-        n: 1,
+        n: count,
       }),
     });
     const data = await res.json();
     if (!res.ok) return json({ error: '画像生成に失敗しました', detail: data }, 400);
 
-    const b64 = data?.data?.[0]?.b64_json;
-    if (!b64) return json({ error: '画像の取得に失敗しました', detail: data }, 400);
+    const items: string[] = (data?.data ?? [])
+      .map((d: { b64_json?: string }) => d.b64_json)
+      .filter(Boolean)
+      .map((b: string) => `data:image/png;base64,${b}`);
+    if (items.length === 0) return json({ error: '画像の取得に失敗しました', detail: data }, 400);
 
-    // 成功時のみ加算
-    await admin.from('profiles').update({ img_used: used + 1, img_period_start: periodStart }).eq('id', user.id);
+    // 成功枚数ぶん加算
+    const newUsed = used + items.length;
+    await admin.from('profiles').update({ img_used: newUsed, img_period_start: periodStart }).eq('id', user.id);
 
-    return json({ image: `data:image/png;base64,${b64}` });
+    return json({ images: items, remaining: Math.max(0, limit - newUsed) });
   } catch (err) {
     return json({ error: String(err) }, 500);
   }

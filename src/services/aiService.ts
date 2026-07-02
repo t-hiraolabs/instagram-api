@@ -540,3 +540,49 @@ ${sample}
   if (!jsonMatch) throw new Error('AI応答のパースに失敗しました');
   return JSON.parse(jsonMatch[0]) as SuggestedBrandSettings;
 }
+
+export interface ChatTurn { role: 'user' | 'assistant'; content: string; }
+
+/**
+ * アシスタントとの会話（画像の相談・分析など）。回数消費なし（chat:true）。
+ * 画像を生成したいときのために、会話から画像プロンプトを作る補助にも使える。
+ */
+export async function chatWithAssistant(history: ChatTurn[]): Promise<string> {
+  const headers = await getAuthHeaders();
+  const system =
+    'あなたはInstagram運用を支援する日本語アシスタントです。' +
+    'ユーザーと会話しながら、投稿のアイデア出し、簡単な分析やアドバイス、そして「どんな画像を作りたいか」を一緒に具体化します。' +
+    '画像生成のプロンプトを聞かれたら、被写体・構図・雰囲気・色・スタイルを含む具体的な指示を1〜2文で提案してください。' +
+    '回答は簡潔に、絵文字は控えめに。';
+  const res = await axios.post(
+    CLAUDE_API_URL,
+    {
+      model: MODEL,
+      system,
+      max_tokens: 700,
+      messages: history.map((h) => ({ role: h.role, content: h.content })),
+      chat: true,
+    },
+    { headers }
+  );
+  return res.data?.content?.[0]?.text ?? res.data?.text ?? '';
+}
+
+/** 会話から、画像生成用のプロンプト（1〜2文）を作る */
+export async function buildImagePrompt(history: ChatTurn[]): Promise<string> {
+  const headers = await getAuthHeaders();
+  const res = await axios.post(
+    CLAUDE_API_URL,
+    {
+      model: MODEL,
+      system:
+        'これまでの会話をもとに、画像生成AIに渡す画像プロンプトを1つだけ作ってください。' +
+        '被写体・構図・雰囲気・色・スタイルを含め、日本語で1〜2文。前置きや説明は書かず、プロンプト本文のみを返してください。',
+      max_tokens: 300,
+      messages: history.map((h) => ({ role: h.role, content: h.content })),
+      chat: true,
+    },
+    { headers }
+  );
+  return (res.data?.content?.[0]?.text ?? res.data?.text ?? '').trim();
+}

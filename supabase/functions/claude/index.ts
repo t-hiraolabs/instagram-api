@@ -60,7 +60,28 @@ Deno.serve(async (req) => {
     return json({ error: 'リクエストの形式が不正です' }, 400);
   }
   const skipCount = body.skipCount === true;
+  const isChat = body.chat === true; // アシスタント会話（テキストのみ・カウント対象外）
   delete body.skipCount; // Anthropicへは渡さない
+  delete body.chat;
+
+  // チャット会話はテキストのみで安価なため、回数を消費せず制限もしない
+  if (isChat) {
+    try {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify(body),
+      });
+      const data = await res.text();
+      return new Response(data, { status: res.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    } catch (err) {
+      return json({ error: String(err) }, 500);
+    }
+  }
 
   // --- プラン・使用回数を確認（service roleでprofilesを読み書き）---
   const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
