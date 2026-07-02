@@ -42,6 +42,7 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
   const [count, setCount] = useState(1);
   const [chatting, setChatting] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [optVisible, setOptVisible] = useState(false);
   const [remaining, setRemaining] = useState<number | null>(null);
   const [chatRemainPct, setChatRemainPct] = useState<number | null>(null);
   const scrollRef = useRef<ScrollView>(null);
@@ -86,14 +87,22 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
     }
   };
 
-  const generate = async () => {
-    if (generating) return;
+  // 生成ボタン押下 → 枚数/サイズ指定オーバーレイを開く
+  const openGenOptions = () => {
     const h = history();
     if (h.length === 0) {
       setMessages((m) => [...m, { role: 'error', text: 'まず作りたい画像について話しかけてください（例：夏の新作パフェの写真がほしい）' }]);
       toEnd();
       return;
     }
+    setOptVisible(true);
+  };
+
+  const generate = async () => {
+    if (generating) return;
+    setOptVisible(false);
+    const h = history();
+    if (h.length === 0) return;
     setGenerating(true);
     toEnd();
     try {
@@ -164,28 +173,45 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
           )}
         </ScrollView>
 
-        {/* 生成オプション */}
-        <View style={styles.optRow}>
-          <Text style={styles.optLabel}>枚数</Text>
-          {COUNTS.map((c) => (
-            <TouchableOpacity key={c} style={[styles.optBtn, count === c && styles.optBtnActive]} onPress={() => setCount(c)}>
-              <Text style={[styles.optText, count === c && styles.optTextActive]}>{c}</Text>
-            </TouchableOpacity>
-          ))}
-          <View style={{ width: SPACING.md }} />
-          {SIZES.map((s) => (
-            <TouchableOpacity key={s.key} style={[styles.optBtn, size === s.key && styles.optBtnActive]} onPress={() => setSize(s.key)}>
-              <Text style={[styles.optText, size === s.key && styles.optTextActive]}>{s.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
         <TouchableOpacity
           style={[styles.genBtn, (generating || (remaining ?? 1) <= 0) && styles.genBtnDisabled]}
-          onPress={generate}
+          onPress={openGenOptions}
           disabled={generating || (remaining ?? 1) <= 0}
         >
-          <Text style={styles.genBtnText}>🎨 会話をもとに画像を生成（{count}枚）</Text>
+          <Text style={styles.genBtnText}>🎨 会話をもとに画像を生成</Text>
         </TouchableOpacity>
+
+        {/* 枚数・サイズ指定オーバーレイ */}
+        {optVisible && (
+          <View style={styles.optOverlay}>
+            <View style={styles.optCard}>
+              <Text style={styles.optTitle}>生成する枚数とサイズ</Text>
+              <Text style={styles.optSub}>枚数</Text>
+              <View style={styles.optChips}>
+                {COUNTS.map((c) => (
+                  <TouchableOpacity key={c} style={[styles.optBtn, count === c && styles.optBtnActive]} onPress={() => setCount(c)}>
+                    <Text style={[styles.optText, count === c && styles.optTextActive]}>{c}枚</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <Text style={styles.optSub}>サイズ</Text>
+              <View style={styles.optChips}>
+                {SIZES.map((s) => (
+                  <TouchableOpacity key={s.key} style={[styles.optBtn, size === s.key && styles.optBtnActive]} onPress={() => setSize(s.key)}>
+                    <Text style={[styles.optText, size === s.key && styles.optTextActive]}>{s.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              {remaining != null && <Text style={styles.optRemain}>画像 残り{remaining}枚</Text>}
+              <TouchableOpacity style={styles.optGenBtn} onPress={generate} activeOpacity={0.85}>
+                <Text style={styles.optGenText}>この設定で生成（{count}枚）</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.optCancel} onPress={() => setOptVisible(false)}>
+                <Text style={styles.optCancelText}>キャンセル</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
 
         {/* 入力欄 */}
         <View style={styles.inputRow}>
@@ -237,9 +263,17 @@ const styles = StyleSheet.create({
   errorText: { color: COLORS.error, fontSize: 13 },
   loadingBubble: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: COLORS.surface, borderRadius: RADIUS.lg, padding: SPACING.md },
   loadingText: { color: COLORS.textSecondary, fontSize: 13 },
-  optRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.xs, paddingHorizontal: SPACING.md, paddingTop: SPACING.sm },
-  optLabel: { color: COLORS.textMuted, fontSize: 12, marginRight: 4 },
-  optBtn: { paddingHorizontal: SPACING.md, paddingVertical: 5, borderRadius: RADIUS.full, borderWidth: 1, borderColor: COLORS.border, marginRight: 4 },
+  optOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: SPACING.lg },
+  optCard: { width: '100%', maxWidth: 360, backgroundColor: COLORS.surface, borderRadius: RADIUS.lg, padding: SPACING.lg, borderWidth: 1, borderColor: COLORS.border },
+  optTitle: { color: COLORS.text, fontSize: 16, fontWeight: '800', textAlign: 'center', marginBottom: SPACING.md },
+  optSub: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600', marginBottom: SPACING.sm, marginTop: SPACING.sm },
+  optChips: { flexDirection: 'row', gap: SPACING.sm, flexWrap: 'wrap' },
+  optRemain: { color: COLORS.textMuted, fontSize: 12, textAlign: 'center', marginTop: SPACING.md },
+  optGenBtn: { backgroundColor: COLORS.secondary, borderRadius: RADIUS.full, paddingVertical: SPACING.md, alignItems: 'center', marginTop: SPACING.md },
+  optGenText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  optCancel: { paddingVertical: SPACING.md, alignItems: 'center', marginTop: 4 },
+  optCancelText: { color: COLORS.textMuted, fontSize: 14, fontWeight: '600' },
+  optBtn: { paddingHorizontal: SPACING.md, paddingVertical: 8, borderRadius: RADIUS.full, borderWidth: 1, borderColor: COLORS.border },
   optBtnActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   optText: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '600' },
   optTextActive: { color: '#fff' },
