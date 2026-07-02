@@ -600,6 +600,47 @@ export async function chatWithAssistant(history: ChatTurn[]): Promise<string> {
   }
 }
 
+/** 会話から、画像 count 枚ぶんのプロンプトを作る（ストーリー/多様性を意識） */
+export async function buildImagePrompts(history: ChatTurn[], count: number): Promise<string[]> {
+  const headers = await getAuthHeaders();
+  const msgs = history.map((h) => ({ role: h.role, content: h.content }));
+  if (msgs.length === 0 || msgs[msgs.length - 1].role !== 'user') {
+    msgs.push({ role: 'user', content: `これまでの会話をもとに、画像${count}枚ぶんのプロンプトを作ってください。` });
+  }
+  const system =
+    `これまでの会話をもとに、画像生成AIに渡すプロンプトを${count}個作ってください。` +
+    (count > 1
+      ? '「紹介ストーリー」など連続性がある場合は、各画像が場面や切り口の異なる一連の流れになるようにしてください。' +
+        '単なる複製ではなく、それぞれ内容を変えてください。'
+      : '') +
+    '各プロンプトは日本語で1〜2文、被写体・構図・雰囲気・色・スタイルを含めてください。' +
+    `出力は文字列の JSON 配列のみ（要素数${count}）。前置き・説明・コードフェンスは書かないでください。` +
+    '例: ["プロンプト1", "プロンプト2"]';
+  try {
+    const res = await axios.post(
+      CLAUDE_API_URL,
+      { model: MODEL, system, max_tokens: 800, messages: msgs, chat: true },
+      { headers }
+    );
+    const text: string = res.data?.content?.[0]?.text ?? res.data?.text ?? '';
+    let prompts: string[] = [];
+    const m = text.match(/\[[\s\S]*\]/);
+    if (m) {
+      try { prompts = JSON.parse(m[0]).map((s: unknown) => String(s)); } catch { /* fallthrough */ }
+    }
+    if (prompts.length === 0) {
+      // JSONにならなかった場合は行で分割
+      prompts = text.split('\n').map((l) => l.replace(/^\s*[-*\d.]+\s*/, '').trim()).filter(Boolean);
+    }
+    if (prompts.length === 0) prompts = [text.trim()];
+    // 枚数に合わせて調整
+    while (prompts.length < count) prompts.push(prompts[prompts.length - 1] ?? '');
+    return prompts.slice(0, count);
+  } catch (err) {
+    throw new Error(detailError(err));
+  }
+}
+
 /** 会話から、画像生成用のプロンプト（1〜2文）を作る */
 export async function buildImagePrompt(history: ChatTurn[]): Promise<string> {
   const headers = await getAuthHeaders();

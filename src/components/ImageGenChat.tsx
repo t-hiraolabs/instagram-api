@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
 import { generateImages, getImageUsage, ImageSize } from '../services/imageGenService';
-import { chatWithAssistant, buildImagePrompt, getChatUsagePercent, ChatTurn } from '../services/aiService';
+import { chatWithAssistant, buildImagePrompts, getChatUsagePercent, ChatTurn } from '../services/aiService';
 
 interface Props {
   visible: boolean;
@@ -106,12 +106,21 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
     setGenerating(true);
     toEnd();
     try {
-      const prompt = await buildImagePrompt(h);
-      setMessages((m) => [...m, { role: 'assistant', text: `この内容で${count}枚生成します：\n「${prompt}」` }]);
+      const prompts = await buildImagePrompts(h, count);
+      const listText = count > 1
+        ? `以下の内容で${count}枚生成します：\n` + prompts.map((p, i) => `${i + 1}. ${p}`).join('\n')
+        : `この内容で生成します：\n「${prompts[0]}」`;
+      setMessages((m) => [...m, { role: 'assistant', text: listText }]);
       toEnd();
-      const { images, remaining: rem } = await generateImages(prompt, count, size);
-      setRemaining(rem);
-      setMessages((m) => [...m, ...images.map((uri) => ({ role: 'image' as const, uri }))]);
+      // 各プロンプトを1枚ずつ生成（枚数=プロンプト数）
+      let rem = 0;
+      for (const p of prompts) {
+        const r = await generateImages(p, 1, size);
+        rem = r.remaining;
+        setRemaining(rem);
+        setMessages((m) => [...m, ...r.images.map((uri) => ({ role: 'image' as const, uri }))]);
+        toEnd();
+      }
     } catch (e) {
       setMessages((m) => [...m, { role: 'error', text: e instanceof Error ? e.message : '画像生成に失敗しました' }]);
     } finally {
