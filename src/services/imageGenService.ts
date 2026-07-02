@@ -6,8 +6,8 @@ const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
 
 export type ImageSize = '1024x1024' | '1024x1536' | '1536x1024';
 
-// クライアント側の表示用（サーバーの IMG_LIMITS と揃える）
-const IMG_LIMITS: Record<string, number> = { free: 2, pro: 15, business: 60 };
+// クライアント側の表示用（サーバーの IMG_LIMITS と揃える。画像生成はビジネス限定）
+const IMG_LIMITS: Record<string, number> = { free: 0, pro: 0, business: 60 };
 
 export interface ImageUsage { used: number; limit: number; remaining: number; }
 

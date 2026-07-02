@@ -6,8 +6,8 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
-// プランごとの月間画像生成上限
-const IMG_LIMITS: Record<string, number> = { free: 2, pro: 15, business: 60 };
+// プランごとの月間画像生成上限（画像生成はビジネス限定）
+const IMG_LIMITS: Record<string, number> = { free: 0, pro: 0, business: 60 };
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -55,8 +55,8 @@ Deno.serve(async (req) => {
 
   const remaining = Math.max(0, limit - used);
   if (remaining <= 0) {
-    const msg = plan === 'free'
-      ? `無料プランの画像生成は月${limit}枚までです。Proなら月${IMG_LIMITS.pro}枚、ビジネスなら月${IMG_LIMITS.business}枚使えます。`
+    const msg = plan !== 'business'
+      ? `AI画像生成はビジネスプラン限定です。ビジネスなら月${IMG_LIMITS.business}枚まで使えます。`
       : `今月の画像生成の上限（${limit}枚）に達しました。来月またご利用いただけます。`;
     return json({ error: msg, code: 'IMG_LIMIT' }, 429);
   }

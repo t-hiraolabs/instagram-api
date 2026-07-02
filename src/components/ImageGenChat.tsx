@@ -178,7 +178,9 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
           onPress={openGenOptions}
           disabled={generating || (remaining ?? 1) <= 0}
         >
-          <Text style={styles.genBtnText}>🎨 会話をもとに画像を生成</Text>
+          <Text style={styles.genBtnText}>
+            {(remaining ?? 1) <= 0 ? '🎨 画像生成はビジネスプラン限定' : '🎨 会話をもとに画像を生成'}
+          </Text>
         </TouchableOpacity>
 
         {/* 枚数・サイズ指定オーバーレイ */}

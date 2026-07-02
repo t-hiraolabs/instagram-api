@@ -75,6 +75,6 @@ alter table public.profiles
 
 ## メモ：上限値（コードで調整可）
 - AI生成：free 5 / pro 50 / business 300（`supabase/functions/claude` LIMITS）
-- 画像生成：free 2 / pro 15 / business 60（`generate-image` IMG_LIMITS）
+- 画像生成：ビジネス限定（free 0 / pro 0 / business 60）（`generate-image` IMG_LIMITS）
 - チャット（トークン/月）：free 5万 / pro 50万 / business 150万（`claude` CHAT_TOKEN_LIMITS）
 - ブランド分析：free 3 / pro・business 10（`claude` BRAND_LIMITS）
