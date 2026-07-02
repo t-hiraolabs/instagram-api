@@ -577,7 +577,8 @@ export async function chatWithAssistant(history: ChatTurn[]): Promise<string> {
     'あなたはInstagram運用を支援する日本語アシスタントです。' +
     'ユーザーと会話しながら、投稿のアイデア出し、簡単な分析やアドバイス、そして「どんな画像を作りたいか」を一緒に具体化します。' +
     '画像生成のプロンプトを聞かれたら、被写体・構図・雰囲気・色・スタイルを含む具体的な指示を1〜2文で提案してください。' +
-    '回答は簡潔に、絵文字は控えめに。';
+    '回答は簡潔に、絵文字は控えめに。' +
+    getBrandContext();
   const msgs = history.map((h) => ({ role: h.role, content: h.content }));
   if (msgs.length === 0 || msgs[msgs.length - 1].role !== 'user') {
     msgs.push({ role: 'user', content: '続けてください。' });
@@ -615,7 +616,8 @@ export async function buildImagePrompts(history: ChatTurn[], count: number): Pro
       : '') +
     '各プロンプトは日本語で1〜2文、被写体・構図・雰囲気・色・スタイルを含めてください。' +
     `出力は文字列の JSON 配列のみ（要素数${count}）。前置き・説明・コードフェンスは書かないでください。` +
-    '例: ["プロンプト1", "プロンプト2"]';
+    '例: ["プロンプト1", "プロンプト2"]' +
+    getBrandContext();
   try {
     const res = await axios.post(
       CLAUDE_API_URL,

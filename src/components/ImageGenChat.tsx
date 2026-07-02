@@ -15,6 +15,8 @@ import {
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
 import { generateImages, getImageUsage, ImageSize } from '../services/imageGenService';
 import { chatWithAssistant, buildImagePrompts, getChatUsagePercent, ChatTurn } from '../services/aiService';
+import { loadChatHistory, saveChatMessage, clearChatHistory } from '../services/chatHistoryService';
+import { uploadBlob } from '../services/storage';
 
 interface Props {
   visible: boolean;
@@ -53,7 +55,17 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
   };
 
   useEffect(() => {
-    if (visible) refreshUsage();
+    if (visible) {
+      refreshUsage();
+      // 保存済みの会話履歴を復元
+      loadChatHistory().then((rows) => {
+        const restored: Msg[] = rows.map((r) =>
+          r.role === 'image' ? { role: 'image', uri: r.content } : { role: r.role as 'user' | 'assistant', text: r.content }
+        );
+        setMessages(restored);
+        setTimeout(() => scrollRef.current?.scrollToEnd({ animated: false }), 100);
+      }).catch(() => {});
+    }
   }, [visible]);
 
   const toEnd = () => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
@@ -70,6 +82,7 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
     setInput('');
     const next = [...messages, { role: 'user' as const, text }];
     setMessages(next);
+    saveChatMessage('user', text).catch(() => {});
     setChatting(true);
     toEnd();
     try {
@@ -78,6 +91,7 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
           .map((m) => ({ role: m.role, content: m.text }))
       );
       setMessages((m) => [...m, { role: 'assistant', text: reply }]);
+      saveChatMessage('assistant', reply).catch(() => {});
       getChatUsagePercent().then((c) => setChatRemainPct(c.remainingPct)).catch(() => {});
     } catch (e) {
       setMessages((m) => [...m, { role: 'error', text: e instanceof Error ? e.message : '応答に失敗しました' }]);
@@ -111,6 +125,7 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
         ? `以下の内容で${count}枚生成します：\n` + prompts.map((p, i) => `${i + 1}. ${p}`).join('\n')
         : `この内容で生成します：\n「${prompts[0]}」`;
       setMessages((m) => [...m, { role: 'assistant', text: listText }]);
+      saveChatMessage('assistant', listText).catch(() => {});
       toEnd();
       // 各プロンプトを1枚ずつ生成（枚数=プロンプト数）
       let rem = 0;
@@ -118,7 +133,16 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
         const r = await generateImages(p, 1, size);
         rem = r.remaining;
         setRemaining(rem);
-        setMessages((m) => [...m, ...r.images.map((uri) => ({ role: 'image' as const, uri }))]);
+        for (const dataUrl of r.images) {
+          // data URL をStorageにアップして永続化（履歴に残す）
+          let stored = dataUrl;
+          try {
+            const blob = await (await fetch(dataUrl)).blob();
+            stored = await uploadBlob(blob);
+          } catch { /* アップ失敗時はdata URLのまま表示 */ }
+          setMessages((m) => [...m, { role: 'image', uri: stored }]);
+          saveChatMessage('image', stored).catch(() => {});
+        }
         toEnd();
       }
     } catch (e) {
@@ -142,6 +166,18 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
         </View>
 
         <ScrollView ref={scrollRef} style={styles.body} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xl }}>
+          {messages.length > 0 && (
+            <TouchableOpacity
+              style={styles.clearBtn}
+              onPress={() => {
+                const run = () => { clearChatHistory().catch(() => {}); setMessages([]); };
+                if (Platform.OS === 'web') { if (window.confirm('会話履歴をすべて削除しますか？')) run(); }
+                else run();
+              }}
+            >
+              <Text style={styles.clearText}>🗑 会話履歴を消す</Text>
+            </TouchableOpacity>
+          )}
           {messages.length === 0 && (
             <View style={styles.empty}>
               <Text style={styles.emptyIcon}>💬</Text>
@@ -257,6 +293,8 @@ const styles = StyleSheet.create({
   remain: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '700', textAlign: 'right' },
   remainSub: { color: COLORS.textMuted, fontSize: 10, textAlign: 'right', marginTop: 1 },
   body: { flex: 1 },
+  clearBtn: { alignSelf: 'center', paddingVertical: 6, paddingHorizontal: SPACING.md, marginBottom: SPACING.sm },
+  clearText: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600' },
   empty: { alignItems: 'center', marginTop: SPACING.xxl, paddingHorizontal: SPACING.lg },
   emptyIcon: { fontSize: 40, marginBottom: SPACING.md },
   emptyText: { color: COLORS.textMuted, fontSize: 13, textAlign: 'center', lineHeight: 20 },
