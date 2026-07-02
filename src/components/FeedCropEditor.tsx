@@ -25,7 +25,7 @@ interface Props {
 }
 
 const SCREEN_W = Dimensions.get('window').width;
-const FRAME_W = Math.min(SCREEN_W - SPACING.md * 2, 400);
+const FRAME_W = Math.min(SCREEN_W - SPACING.md * 2, 340);
 const MIN_SCALE = 0.3;
 const MAX_SCALE = 4;
 
@@ -183,7 +183,7 @@ export default function FeedCropEditor({ visible, images, initialIndex = 0, onCa
 
         {/* 固定フレーム内で写真を動かす（Instagram方式）。枠外も薄く見える */}
         {(() => {
-          const MARGIN = 64;
+          const MARGIN = 28;
           const stageW = SCREEN_W;
           const stageH = frameH + MARGIN * 2;
           const frameLeft = (stageW - FRAME_W) / 2;
@@ -357,7 +357,7 @@ const styles = StyleSheet.create({
   cancel: { color: COLORS.textMuted, fontSize: 15, fontWeight: '600' },
   title: { color: COLORS.text, fontSize: 16, fontWeight: '800' },
   next: { color: COLORS.primary, fontSize: 15, fontWeight: '800' },
-  hint: { color: COLORS.textMuted, fontSize: 12, textAlign: 'center', marginTop: SPACING.md },
+  hint: { color: COLORS.textMuted, fontSize: 12, textAlign: 'center', marginTop: SPACING.sm },
   stage: {
     overflow: 'hidden',
     marginTop: SPACING.md,
@@ -367,12 +367,12 @@ const styles = StyleSheet.create({
   },
   mask: { position: 'absolute', backgroundColor: 'rgba(0,0,0,0.55)' },
   cropBox: { position: 'absolute', borderWidth: 2, borderColor: '#fff', borderRadius: 2 },
-  aspectRow: { flexDirection: 'row', justifyContent: 'center', gap: SPACING.sm, marginTop: SPACING.lg },
+  aspectRow: { flexDirection: 'row', justifyContent: 'center', gap: SPACING.sm, marginTop: SPACING.md },
   aspectBtn: { paddingHorizontal: SPACING.lg, paddingVertical: 8, borderRadius: RADIUS.full, borderWidth: 1, borderColor: COLORS.border },
   aspectBtnActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   aspectText: { color: COLORS.textSecondary, fontSize: 14, fontWeight: '700' },
   aspectTextActive: { color: '#fff' },
-  zoomWrap: { marginTop: SPACING.lg, paddingHorizontal: SPACING.xl, alignItems: 'center' },
+  zoomWrap: { marginTop: SPACING.md, paddingHorizontal: SPACING.xl, alignItems: 'center' },
   zoomLabel: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600', textAlign: 'center', marginBottom: SPACING.sm },
   sliderTrack: {
     width: '100%',
@@ -387,7 +387,7 @@ const styles = StyleSheet.create({
     position: 'absolute', width: 22, height: 22, borderRadius: 11,
     backgroundColor: '#fff', borderWidth: 2, borderColor: COLORS.primary,
   },
-  reorderHint: { color: COLORS.textMuted, fontSize: 11, textAlign: 'center', marginTop: SPACING.xl },
+  reorderHint: { color: COLORS.textMuted, fontSize: 11, textAlign: 'center', marginTop: SPACING.md },
   thumbRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, justifyContent: 'center', marginTop: SPACING.sm, paddingHorizontal: SPACING.md },
   thumb: { width: 56, height: 56, borderRadius: RADIUS.sm, overflow: 'hidden', borderWidth: 2, borderColor: 'transparent' },
   thumbActive: { borderColor: COLORS.primary },
