@@ -577,7 +577,10 @@ export async function getChatUsagePercent(): Promise<{ usedPct: number; remainin
  * アシスタントとの会話（画像の相談・分析など）。回数消費なし（chat:true）。
  * 画像を生成したいときのために、会話から画像プロンプトを作る補助にも使える。
  */
-export async function chatWithAssistant(history: ChatTurn[]): Promise<string> {
+export async function chatWithAssistant(
+  history: ChatTurn[],
+  attachment?: { base64: string; mime: string }
+): Promise<string> {
   const headers = await getAuthHeaders();
   const system =
     'あなたはInstagram運用を支援する日本語アシスタントです。' +
@@ -588,9 +591,19 @@ export async function chatWithAssistant(history: ChatTurn[]): Promise<string> {
     '「どんなサービス／アプリですか？」などと毎回聞き返さないでください。情報が本当に不足している時だけ、要点を1つだけ簡潔に確認します。' +
     '回答は簡潔に、絵文字は控えめに。' +
     getBrandContext() + getMemoryContext();
-  const msgs = history.map((h) => ({ role: h.role, content: h.content }));
+  const msgs: Array<{ role: string; content: unknown }> = history.map((h) => ({ role: h.role, content: h.content }));
   if (msgs.length === 0 || msgs[msgs.length - 1].role !== 'user') {
     msgs.push({ role: 'user', content: '続けてください。' });
+  }
+  // 画像添付があれば、最後のユーザーメッセージに画像ブロックを付ける（Claude Vision）
+  if (attachment?.base64) {
+    const last = msgs[msgs.length - 1];
+    const textPart = typeof last.content === 'string' && last.content.trim() ? last.content : 'この画像について教えてください。';
+    const mt = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(attachment.mime) ? attachment.mime : 'image/jpeg';
+    last.content = [
+      { type: 'image', source: { type: 'base64', media_type: mt, data: attachment.base64 } },
+      { type: 'text', text: textPart },
+    ];
   }
   try {
     const res = await axios.post(

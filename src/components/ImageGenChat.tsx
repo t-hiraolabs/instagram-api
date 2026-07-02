@@ -22,6 +22,7 @@ import {
 import { uploadBlob } from '../services/storage';
 import { saveAssistantMemory } from '../services/memoryService';
 import { useAppStore } from '../store/appStore';
+import * as ImagePicker from 'expo-image-picker';
 
 interface Props {
   visible: boolean;
@@ -33,6 +34,7 @@ type Msg =
   | { role: 'user'; text: string }
   | { role: 'assistant'; text: string }
   | { role: 'image'; uri: string }
+  | { role: 'user_image'; uri: string }
   | { role: 'error'; text: string };
 
 const SIZES: { key: ImageSize; label: string }[] = [
@@ -57,6 +59,18 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
   const setAssistantMemoryStore = useAppStore((s) => s.setAssistantMemory);
   const [memoryDraft, setMemoryDraft] = useState('');
   useEffect(() => { setMemoryDraft(assistantMemory); }, [assistantMemory, listVisible]);
+  const [pendingImage, setPendingImage] = useState<{ base64: string; mime: string; uri: string } | null>(null);
+
+  const attachPhoto = async () => {
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      base64: true,
+      quality: 0.7,
+    });
+    if (res.canceled) return;
+    const a = res.assets[0];
+    if (a.base64) setPendingImage({ base64: a.base64, mime: a.mimeType ?? 'image/jpeg', uri: a.uri });
+  };
   const [remaining, setRemaining] = useState<number | null>(null);
   const [chatRemainPct, setChatRemainPct] = useState<number | null>(null);
   const scrollRef = useRef<ScrollView>(null);
@@ -88,7 +102,9 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
     setListVisible(false);
     const rows = await loadMessages(id);
     setMessages(rows.map((r) =>
-      r.role === 'image' ? { role: 'image', uri: r.content } : { role: r.role as 'user' | 'assistant', text: r.content }
+      r.role === 'image' ? { role: 'image', uri: r.content }
+        : r.role === 'user_image' ? { role: 'user_image', uri: r.content }
+        : { role: r.role as 'user' | 'assistant', text: r.content }
     ));
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: false }), 100);
   };
@@ -122,18 +138,28 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
 
   const send = async () => {
     const text = input.trim();
-    if (!text || chatting) return;
+    const attach = pendingImage;
+    if ((!text && !attach) || chatting) return;
     setInput('');
+    setPendingImage(null);
     let id = convId;
     if (!id) { id = await createConversation(); setConvId(id); }
     const isFirst = messages.length === 0;
-    const next = [...messages, { role: 'user' as const, text }];
-    setMessages(next);
+
+    // 添付画像があれば先にアップして履歴に残し、チャットにも表示
+    let attachUrl = '';
+    if (attach) {
+      try { attachUrl = await uploadBlob(await (await fetch(attach.uri)).blob()); } catch { attachUrl = attach.uri; }
+      setMessages((m) => [...m, { role: 'user_image', uri: attachUrl }]);
+      if (id) saveMessage(id, 'user_image', attachUrl).catch(() => {});
+    }
+
+    const next = [...messages, ...(attach ? [{ role: 'user_image' as const, uri: attachUrl }] : []), { role: 'user' as const, text: text || '（画像について）' }];
+    setMessages((m) => [...m, { role: 'user', text: text || '（画像について）' }]);
     if (id) {
-      saveMessage(id, 'user', text).catch(() => {});
-      // 最初のメッセージを会話タイトルに
+      saveMessage(id, 'user', text || '（画像について）').catch(() => {});
       if (isFirst) {
-        const title = text.slice(0, 30);
+        const title = (text || '画像について').slice(0, 30);
         renameConversation(id, title).catch(() => {});
         setConversations((cs) => cs.map((c) => (c.id === id ? { ...c, title } : c)));
       }
@@ -143,7 +169,8 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
     try {
       const reply = await chatWithAssistant(
         next.filter((m): m is { role: 'user' | 'assistant'; text: string } => m.role === 'user' || m.role === 'assistant')
-          .map((m) => ({ role: m.role, content: m.text }))
+          .map((m) => ({ role: m.role, content: m.text })),
+        attach ? { base64: attach.base64, mime: attach.mime } : undefined
       );
       setMessages((m) => [...m, { role: 'assistant', text: reply }]);
       if (id) saveMessage(id, 'assistant', reply).catch(() => {});
@@ -251,6 +278,11 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
             if (m.role === 'error') return (
               <View key={i} style={styles.aiRow}><View style={styles.errorBubble}><Text style={styles.errorText}>{m.text}</Text></View></View>
             );
+            if (m.role === 'user_image') return (
+              <View key={i} style={styles.userRow}>
+                <Image source={{ uri: m.uri }} style={styles.attachThumb} resizeMode="cover" />
+              </View>
+            );
             return (
               <View key={i} style={styles.aiRow}>
                 <View style={styles.imageBubble}>
@@ -314,8 +346,21 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
           </View>
         )}
 
+        {/* 添付プレビュー */}
+        {pendingImage && (
+          <View style={styles.attachPreviewRow}>
+            <Image source={{ uri: pendingImage.uri }} style={styles.attachPreview} resizeMode="cover" />
+            <Text style={styles.attachPreviewText}>写真を添付中</Text>
+            <TouchableOpacity onPress={() => setPendingImage(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Text style={styles.attachRemove}>✕</Text>
+            </TouchableOpacity>
+          </View>
+        )}
         {/* 入力欄 */}
         <View style={styles.inputRow}>
+          <TouchableOpacity style={styles.attachBtn} onPress={attachPhoto} disabled={chatting}>
+            <Text style={styles.attachBtnText}>📎</Text>
+          </TouchableOpacity>
           <TextInput
             style={styles.input}
             value={input}
@@ -326,7 +371,7 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
             returnKeyType="send"
             editable={!chatting}
           />
-          <TouchableOpacity style={[styles.sendBtn, (chatting || !input.trim()) && styles.sendBtnDisabled]} onPress={send} disabled={chatting || !input.trim()}>
+          <TouchableOpacity style={[styles.sendBtn, (chatting || (!input.trim() && !pendingImage)) && styles.sendBtnDisabled]} onPress={send} disabled={chatting || (!input.trim() && !pendingImage)}>
             <Text style={styles.sendBtnText}>送信</Text>
           </TouchableOpacity>
         </View>
@@ -474,6 +519,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm,
     color: COLORS.text, fontSize: 15, borderWidth: 1, borderColor: COLORS.border,
   },
+  attachThumb: { width: 160, height: 160, borderRadius: RADIUS.md },
+  attachPreviewRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, paddingHorizontal: SPACING.md, paddingTop: SPACING.sm },
+  attachPreview: { width: 40, height: 40, borderRadius: RADIUS.sm },
+  attachPreviewText: { flex: 1, color: COLORS.textSecondary, fontSize: 13 },
+  attachRemove: { color: COLORS.textMuted, fontSize: 16, fontWeight: '700' },
+  attachBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.surface, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.border },
+  attachBtnText: { fontSize: 18 },
   sendBtn: { backgroundColor: COLORS.primary, borderRadius: RADIUS.full, paddingHorizontal: SPACING.lg, paddingVertical: SPACING.sm },
   sendBtnDisabled: { opacity: 0.5 },
   sendBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
