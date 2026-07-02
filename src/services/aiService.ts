@@ -550,7 +550,7 @@ ${sample}
 export interface ChatTurn { role: 'user' | 'assistant'; content: string; }
 
 // クライアント表示用（サーバーの CHAT_TOKEN_LIMITS と揃える。1日あたりトークン数）
-const CHAT_LIMITS: Record<string, number> = { free: 5000, pro: 40000, business: 120000 };
+const CHAT_LIMITS: Record<string, number> = { free: 2000, pro: 10000, business: 30000 };
 
 /** チャット利用量を % で返す（1日ごとにリセット）。Claude風の残量表示に使う */
 export async function getChatUsagePercent(): Promise<{ usedPct: number; remainingPct: number }> {
