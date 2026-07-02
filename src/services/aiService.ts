@@ -581,6 +581,7 @@ export async function chatWithAssistant(history: ChatTurn[]): Promise<string> {
   const headers = await getAuthHeaders();
   const system =
     'あなたはInstagram運用を支援する日本語アシスタントです。' +
+    IG_CONTEXT +
     'ユーザーと会話しながら、投稿のアイデア出し、簡単な分析やアドバイス、そして「どんな画像を作りたいか」を一緒に具体化します。' +
     '画像生成のプロンプトを聞かれたら、被写体・構図・雰囲気・色・スタイルを含む具体的な指示を1〜2文で提案してください。' +
     '【重要】ユーザーの事業・サービス情報が下記【ブランド情報】として与えられている場合は、それを前提として扱い、' +
@@ -609,43 +610,56 @@ export async function chatWithAssistant(history: ChatTurn[]): Promise<string> {
   }
 }
 
-/** 会話から、画像 count 枚ぶんのプロンプトを作る（ストーリー/多様性を意識） */
-export async function buildImagePrompts(history: ChatTurn[], count: number): Promise<string[]> {
+// Instagram前提の共通コンテキスト
+const IG_CONTEXT =
+  'このアプリはInstagram運用支援ツールです。ユーザーの言う「投稿」「フィード」はInstagramのフィード投稿、' +
+  '「ストーリー」はInstagramのストーリー投稿（縦長9:16）、「リール」はInstagram Reelsを指します。' +
+  'したがって「ストーリーを作って」は物語ではなく、Instagramストーリー用の画像を意味します。';
+
+export interface ImagePlan { ready: boolean; question?: string; prompts?: string[]; }
+
+/**
+ * 会話から画像生成の準備をする。情報が足りていれば count 枚ぶんのプロンプトを返し、
+ * 足りなければ ready:false と1つの確認質問を返す。
+ */
+export async function planImageGeneration(history: ChatTurn[], count: number): Promise<ImagePlan> {
   const headers = await getAuthHeaders();
   const msgs = history.map((h) => ({ role: h.role, content: h.content }));
   if (msgs.length === 0 || msgs[msgs.length - 1].role !== 'user') {
-    msgs.push({ role: 'user', content: `これまでの会話をもとに、画像${count}枚ぶんのプロンプトを作ってください。` });
+    msgs.push({ role: 'user', content: `これまでの会話をもとに、画像${count}枚を生成したいです。` });
   }
   const system =
-    `これまでの会話をもとに、画像生成AIに渡すプロンプトを${count}個作ってください。` +
+    IG_CONTEXT +
+    `\nこれまでの会話をもとに、画像生成AIに渡すプロンプトを${count}個作れるか判断してください。` +
+    '被写体・目的・雰囲気などが曖昧で、良い画像が作れないと判断したら、生成せずに質問してください。' +
     (count > 1
-      ? '「紹介ストーリー」など連続性がある場合は、各画像が場面や切り口の異なる一連の流れになるようにしてください。' +
-        '単なる複製ではなく、それぞれ内容を変えてください。'
+      ? '複数枚の場合は、各画像が場面や切り口の異なる一連の流れ（例：ストーリーの複数ページ）になるようにします。単なる複製にしないでください。'
       : '') +
-    '各プロンプトは日本語で1〜2文、被写体・構図・雰囲気・色・スタイルを含めてください。' +
-    `出力は文字列の JSON 配列のみ（要素数${count}）。前置き・説明・コードフェンスは書かないでください。` +
-    '例: ["プロンプト1", "プロンプト2"]' +
+    '\n出力は次のJSONのみ（前置き・説明・コードフェンス禁止）:' +
+    '\n- 情報が十分: {"ready": true, "prompts": ["プロンプト1", ...]}（要素数' + count + '、各1〜2文・被写体/構図/雰囲気/色/スタイルを含む）' +
+    '\n- 情報が不足: {"ready": false, "question": "確認したいことを1つだけ簡潔に"}' +
     getBrandContext() + getMemoryContext();
   try {
     const res = await axios.post(
       CLAUDE_API_URL,
-      { model: MODEL, system, max_tokens: 800, messages: msgs, chat: true },
+      { model: MODEL, system, max_tokens: 900, messages: msgs, chat: true },
       { headers }
     );
     const text: string = res.data?.content?.[0]?.text ?? res.data?.text ?? '';
-    let prompts: string[] = [];
-    const m = text.match(/\[[\s\S]*\]/);
+    const m = text.match(/\{[\s\S]*\}/);
     if (m) {
-      try { prompts = JSON.parse(m[0]).map((s: unknown) => String(s)); } catch { /* fallthrough */ }
+      try {
+        const obj = JSON.parse(m[0]);
+        if (obj.ready === false && obj.question) return { ready: false, question: String(obj.question) };
+        if (Array.isArray(obj.prompts) && obj.prompts.length > 0) {
+          let prompts = obj.prompts.map((s: unknown) => String(s));
+          while (prompts.length < count) prompts.push(prompts[prompts.length - 1]);
+          return { ready: true, prompts: prompts.slice(0, count) };
+        }
+      } catch { /* fallthrough */ }
     }
-    if (prompts.length === 0) {
-      // JSONにならなかった場合は行で分割
-      prompts = text.split('\n').map((l) => l.replace(/^\s*[-*\d.]+\s*/, '').trim()).filter(Boolean);
-    }
-    if (prompts.length === 0) prompts = [text.trim()];
-    // 枚数に合わせて調整
-    while (prompts.length < count) prompts.push(prompts[prompts.length - 1] ?? '');
-    return prompts.slice(0, count);
+    // パースできない場合は本文を1プロンプトとして扱う
+    return { ready: true, prompts: Array.from({ length: count }, () => text.trim()) };
   } catch (err) {
     throw new Error(detailError(err));
   }

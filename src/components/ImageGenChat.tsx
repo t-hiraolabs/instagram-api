@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
 import { generateImages, getImageUsage, ImageSize } from '../services/imageGenService';
-import { chatWithAssistant, buildImagePrompts, getChatUsagePercent, ChatTurn } from '../services/aiService';
+import { chatWithAssistant, planImageGeneration, getChatUsagePercent, ChatTurn } from '../services/aiService';
 import {
   listConversations, createConversation, renameConversation, deleteConversation,
   loadMessages, saveMessage, Conversation,
@@ -175,7 +175,16 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
     setGenerating(true);
     toEnd();
     try {
-      const prompts = await buildImagePrompts(h, count);
+      const plan = await planImageGeneration(h, count);
+      // 情報が足りない場合は生成せず質問する
+      if (!plan.ready || !plan.prompts || plan.prompts.length === 0) {
+        const q = plan.question ?? 'どんな画像にしたいか、もう少し教えてください（用途・雰囲気・入れたい要素など）。';
+        setMessages((m) => [...m, { role: 'assistant', text: q }]);
+        if (convId) saveMessage(convId, 'assistant', q).catch(() => {});
+        getChatUsagePercent().then((c) => setChatRemainPct(c.remainingPct)).catch(() => {});
+        return;
+      }
+      const prompts = plan.prompts;
       const listText = count > 1
         ? `以下の内容で${count}枚生成します：\n` + prompts.map((p, i) => `${i + 1}. ${p}`).join('\n')
         : `この内容で生成します：\n「${prompts[0]}」`;
