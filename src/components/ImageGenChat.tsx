@@ -344,7 +344,16 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
                 />
                 <TouchableOpacity
                   style={styles.memorySave}
-                  onPress={async () => { await saveAssistantMemory(memoryDraft); setAssistantMemoryStore(memoryDraft); }}
+                  onPress={async () => {
+                    try {
+                      await saveAssistantMemory(memoryDraft);
+                      setAssistantMemoryStore(memoryDraft);
+                      if (Platform.OS === 'web') window.alert('保存しました');
+                    } catch (e) {
+                      const msg = e instanceof Error ? e.message : '保存に失敗しました';
+                      if (Platform.OS === 'web') window.alert('保存に失敗しました\n' + msg);
+                    }
+                  }}
                 >
                   <Text style={styles.memorySaveText}>保存</Text>
                 </TouchableOpacity>

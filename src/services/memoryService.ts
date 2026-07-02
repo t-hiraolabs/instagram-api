@@ -14,6 +14,10 @@ export async function loadAssistantMemory(): Promise<string> {
 
 export async function saveAssistantMemory(text: string): Promise<void> {
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return;
-  await supabase.from('profiles').update({ assistant_memory: text }).eq('id', user.id);
+  if (!user) throw new Error('ログインが必要です');
+  // 行が無い場合にも対応するため upsert
+  const { error } = await supabase
+    .from('profiles')
+    .upsert({ id: user.id, assistant_memory: text }, { onConflict: 'id' });
+  if (error) throw new Error(error.message);
 }
