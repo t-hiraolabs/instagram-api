@@ -19,6 +19,7 @@ import {
 import { getInsightsSummary } from './src/services/insightsService';
 import { loadBrandSettingsFromDb, saveBrandSettingsToDb, brandLocalKey } from './src/services/brandSettingsService';
 import { analyzeBrandFromPosts } from './src/services/aiService';
+import { loadAssistantMemory } from './src/services/memoryService';
 import axios from 'axios';
 
 const queryClient = new QueryClient();
@@ -202,6 +203,8 @@ function OAuthHandler() {
       const saved = localStorage.getItem('active_account_slot');
       if (saved === '2') setActiveAccountSlot(2);
     }
+    // AIアシスタントのメモリを読み込む
+    loadAssistantMemory().then((m) => useAppStore.getState().setAssistantMemory(m)).catch(() => {});
   }, [setInstagramCredentials, setSecondInstagramCredentials, setActiveAccountSlot, setBrandSettings, setBrandSettings2]);
 
   useEffect(() => {

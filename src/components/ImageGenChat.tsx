@@ -20,6 +20,8 @@ import {
   loadMessages, saveMessage, Conversation,
 } from '../services/chatHistoryService';
 import { uploadBlob } from '../services/storage';
+import { saveAssistantMemory } from '../services/memoryService';
+import { useAppStore } from '../store/appStore';
 
 interface Props {
   visible: boolean;
@@ -51,6 +53,10 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [convId, setConvId] = useState<string | null>(null);
   const [listVisible, setListVisible] = useState(false);
+  const assistantMemory = useAppStore((s) => s.assistantMemory);
+  const setAssistantMemoryStore = useAppStore((s) => s.setAssistantMemory);
+  const [memoryDraft, setMemoryDraft] = useState('');
+  useEffect(() => { setMemoryDraft(assistantMemory); }, [assistantMemory, listVisible]);
   const [remaining, setRemaining] = useState<number | null>(null);
   const [chatRemainPct, setChatRemainPct] = useState<number | null>(null);
   const scrollRef = useRef<ScrollView>(null);
@@ -325,6 +331,25 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
                 <Text style={styles.listTitle}>会話</Text>
                 <TouchableOpacity onPress={() => setListVisible(false)}><Text style={styles.listClose}>✕</Text></TouchableOpacity>
               </View>
+              {/* AIに覚えさせる説明（常に参照される） */}
+              <View style={styles.memoryBox}>
+                <Text style={styles.memoryLabel}>🧠 AIに覚えさせる説明</Text>
+                <TextInput
+                  style={styles.memoryInput}
+                  value={memoryDraft}
+                  onChangeText={setMemoryDraft}
+                  placeholder="例: AImarkはAIでInstagram運用を自動化する個人事業主向けアプリ。投稿作成・予約・分析ができる。"
+                  placeholderTextColor={COLORS.textMuted}
+                  multiline
+                />
+                <TouchableOpacity
+                  style={styles.memorySave}
+                  onPress={async () => { await saveAssistantMemory(memoryDraft); setAssistantMemoryStore(memoryDraft); }}
+                >
+                  <Text style={styles.memorySaveText}>保存</Text>
+                </TouchableOpacity>
+              </View>
+
               <TouchableOpacity style={styles.newBtn} onPress={newConversation}>
                 <Text style={styles.newBtnText}>＋ 新しい会話</Text>
               </TouchableOpacity>
@@ -375,6 +400,11 @@ const styles = StyleSheet.create({
   listHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: SPACING.md, paddingBottom: SPACING.sm },
   listTitle: { color: COLORS.text, fontSize: 16, fontWeight: '800' },
   listClose: { color: COLORS.textMuted, fontSize: 16 },
+  memoryBox: { marginHorizontal: SPACING.md, marginTop: SPACING.sm, padding: SPACING.sm, backgroundColor: COLORS.surface, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.border },
+  memoryLabel: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '700', marginBottom: 6 },
+  memoryInput: { color: COLORS.text, fontSize: 13, minHeight: 70, textAlignVertical: 'top', backgroundColor: COLORS.background, borderRadius: RADIUS.sm, padding: SPACING.sm },
+  memorySave: { alignSelf: 'flex-end', marginTop: 6, backgroundColor: COLORS.primary, borderRadius: RADIUS.full, paddingHorizontal: SPACING.md, paddingVertical: 5 },
+  memorySaveText: { color: '#fff', fontSize: 12, fontWeight: '700' },
   newBtn: { margin: SPACING.md, backgroundColor: COLORS.primary, borderRadius: RADIUS.full, paddingVertical: SPACING.sm, alignItems: 'center' },
   newBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
   convRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACING.md, paddingVertical: SPACING.md, borderTopWidth: 1, borderTopColor: COLORS.border, gap: SPACING.sm },

@@ -67,6 +67,10 @@ interface AppState {
   openImageChat: boolean;
   setOpenImageChat: (v: boolean) => void;
 
+  /** AIアシスタントに常に覚えさせる説明（事業・サービス内容） */
+  assistantMemory: string;
+  setAssistantMemory: (v: string) => void;
+
   /** アカウント1のブランド設定 */
   brandSettings: BrandSettings;
   setBrandSettings: (settings: Partial<BrandSettings>) => void;
@@ -117,6 +121,9 @@ export const useAppStore = create<AppState>((set) => ({
 
   openImageChat: false,
   setOpenImageChat: (v) => set({ openImageChat: v }),
+
+  assistantMemory: '',
+  setAssistantMemory: (v) => set({ assistantMemory: v }),
 
   brandSettings: { ...DEFAULT_BRAND_SETTINGS },
   setBrandSettings: (settings) =>

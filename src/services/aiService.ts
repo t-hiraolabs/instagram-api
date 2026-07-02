@@ -39,6 +39,12 @@ function getBrandContext(): string {
   return parts.length > 0 ? `\n\n【ブランド情報】\n${parts.join('\n')}` : '';
 }
 
+// ユーザーがAIに覚えさせた説明（事業・サービス内容）
+function getMemoryContext(): string {
+  const mem = useAppStore.getState().assistantMemory?.trim();
+  return mem ? `\n\n【覚えておくこと】\n${mem}` : '';
+}
+
 export interface TopPost {
   caption: string;
   likes: number;
@@ -580,7 +586,7 @@ export async function chatWithAssistant(history: ChatTurn[]): Promise<string> {
     '【重要】ユーザーの事業・サービス情報が下記【ブランド情報】として与えられている場合は、それを前提として扱い、' +
     '「どんなサービス／アプリですか？」などと毎回聞き返さないでください。情報が本当に不足している時だけ、要点を1つだけ簡潔に確認します。' +
     '回答は簡潔に、絵文字は控えめに。' +
-    getBrandContext();
+    getBrandContext() + getMemoryContext();
   const msgs = history.map((h) => ({ role: h.role, content: h.content }));
   if (msgs.length === 0 || msgs[msgs.length - 1].role !== 'user') {
     msgs.push({ role: 'user', content: '続けてください。' });
@@ -619,7 +625,7 @@ export async function buildImagePrompts(history: ChatTurn[], count: number): Pro
     '各プロンプトは日本語で1〜2文、被写体・構図・雰囲気・色・スタイルを含めてください。' +
     `出力は文字列の JSON 配列のみ（要素数${count}）。前置き・説明・コードフェンスは書かないでください。` +
     '例: ["プロンプト1", "プロンプト2"]' +
-    getBrandContext();
+    getBrandContext() + getMemoryContext();
   try {
     const res = await axios.post(
       CLAUDE_API_URL,
