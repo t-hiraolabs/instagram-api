@@ -63,6 +63,10 @@ interface AppState {
   loginPromptVisible: boolean;
   setLoginPromptVisible: (visible: boolean) => void;
 
+  /** ホーム等からAI画像生成チャットを開くためのフラグ */
+  openImageChat: boolean;
+  setOpenImageChat: (v: boolean) => void;
+
   /** アカウント1のブランド設定 */
   brandSettings: BrandSettings;
   setBrandSettings: (settings: Partial<BrandSettings>) => void;
@@ -110,6 +114,9 @@ export const useAppStore = create<AppState>((set) => ({
 
   loginPromptVisible: false,
   setLoginPromptVisible: (visible) => set({ loginPromptVisible: visible }),
+
+  openImageChat: false,
+  setOpenImageChat: (v) => set({ openImageChat: v }),
 
   brandSettings: { ...DEFAULT_BRAND_SETTINGS },
   setBrandSettings: (settings) =>

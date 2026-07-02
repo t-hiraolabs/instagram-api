@@ -16,6 +16,7 @@ import { getAiUsage, AiUsage } from '../services/scheduleService';
 
 const QUICK_ACTIONS = [
   { label: '投稿する', emoji: '📸', tab: 'Post', color: COLORS.primary },
+  { label: 'AIで画像を作る', emoji: '🎨', tab: 'Post', imageChat: true, color: COLORS.secondary },
   { label: '予約投稿', emoji: '📅', tab: 'Schedule', color: '#F77737' },
   { label: '設定', emoji: '⚙️', tab: 'Profile', color: '#4FC3F7' },
 ];
@@ -60,7 +61,7 @@ function getBestPostingTime(): { label: string; color: string; description: stri
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
-  const { brandSettings, instagramCredentials: creds1, secondInstagramCredentials: creds2, activeAccountSlot } = useAppStore();
+  const { brandSettings, instagramCredentials: creds1, secondInstagramCredentials: creds2, activeAccountSlot, setOpenImageChat } = useAppStore();
   const instagramCredentials = activeAccountSlot === 2 ? creds2 : creds1;
   const [usage, setUsage] = useState<AiUsage | null>(null);
   useEffect(() => {
@@ -125,7 +126,10 @@ export default function HomeScreen() {
           <TouchableOpacity
             key={action.label}
             style={[styles.actionCard, { borderColor: action.color + '44' }]}
-            onPress={() => navigation.navigate(action.tab)}
+            onPress={() => {
+              if ((action as { imageChat?: boolean }).imageChat) setOpenImageChat(true);
+              navigation.navigate(action.tab);
+            }}
             activeOpacity={0.8}
           >
             <Text style={styles.actionEmoji}>{action.emoji}</Text>

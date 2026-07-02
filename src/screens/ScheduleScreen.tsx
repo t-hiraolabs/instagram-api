@@ -357,6 +357,16 @@ export default function ScheduleScreen() {
   const [locationId, setLocationId] = useState('');
   // AI画像生成（チャット）
   const [imgChatVisible, setImgChatVisible] = useState(false);
+  const openImageChatFlag = useAppStore((s) => s.openImageChat);
+  const setOpenImageChatFlag = useAppStore((s) => s.setOpenImageChat);
+  const imgChatFromHome = useRef(false);
+  useEffect(() => {
+    if (openImageChatFlag) {
+      imgChatFromHome.current = true;
+      setImgChatVisible(true);
+      setOpenImageChatFlag(false);
+    }
+  }, [openImageChatFlag, setOpenImageChatFlag]);
   const [aiInstruction, setAiInstruction] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const [composing, setComposing] = useState(false);
@@ -501,6 +511,7 @@ export default function ScheduleScreen() {
   // 画像生成チャットを開く（作成モーダルは隠してz-index競合を防ぐ）
   const openImgChat = async () => {
     if (!(await ensureLoggedIn('画像生成を使うにはログインが必要です'))) return;
+    imgChatFromHome.current = false;
     setModalVisible(false);
     setImgChatVisible(true);
   };
@@ -1797,7 +1808,7 @@ export default function ScheduleScreen() {
       {/* AI画像生成チャット */}
       <ImageGenChat
         visible={imgChatVisible}
-        onClose={() => { setImgChatVisible(false); setModalVisible(true); }}
+        onClose={() => { setImgChatVisible(false); if (!imgChatFromHome.current) setModalVisible(true); imgChatFromHome.current = false; }}
         onUseImage={handleUseGeneratedImage}
       />
 
