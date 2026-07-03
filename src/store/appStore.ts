@@ -75,6 +75,10 @@ interface AppState {
   chatAutoSend: boolean;
   setChatAutoSend: (v: boolean) => void;
 
+  /** trueの場合、直近の会話を再開せず、必ず新しい会話としてチャットを開く */
+  chatForceNew: boolean;
+  setChatForceNew: (v: boolean) => void;
+
   /** AIアシスタントに常に覚えさせる説明（事業・サービス内容） */
   assistantMemory: string;
   setAssistantMemory: (v: string) => void;
@@ -135,6 +139,9 @@ export const useAppStore = create<AppState>((set) => ({
 
   chatAutoSend: false,
   setChatAutoSend: (v) => set({ chatAutoSend: v }),
+
+  chatForceNew: false,
+  setChatForceNew: (v) => set({ chatForceNew: v }),
 
   assistantMemory: '',
   setAssistantMemory: (v) => set({ assistantMemory: v }),

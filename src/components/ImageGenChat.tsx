@@ -88,6 +88,8 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
   const setChatPrefillText = useAppStore((s) => s.setChatPrefillText);
   const chatAutoSend = useAppStore((s) => s.chatAutoSend);
   const setChatAutoSend = useAppStore((s) => s.setChatAutoSend);
+  const chatForceNew = useAppStore((s) => s.chatForceNew);
+  const setChatForceNew = useAppStore((s) => s.setChatForceNew);
   // convIdの準備ができてから自動送信するために、送るべき文言をここに一時保持する
   const [pendingAutoSend, setPendingAutoSend] = useState<string | null>(null);
 
@@ -96,17 +98,25 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
       refreshUsage();
       const prefill = chatPrefillText;
       const autoSend = chatAutoSend;
+      const forceNew = chatForceNew;
       setChatPrefillText(null);
       setChatAutoSend(false);
+      setChatForceNew(false);
       (async () => {
         const convs = await listConversations();
         setConversations(convs);
-        // 直近の会話を開く。無ければ新規作成
-        const id = convs[0]?.id ?? (await createConversation());
+        // 新規会話を強制する場合はそのまま作成。それ以外は直近の会話を開く（無ければ新規作成）
+        const id = forceNew ? await createConversation() : convs[0]?.id ?? (await createConversation());
         if (id) {
           setConvId(id);
-          if (!convs[0]) setConversations(await listConversations());
-          await openConversation(id);
+          const refreshed = await listConversations();
+          setConversations(refreshed);
+          if (forceNew) {
+            setMessages([]);
+            setListVisible(false);
+          } else {
+            await openConversation(id);
+          }
         }
         // ホームのミニチャットから送信済みの場合は、convIdの準備が整ってから自動送信する
         if (prefill && autoSend) {

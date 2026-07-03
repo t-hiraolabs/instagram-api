@@ -89,7 +89,7 @@ function getBestPostingTime(): { label: string; color: string; description: stri
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
-  const { brandSettings, instagramCredentials: creds1, secondInstagramCredentials: creds2, activeAccountSlot, setOpenImageChat, setChatPrefillText, setChatAutoSend } = useAppStore();
+  const { brandSettings, instagramCredentials: creds1, secondInstagramCredentials: creds2, activeAccountSlot, setOpenImageChat, setChatPrefillText, setChatAutoSend, setChatForceNew } = useAppStore();
   const instagramCredentials = activeAccountSlot === 2 ? creds2 : creds1;
   const [usage, setUsage] = useState<AiUsage | null>(null);
   const bestTime = useMemo(() => getBestPostingTime(), []);
@@ -103,12 +103,14 @@ export default function HomeScreen() {
     setMiniChatText('');
     setChatPrefillText(text);
     setChatAutoSend(true);
+    setChatForceNew(true);
     setOpenImageChat(true);
     navigation.navigate('Post');
   };
 
   const startPostFromIdea = (idea: string) => {
     setChatPrefillText(`「${idea}」について投稿を作りたいです。`);
+    setChatForceNew(true);
     setOpenImageChat(true);
     navigation.navigate('Post');
   };
@@ -118,9 +120,11 @@ export default function HomeScreen() {
     if (key === 'analytics') return navigation.navigate('Analytics');
     if (key === 'story') {
       setChatPrefillText('今日のストーリーを作りたいです。');
+      setChatForceNew(true);
       setOpenImageChat(true);
       return navigation.navigate('Post');
     }
+    setChatForceNew(true);
     setOpenImageChat(true);
     navigation.navigate('Post');
   };
