@@ -586,7 +586,8 @@ function trimHistory(history: ChatTurn[]): ChatTurn[] {
 
 export async function chatWithAssistant(
   fullHistory: ChatTurn[],
-  attachment?: { base64: string; mime: string }
+  attachment?: { base64: string; mime: string },
+  analysisFacts?: string
 ): Promise<string> {
   const history = trimHistory(fullHistory);
   const headers = await getAuthHeaders();
@@ -602,7 +603,11 @@ export async function chatWithAssistant(
   const dynamicContext =
     '【重要】ユーザーの事業・サービス情報が下記【ブランド情報】として与えられている場合は、それを前提として扱い、' +
     '「どんなサービス／アプリですか？」などと毎回聞き返さないでください。情報が本当に不足している時だけ、要点を1つだけ簡潔に確認します。' +
-    getBrandContext() + getMemoryContext();
+    getBrandContext() + getMemoryContext() +
+    (analysisFacts
+      ? '\n\n【分析データ】以下はこのアカウントの投稿実績をプログラム側で集計した事実です。数値の再計算はせず、これをもとに' +
+        '「何が良くて何が悪いか」「具体的な改善方法」を分かりやすく説明してください。\n' + analysisFacts
+      : '');
   const system = [
     { type: 'text', text: staticInstructions, cache_control: { type: 'ephemeral' } },
     { type: 'text', text: dynamicContext },

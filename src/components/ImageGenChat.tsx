@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
 import { chatWithAssistant, planDesign, getChatUsagePercent, ChatTurn } from '../services/aiService';
+import { getAutoAnalysisFacts } from '../services/insightsService';
 import { composeStoryImage } from '../utils/composeStory';
 import { composeFlyerImage } from '../utils/composeFlyer';
 import {
@@ -239,10 +240,22 @@ function ImageGenChat(
     setChatting(true);
     toEnd();
     try {
+      // 「分析して」「インサイト見せて」などは、プログラム側で集計した実データをAIに渡して説明させる
+      let analysisFacts: string | undefined;
+      if (/分析|インサイト|振り返り|保存率|いいね率|エンゲージメント|反応(は|が|の).{0,6}(良|悪|どう)/.test(text)) {
+        const facts = await getAutoAnalysisFacts();
+        if ('text' in facts) {
+          analysisFacts = facts.text;
+        } else {
+          const reason = facts.reason;
+          setMessages((m) => [...m, { role: 'error', text: reason }]);
+        }
+      }
       const reply = await chatWithAssistant(
         next.filter((m): m is { role: 'user' | 'assistant'; text: string } => m.role === 'user' || m.role === 'assistant')
           .map((m) => ({ role: m.role, content: m.text })),
-        attach ? { base64: attach.base64, mime: attach.mime } : undefined
+        attach ? { base64: attach.base64, mime: attach.mime } : undefined,
+        analysisFacts
       );
       setMessages((m) => [...m, { role: 'assistant', text: reply }]);
       if (id) saveMessage(id, 'assistant', reply).catch(() => {});
