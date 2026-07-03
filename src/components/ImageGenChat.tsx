@@ -66,6 +66,7 @@ function ImageGenChat(
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [convId, setConvId] = useState<string | null>(null);
   const [listVisible, setListVisible] = useState(false);
+  const [openActionsId, setOpenActionsId] = useState<string | null>(null);
   useEffect(() => { onMenuVisibleChange?.(listVisible); }, [listVisible]);
   const [pendingImage, setPendingImage] = useState<{ base64: string; mime: string; uri: string } | null>(null);
   // 一度取得した分析データはこの会話の間ずっと使い回す（フォローアップの質問でも参照できるように）
@@ -202,6 +203,17 @@ function ImageGenChat(
       if (convs[0]) await openConversation(convs[0].id);
       else { setConvId(null); setMessages([]); }
     }
+  };
+
+  const renameConversationPrompt = async (c: Conversation) => {
+    setOpenActionsId(null);
+    if (Platform.OS !== 'web') return;
+    const input = window.prompt('会話の名前を変更', c.title || '');
+    if (input === null) return;
+    const title = input.trim();
+    if (!title) return;
+    await renameConversation(c.id, title);
+    setConversations((cs) => cs.map((x) => (x.id === c.id ? { ...x, title } : x)));
   };
 
   const toEnd = () => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
@@ -495,19 +507,40 @@ function ImageGenChat(
                       <Text style={styles.convTitle} numberOfLines={1}>{c.title || '新しい会話'}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      onPress={() => {
-                        const run = () => removeConversation(c.id);
-                        if (Platform.OS === 'web') { if (window.confirm('この会話を削除しますか？')) run(); }
-                        else run();
-                      }}
+                      onPress={() => setOpenActionsId((id) => (id === c.id ? null : c.id))}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
-                      <Text style={styles.convDelete}>🗑</Text>
+                      <Text style={styles.convMore}>⋮</Text>
                     </TouchableOpacity>
+                    {openActionsId === c.id && (
+                      <View style={styles.convActionsMenu}>
+                        <TouchableOpacity style={styles.convActionItem} onPress={() => renameConversationPrompt(c)}>
+                          <Text style={styles.convActionText}>名前の変更</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.convActionItem}
+                          onPress={() => {
+                            setOpenActionsId(null);
+                            const run = () => removeConversation(c.id);
+                            if (Platform.OS === 'web') { if (window.confirm('この会話を削除しますか？')) run(); }
+                            else run();
+                          }}
+                        >
+                          <Text style={[styles.convActionText, styles.convActionDanger]}>削除</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
                   </View>
                 ))}
                 {conversations.length === 0 && <Text style={styles.convEmpty}>会話はまだありません</Text>}
               </ScrollView>
+              {openActionsId && (
+                <TouchableOpacity
+                  style={styles.convActionsBackdrop}
+                  activeOpacity={1}
+                  onPress={() => setOpenActionsId(null)}
+                />
+              )}
             </View>
           </View>
         )}
@@ -537,16 +570,25 @@ const styles = StyleSheet.create({
   menuBtn: { color: COLORS.text, fontSize: 20, fontWeight: '700' },
   listOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, flexDirection: 'row' },
   listBackdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)' },
-  listPanel: { width: '78%', maxWidth: 320, backgroundColor: COLORS.background, borderRightWidth: 1, borderRightColor: COLORS.border, paddingTop: SPACING.lg },
+  listPanel: { width: '78%', maxWidth: 320, backgroundColor: COLORS.background, borderRightWidth: 1, borderRightColor: COLORS.border, paddingTop: SPACING.lg, position: 'relative' },
   listHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: SPACING.md, paddingBottom: SPACING.sm },
   listTitle: { color: COLORS.text, fontSize: 16, fontWeight: '800' },
   usageText: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600', paddingHorizontal: SPACING.md, marginBottom: SPACING.sm },
   newBtn: { margin: SPACING.md, backgroundColor: COLORS.primary, borderRadius: RADIUS.full, paddingVertical: SPACING.sm, alignItems: 'center' },
   newBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
-  convRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACING.md, paddingVertical: SPACING.md, borderTopWidth: 1, borderTopColor: COLORS.border, gap: SPACING.sm },
+  convRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACING.md, paddingVertical: SPACING.md, borderTopWidth: 1, borderTopColor: COLORS.border, gap: SPACING.sm, position: 'relative' },
   convRowActive: { backgroundColor: COLORS.surface },
   convTitle: { color: COLORS.text, fontSize: 14 },
-  convDelete: { fontSize: 15 },
+  convMore: { fontSize: 18, color: COLORS.textMuted, fontWeight: '700', paddingHorizontal: 4 },
+  convActionsBackdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
+  convActionsMenu: {
+    position: 'absolute', right: SPACING.md, top: '100%', zIndex: 10,
+    backgroundColor: COLORS.surfaceElevated, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.border,
+    paddingVertical: 4, minWidth: 140, elevation: 4, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 6, shadowOffset: { width: 0, height: 2 },
+  },
+  convActionItem: { paddingVertical: 10, paddingHorizontal: SPACING.md },
+  convActionText: { color: COLORS.text, fontSize: 14, fontWeight: '600' },
+  convActionDanger: { color: COLORS.error },
   convEmpty: { color: COLORS.textMuted, fontSize: 13, textAlign: 'center', marginTop: SPACING.xl },
   empty: { alignItems: 'center', marginTop: SPACING.xxl, paddingHorizontal: SPACING.lg },
   emptyIcon: { fontSize: 40, marginBottom: SPACING.md },
