@@ -85,6 +85,36 @@ function ImageGenChat(
     }
   };
 
+  // アカウント切り替え（チャットもアカウントごとに保存・表示する）
+  const instagramCredentials = useAppStore((s) => s.instagramCredentials);
+  const secondInstagramCredentials = useAppStore((s) => s.secondInstagramCredentials);
+  const activeAccountSlot = useAppStore((s) => s.activeAccountSlot);
+  const setActiveAccountSlot = useAppStore((s) => s.setActiveAccountSlot);
+  const accountSlotRef = useRef(activeAccountSlot);
+
+  const reloadForAccount = async () => {
+    await cleanupIfEmpty(convIdRef.current);
+    setConvId(null);
+    setMessages([]);
+    setOpenActionsId(null);
+    const convs = await purgeEmptyConversations(await listConversations());
+    setConversations(convs);
+    if (convs[0]) await openConversation(convs[0].id);
+  };
+
+  const switchAccount = async (slot: 1 | 2) => {
+    if (slot === activeAccountSlot) return;
+    setActiveAccountSlot(slot);
+  };
+
+  // activeAccountSlotが変わったら（他画面からの切替も含めて）そのアカウントの会話に切り替える
+  useEffect(() => {
+    if (accountSlotRef.current === activeAccountSlot) return;
+    accountSlotRef.current = activeAccountSlot;
+    reloadForAccount().catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeAccountSlot]);
+
   // 過去に空のまま保存された会話（このアプリでは今後作られなくなる）を掃除する
   const purgeEmptyConversations = async (convs: Conversation[]): Promise<Conversation[]> => {
     const kept: Conversation[] = [];
@@ -492,6 +522,33 @@ function ImageGenChat(
               <View style={styles.listHeader}>
                 <Text style={styles.listTitle}>会話</Text>
               </View>
+              {(instagramCredentials || secondInstagramCredentials) && (
+                <View style={styles.accountSwitchRow}>
+                  {([
+                    { slot: 1 as const, creds: instagramCredentials },
+                    { slot: 2 as const, creds: secondInstagramCredentials },
+                  ]).filter((a) => a.creds).map((a) => (
+                    <TouchableOpacity
+                      key={a.slot}
+                      style={[styles.accountChip, a.slot === activeAccountSlot && styles.accountChipActive]}
+                      onPress={() => switchAccount(a.slot)}
+                      activeOpacity={0.8}
+                    >
+                      {a.creds!.profilePictureUrl ? (
+                        <Image source={{ uri: a.creds!.profilePictureUrl }} style={styles.accountChipImg} />
+                      ) : (
+                        <View style={styles.accountChipImgPlaceholder} />
+                      )}
+                      <Text
+                        style={[styles.accountChipText, a.slot === activeAccountSlot && styles.accountChipTextActive]}
+                        numberOfLines={1}
+                      >
+                        @{a.creds!.username ?? `アカウント${a.slot}`}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
               {chatRemainPct != null && (
                 <Text style={styles.usageText}>会話の利用量　残り{chatRemainPct}%</Text>
               )}
@@ -583,6 +640,17 @@ const styles = StyleSheet.create({
   listHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: SPACING.md, paddingBottom: SPACING.sm },
   listTitle: { color: COLORS.text, fontSize: 16, fontWeight: '800' },
   usageText: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600', paddingHorizontal: SPACING.md, marginBottom: SPACING.sm },
+  accountSwitchRow: { flexDirection: 'row', gap: SPACING.sm, paddingHorizontal: SPACING.md, marginBottom: SPACING.sm },
+  accountChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1,
+    borderWidth: 1.5, borderColor: COLORS.border, borderRadius: RADIUS.full,
+    paddingVertical: 6, paddingHorizontal: 10, backgroundColor: COLORS.surface,
+  },
+  accountChipActive: { borderColor: COLORS.primary, backgroundColor: COLORS.primary + '15' },
+  accountChipImg: { width: 20, height: 20, borderRadius: 10 },
+  accountChipImgPlaceholder: { width: 20, height: 20, borderRadius: 10, backgroundColor: COLORS.border },
+  accountChipText: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600', flexShrink: 1 },
+  accountChipTextActive: { color: COLORS.primary },
   newBtn: { margin: SPACING.md, backgroundColor: COLORS.primary, borderRadius: RADIUS.full, paddingVertical: SPACING.sm, alignItems: 'center' },
   newBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
   convRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACING.md, paddingVertical: SPACING.md, borderTopWidth: 1, borderTopColor: COLORS.border, gap: SPACING.sm, position: 'relative' },
