@@ -39,6 +39,33 @@ function getGreeting(): string {
   return 'こんばんは 🌆';
 }
 
+// 業種を問わず使える、季節・曜日で回転するおすすめネタ（AIを呼ばず無料で出せるもの）
+const IDEA_POOL = [
+  '新作・季節限定メニューの紹介',
+  'お客様の声・ビフォーアフター',
+  '期間限定キャンペーンの告知',
+  'スタッフ紹介・お店の裏側',
+  '本日のおすすめ・入荷情報',
+  'よくある質問に答える投稿',
+  'リピーター向けの感謝メッセージ',
+];
+
+function getTodaysIdeas(): string[] {
+  const dayOfYear = Math.floor(
+    (Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / 86400000
+  );
+  return [0, 1, 2].map((i) => IDEA_POOL[(dayOfYear + i) % IDEA_POOL.length]);
+}
+
+function getTodoItems(hasInsightAlert: boolean): { key: string; label: string; done: boolean }[] {
+  return [
+    { key: 'post', label: '投稿する', done: false },
+    { key: 'story', label: 'ストーリーを更新する', done: false },
+    { key: 'dm', label: 'DMを確認する', done: false },
+    { key: 'analytics', label: hasInsightAlert ? '分析を確認する（要チェック）' : '分析を確認する', done: false },
+  ];
+}
+
 function getBestPostingTime(): { label: string; color: string; description: string } {
   const now = new Date();
   const h = now.getHours();
@@ -61,9 +88,31 @@ function getBestPostingTime(): { label: string; color: string; description: stri
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
-  const { brandSettings, instagramCredentials: creds1, secondInstagramCredentials: creds2, activeAccountSlot, setOpenImageChat } = useAppStore();
+  const { brandSettings, instagramCredentials: creds1, secondInstagramCredentials: creds2, activeAccountSlot, setOpenImageChat, setChatPrefillText } = useAppStore();
   const instagramCredentials = activeAccountSlot === 2 ? creds2 : creds1;
   const [usage, setUsage] = useState<AiUsage | null>(null);
+  const bestTime = useMemo(() => getBestPostingTime(), []);
+  const todaysIdeas = useMemo(() => getTodaysIdeas(), []);
+  const todoItems = useMemo(() => getTodoItems(false), []);
+
+  const startPostFromIdea = (idea: string) => {
+    setChatPrefillText(`「${idea}」について投稿を作りたいです。`);
+    setOpenImageChat(true);
+    navigation.navigate('Post');
+  };
+
+  const goTodo = (key: string) => {
+    if (key === 'dm') return navigation.navigate('DM');
+    if (key === 'analytics') return navigation.navigate('Analytics');
+    if (key === 'story') {
+      setChatPrefillText('今日のストーリーを作りたいです。');
+      setOpenImageChat(true);
+      return navigation.navigate('Post');
+    }
+    setOpenImageChat(true);
+    navigation.navigate('Post');
+  };
+
   useEffect(() => {
     getAiUsage().then(setUsage).catch(() => {});
   }, []);
@@ -98,6 +147,43 @@ export default function HomeScreen() {
             )}
           </View>
         </View>
+      </View>
+
+      {/* 今日のブリーフィング */}
+      <View style={styles.briefCard}>
+        <Text style={styles.briefGreeting}>{getGreeting()}</Text>
+        <Text style={styles.briefMain}>{bestTime.description}</Text>
+        <View style={styles.briefTimeRow}>
+          <View style={[styles.briefTimeDot, { backgroundColor: bestTime.color }]} />
+          <Text style={[styles.briefTimeLabel, { color: bestTime.color }]}>{bestTime.label}</Text>
+        </View>
+      </View>
+
+      {/* おすすめ投稿ネタ */}
+      <Text style={styles.sectionTitle}>今日のおすすめ投稿ネタ</Text>
+      <View style={styles.ideaRow}>
+        {todaysIdeas.map((idea) => (
+          <TouchableOpacity key={idea} style={styles.ideaChip} onPress={() => startPostFromIdea(idea)} activeOpacity={0.8}>
+            <Text style={styles.ideaChipText}>{idea}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* 今日のTODO */}
+      <Text style={styles.sectionTitle}>今日のTODO</Text>
+      <View style={styles.todoCard}>
+        {todoItems.map((item, i) => (
+          <TouchableOpacity
+            key={item.key}
+            style={[styles.todoRow, i < todoItems.length - 1 && styles.todoRowBorder]}
+            onPress={() => goTodo(item.key)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.todoCheckbox}>☐</Text>
+            <Text style={styles.todoLabel}>{item.label}</Text>
+            <Text style={styles.todoArrow}>›</Text>
+          </TouchableOpacity>
+        ))}
       </View>
 
       {/* Stats */}
@@ -248,6 +334,96 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 12,
     fontWeight: '700',
+  },
+  briefCard: {
+    backgroundColor: COLORS.primary,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.lg,
+    marginBottom: SPACING.lg,
+    gap: 6,
+  },
+  briefGreeting: {
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  briefMain: {
+    color: '#fff',
+    fontSize: 17,
+    fontWeight: '800',
+    lineHeight: 24,
+  },
+  briefTimeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 4,
+  },
+  briefTimeDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  briefTimeLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: RADIUS.full,
+    overflow: 'hidden',
+  },
+  ideaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+    marginBottom: SPACING.xl,
+  },
+  ideaChip: {
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  ideaChipText: {
+    color: COLORS.text,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  todoCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.md,
+    marginBottom: SPACING.xl,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    overflow: 'hidden',
+  },
+  todoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    gap: SPACING.sm,
+  },
+  todoRowBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  todoCheckbox: {
+    fontSize: 16,
+    color: COLORS.textMuted,
+  },
+  todoLabel: {
+    flex: 1,
+    color: COLORS.text,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  todoArrow: {
+    color: COLORS.textMuted,
+    fontSize: 18,
   },
   statsRow: {
     flexDirection: 'row',

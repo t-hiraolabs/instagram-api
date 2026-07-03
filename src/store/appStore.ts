@@ -67,6 +67,10 @@ interface AppState {
   openImageChat: boolean;
   setOpenImageChat: (v: boolean) => void;
 
+  /** ホームのおすすめから開くとき、チャット入力欄に最初から入れておく文言 */
+  chatPrefillText: string | null;
+  setChatPrefillText: (v: string | null) => void;
+
   /** AIアシスタントに常に覚えさせる説明（事業・サービス内容） */
   assistantMemory: string;
   setAssistantMemory: (v: string) => void;
@@ -121,6 +125,9 @@ export const useAppStore = create<AppState>((set) => ({
 
   openImageChat: false,
   setOpenImageChat: (v) => set({ openImageChat: v }),
+
+  chatPrefillText: null,
+  setChatPrefillText: (v) => set({ chatPrefillText: v }),
 
   assistantMemory: '',
   setAssistantMemory: (v) => set({ assistantMemory: v }),

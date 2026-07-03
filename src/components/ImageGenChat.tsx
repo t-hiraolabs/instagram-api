@@ -84,6 +84,9 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
     getChatUsagePercent().then((c) => setChatRemainPct(c.remainingPct)).catch(() => {});
   };
 
+  const chatPrefillText = useAppStore((s) => s.chatPrefillText);
+  const setChatPrefillText = useAppStore((s) => s.setChatPrefillText);
+
   useEffect(() => {
     if (visible) {
       refreshUsage();
@@ -98,6 +101,11 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
           await openConversation(id);
         }
       })().catch(() => {});
+      // ホームのおすすめから開いた場合は、その文言を入力欄に入れておく
+      if (chatPrefillText) {
+        setInput(chatPrefillText);
+        setChatPrefillText(null);
+      }
     }
   }, [visible]);
 
