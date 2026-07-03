@@ -577,10 +577,18 @@ export async function getChatUsagePercent(): Promise<{ usedPct: number; remainin
  * アシスタントとの会話（画像の相談・分析など）。回数消費なし（chat:true）。
  * 画像を生成したいときのために、会話から画像プロンプトを作る補助にも使える。
  */
+// 相談は3〜10往復程度で完結する設計なので、直近分だけ送ってトークンを節約する
+// （古いやり取りは会話全体の結論に大きく影響しないため）。
+const MAX_HISTORY_TURNS = 16; // ユーザー・assistant発言の合計件数（≒8往復）
+function trimHistory(history: ChatTurn[]): ChatTurn[] {
+  return history.length > MAX_HISTORY_TURNS ? history.slice(-MAX_HISTORY_TURNS) : history;
+}
+
 export async function chatWithAssistant(
-  history: ChatTurn[],
+  fullHistory: ChatTurn[],
   attachment?: { base64: string; mime: string }
 ): Promise<string> {
+  const history = trimHistory(fullHistory);
   const headers = await getAuthHeaders();
   // 固定の指示文はキャッシュして毎回のトークン課金を抑える（cache_control）。
   // ブランド情報・記憶は都度変わりうるので別ブロックにして非キャッシュのまま送る。
@@ -643,7 +651,8 @@ export interface ImagePlan { ready: boolean; question?: string; options?: string
  * 会話から画像生成の準備をする。情報が足りていれば count 枚ぶんのプロンプトを返し、
  * 足りなければ ready:false と1つの確認質問を返す。
  */
-export async function planImageGeneration(history: ChatTurn[], count: number): Promise<ImagePlan> {
+export async function planImageGeneration(fullHistory: ChatTurn[], count: number): Promise<ImagePlan> {
+  const history = trimHistory(fullHistory);
   const headers = await getAuthHeaders();
   const msgs = history.map((h) => ({ role: h.role, content: h.content }));
   if (msgs.length === 0 || msgs[msgs.length - 1].role !== 'user') {
