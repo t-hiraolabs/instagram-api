@@ -86,10 +86,18 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
 
   const chatPrefillText = useAppStore((s) => s.chatPrefillText);
   const setChatPrefillText = useAppStore((s) => s.setChatPrefillText);
+  const chatAutoSend = useAppStore((s) => s.chatAutoSend);
+  const setChatAutoSend = useAppStore((s) => s.setChatAutoSend);
+  // convIdの準備ができてから自動送信するために、送るべき文言をここに一時保持する
+  const [pendingAutoSend, setPendingAutoSend] = useState<string | null>(null);
 
   useEffect(() => {
     if (visible) {
       refreshUsage();
+      const prefill = chatPrefillText;
+      const autoSend = chatAutoSend;
+      setChatPrefillText(null);
+      setChatAutoSend(false);
       (async () => {
         const convs = await listConversations();
         setConversations(convs);
@@ -100,14 +108,23 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
           if (!convs[0]) setConversations(await listConversations());
           await openConversation(id);
         }
+        // ホームのミニチャットから送信済みの場合は、convIdの準備が整ってから自動送信する
+        if (prefill && autoSend) {
+          setPendingAutoSend(prefill);
+        } else if (prefill) {
+          setInput(prefill);
+        }
       })().catch(() => {});
-      // ホームのおすすめから開いた場合は、その文言を入力欄に入れておく
-      if (chatPrefillText) {
-        setInput(chatPrefillText);
-        setChatPrefillText(null);
-      }
     }
   }, [visible]);
+
+  useEffect(() => {
+    if (pendingAutoSend && convId) {
+      const text = pendingAutoSend;
+      setPendingAutoSend(null);
+      send(text);
+    }
+  }, [pendingAutoSend, convId]);
 
   const openConversation = async (id: string) => {
     setConvId(id);

@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   Image,
+  TextInput,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -88,12 +89,23 @@ function getBestPostingTime(): { label: string; color: string; description: stri
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
-  const { brandSettings, instagramCredentials: creds1, secondInstagramCredentials: creds2, activeAccountSlot, setOpenImageChat, setChatPrefillText } = useAppStore();
+  const { brandSettings, instagramCredentials: creds1, secondInstagramCredentials: creds2, activeAccountSlot, setOpenImageChat, setChatPrefillText, setChatAutoSend } = useAppStore();
   const instagramCredentials = activeAccountSlot === 2 ? creds2 : creds1;
   const [usage, setUsage] = useState<AiUsage | null>(null);
   const bestTime = useMemo(() => getBestPostingTime(), []);
   const todaysIdeas = useMemo(() => getTodaysIdeas(), []);
   const todoItems = useMemo(() => getTodoItems(false), []);
+  const [miniChatText, setMiniChatText] = useState('');
+
+  const sendMiniChat = () => {
+    const text = miniChatText.trim();
+    if (!text) return;
+    setMiniChatText('');
+    setChatPrefillText(text);
+    setChatAutoSend(true);
+    setOpenImageChat(true);
+    navigation.navigate('Post');
+  };
 
   const startPostFromIdea = (idea: string) => {
     setChatPrefillText(`「${idea}」について投稿を作りたいです。`);
@@ -147,6 +159,26 @@ export default function HomeScreen() {
             )}
           </View>
         </View>
+      </View>
+
+      {/* ミニチャット */}
+      <View style={styles.miniChatRow}>
+        <TextInput
+          style={styles.miniChatInput}
+          placeholder="今日は何を投稿すればいい？"
+          placeholderTextColor={COLORS.textMuted}
+          value={miniChatText}
+          onChangeText={setMiniChatText}
+          onSubmitEditing={sendMiniChat}
+          returnKeyType="send"
+        />
+        <TouchableOpacity
+          style={[styles.miniChatSend, !miniChatText.trim() && styles.miniChatSendDisabled]}
+          onPress={sendMiniChat}
+          disabled={!miniChatText.trim()}
+        >
+          <Text style={styles.miniChatSendText}>➤</Text>
+        </TouchableOpacity>
       </View>
 
       {/* 今日のブリーフィング */}
@@ -333,6 +365,39 @@ const styles = StyleSheet.create({
   postNowBtnText: {
     color: '#fff',
     fontSize: 12,
+    fontWeight: '700',
+  },
+  miniChatRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginBottom: SPACING.md,
+  },
+  miniChatInput: {
+    flex: 1,
+    backgroundColor: COLORS.surface,
+    color: COLORS.text,
+    borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: 12,
+    fontSize: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  miniChatSend: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  miniChatSendDisabled: {
+    opacity: 0.4,
+  },
+  miniChatSendText: {
+    color: '#fff',
+    fontSize: 16,
     fontWeight: '700',
   },
   briefCard: {

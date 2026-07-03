@@ -71,6 +71,10 @@ interface AppState {
   chatPrefillText: string | null;
   setChatPrefillText: (v: string | null) => void;
 
+  /** trueの場合、chatPrefillTextを入力欄に入れるだけでなく、開いた直後に自動送信する */
+  chatAutoSend: boolean;
+  setChatAutoSend: (v: boolean) => void;
+
   /** AIアシスタントに常に覚えさせる説明（事業・サービス内容） */
   assistantMemory: string;
   setAssistantMemory: (v: string) => void;
@@ -128,6 +132,9 @@ export const useAppStore = create<AppState>((set) => ({
 
   chatPrefillText: null,
   setChatPrefillText: (v) => set({ chatPrefillText: v }),
+
+  chatAutoSend: false,
+  setChatAutoSend: (v) => set({ chatAutoSend: v }),
 
   assistantMemory: '',
   setAssistantMemory: (v) => set({ assistantMemory: v }),
