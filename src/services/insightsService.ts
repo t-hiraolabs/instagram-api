@@ -152,10 +152,15 @@ export async function getAutoAnalysisFacts(): Promise<AnalysisFacts> {
   const bottom = [...media].sort((a, b) => engagement(a) - engagement(b))[0];
 
   const lines: string[] = [];
+  const p = insights.profile;
+  lines.push(
+    `アカウント: @${p.username ?? '不明'}（${p.account_type ?? '種別不明'}）` +
+      ` / フォロワー${p.followers_count}人・フォロー${p.follows_count ?? '不明'}人・投稿数${p.media_count ?? '不明'}件`
+  );
   lines.push(`分析対象: 直近${media.length}投稿`);
   lines.push(`平均いいね: ${insights.summary.avg_likes} / 平均コメント: ${insights.summary.avg_comments}`);
   if (insights.summary.engagement_rate != null) {
-    lines.push(`エンゲージメント率: ${insights.summary.engagement_rate}%（フォロワー数: ${insights.profile.followers_count}）`);
+    lines.push(`エンゲージメント率: ${insights.summary.engagement_rate}%（フォロワー数: ${p.followers_count}）`);
   }
   if (trendPct != null) {
     lines.push(`直近${recent.length}投稿の平均反応(いいね+コメント)は、その前の${older.length}投稿と比べて${trendPct > 0 ? '+' : ''}${trendPct}%`);
