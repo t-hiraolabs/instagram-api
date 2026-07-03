@@ -160,8 +160,8 @@ export async function getAutoAnalysisFacts(): Promise<AnalysisFacts> {
     `アカウント: @${p.username ?? '不明'}（${p.account_type ?? '種別不明'}）` +
       ` / フォロワー${p.followers_count}人・フォロー${p.follows_count ?? '不明'}人・投稿数${p.media_count ?? '不明'}件`
   );
-  if (p.biography) lines.push(`自己紹介文: ${p.biography}`);
-  if (p.website) lines.push(`プロフィールのリンク: ${p.website}`);
+  lines.push(`自己紹介文: ${p.biography ? p.biography : '（未設定）'}`);
+  lines.push(`プロフィールのリンク: ${p.website ? p.website : '（未設定）'}`);
   lines.push(`分析対象: 直近${media.length}投稿`);
   lines.push(`平均いいね: ${insights.summary.avg_likes} / 平均コメント: ${insights.summary.avg_comments}`);
   if (insights.summary.engagement_rate != null) {
