@@ -1,7 +1,7 @@
 // AIアシスタントの会話（複数スレッド）を保存・復元する
 import { supabase } from './supabaseClient';
 
-export type ChatRole = 'user' | 'assistant' | 'image';
+export type ChatRole = 'user' | 'assistant' | 'image' | 'user_image';
 export interface StoredChatMessage { role: ChatRole; content: string; }
 export interface Conversation { id: string; title: string; updated_at: string; }
 
