@@ -32,7 +32,7 @@ interface Props {
 
 type Msg =
   | { role: 'user'; text: string }
-  | { role: 'assistant'; text: string }
+  | { role: 'assistant'; text: string; options?: string[] }
   | { role: 'image'; uri: string }
   | { role: 'user_image'; uri: string }
   | { role: 'error'; text: string };
@@ -136,8 +136,8 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
       .filter((m): m is { role: 'user' | 'assistant'; text: string } => m.role === 'user' || m.role === 'assistant')
       .map((m) => ({ role: m.role, content: m.text }));
 
-  const send = async () => {
-    const text = input.trim();
+  const send = async (overrideText?: string) => {
+    const text = (overrideText ?? input).trim();
     const attach = pendingImage;
     if ((!text && !attach) || chatting) return;
     setInput('');
@@ -194,6 +194,12 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
     setOptVisible(true);
   };
 
+  const answerOption = async (opt: string) => {
+    if (chatting || generating) return;
+    await send(opt);
+    await generate();
+  };
+
   const generate = async () => {
     if (generating) return;
     setOptVisible(false);
@@ -206,7 +212,7 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
       // 情報が足りない場合は生成せず質問する
       if (!plan.ready || !plan.prompts || plan.prompts.length === 0) {
         const q = plan.question ?? 'どんな画像にしたいか、もう少し教えてください（用途・雰囲気・入れたい要素など）。';
-        setMessages((m) => [...m, { role: 'assistant', text: q }]);
+        setMessages((m) => [...m, { role: 'assistant', text: q, options: plan.options }]);
         if (convId) saveMessage(convId, 'assistant', q).catch(() => {});
         getChatUsagePercent().then((c) => setChatRemainPct(c.remainingPct)).catch(() => {});
         return;
@@ -273,7 +279,26 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
               <View key={i} style={styles.userRow}><View style={styles.userBubble}><Text style={styles.userText}>{m.text}</Text></View></View>
             );
             if (m.role === 'assistant') return (
-              <View key={i} style={styles.aiRow}><View style={styles.aiBubble}><Text style={styles.aiText}>{m.text}</Text></View></View>
+              <View key={i} style={styles.aiRow}>
+                <View style={styles.aiBubble}>
+                  <Text style={styles.aiText}>{m.text}</Text>
+                  {!!m.options?.length && i === messages.length - 1 && (
+                    <View style={styles.optionsWrap}>
+                      {m.options.map((opt, oi) => (
+                        <TouchableOpacity
+                          key={oi}
+                          style={styles.optionChip}
+                          onPress={() => answerOption(opt)}
+                          disabled={chatting || generating}
+                          activeOpacity={0.85}
+                        >
+                          <Text style={styles.optionChipText}>{opt}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              </View>
             );
             if (m.role === 'error') return (
               <View key={i} style={styles.aiRow}><View style={styles.errorBubble}><Text style={styles.errorText}>{m.text}</Text></View></View>
@@ -367,11 +392,11 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
             onChangeText={setInput}
             placeholder="相談・指示を入力..."
             placeholderTextColor={COLORS.textMuted}
-            onSubmitEditing={send}
+            onSubmitEditing={() => send()}
             returnKeyType="send"
             editable={!chatting}
           />
-          <TouchableOpacity style={[styles.sendBtn, (chatting || (!input.trim() && !pendingImage)) && styles.sendBtnDisabled]} onPress={send} disabled={chatting || (!input.trim() && !pendingImage)}>
+          <TouchableOpacity style={[styles.sendBtn, (chatting || (!input.trim() && !pendingImage)) && styles.sendBtnDisabled]} onPress={() => send()} disabled={chatting || (!input.trim() && !pendingImage)}>
             <Text style={styles.sendBtnText}>送信</Text>
           </TouchableOpacity>
         </View>
@@ -484,6 +509,9 @@ const styles = StyleSheet.create({
   aiRow: { alignItems: 'flex-start', marginBottom: SPACING.md },
   aiBubble: { backgroundColor: COLORS.surface, borderRadius: RADIUS.lg, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, maxWidth: '90%', borderWidth: 1, borderColor: COLORS.border },
   aiText: { color: COLORS.text, fontSize: 14, lineHeight: 21 },
+  optionsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs, marginTop: SPACING.sm },
+  optionChip: { borderWidth: 1, borderColor: COLORS.primaryLight, borderRadius: RADIUS.lg, paddingHorizontal: SPACING.sm, paddingVertical: 6, backgroundColor: COLORS.background },
+  optionChipText: { color: COLORS.primaryLight, fontSize: 13, fontWeight: '600' },
   imageBubble: { backgroundColor: COLORS.surface, borderRadius: RADIUS.lg, padding: SPACING.sm, maxWidth: '85%', borderWidth: 1, borderColor: COLORS.border },
   genImage: { width: 240, height: 240, borderRadius: RADIUS.md, marginBottom: SPACING.sm },
   useBtn: { backgroundColor: COLORS.primary, borderRadius: RADIUS.full, paddingVertical: SPACING.sm, alignItems: 'center' },

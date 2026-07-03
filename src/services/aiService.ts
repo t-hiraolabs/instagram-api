@@ -629,7 +629,7 @@ const IG_CONTEXT =
   '「ストーリー」はInstagramのストーリー投稿（縦長9:16）、「リール」はInstagram Reelsを指します。' +
   'したがって「ストーリーを作って」は物語ではなく、Instagramストーリー用の画像を意味します。';
 
-export interface ImagePlan { ready: boolean; question?: string; prompts?: string[]; }
+export interface ImagePlan { ready: boolean; question?: string; options?: string[]; prompts?: string[]; }
 
 /**
  * 会話から画像生成の準備をする。情報が足りていれば count 枚ぶんのプロンプトを返し、
@@ -648,9 +648,10 @@ export async function planImageGeneration(history: ChatTurn[], count: number): P
     (count > 1
       ? '複数枚の場合は、各画像が場面や切り口の異なる一連の流れ（例：ストーリーの複数ページ）になるようにします。単なる複製にしないでください。'
       : '') +
+    '質問する場合は自由記述ではなく選択肢形式にしてください。' +
     '\n出力は次のJSONのみ（前置き・説明・コードフェンス禁止）:' +
     '\n- 情報が十分: {"ready": true, "prompts": ["プロンプト1", ...]}（要素数' + count + '、各1〜2文・被写体/構図/雰囲気/色/スタイルを含む）' +
-    '\n- 情報が不足: {"ready": false, "question": "確認したいことを1つだけ簡潔に"}' +
+    '\n- 情報が不足: {"ready": false, "question": "確認したいことを1つだけ簡潔に", "options": ["選択肢1", "選択肢2", "選択肢3"]}（optionsは2〜4個、短い言葉で）' +
     getBrandContext() + getMemoryContext();
   try {
     const res = await axios.post(
@@ -663,7 +664,12 @@ export async function planImageGeneration(history: ChatTurn[], count: number): P
     if (m) {
       try {
         const obj = JSON.parse(m[0]);
-        if (obj.ready === false && obj.question) return { ready: false, question: String(obj.question) };
+        if (obj.ready === false && obj.question) {
+          const options = Array.isArray(obj.options)
+            ? obj.options.map((s: unknown) => String(s)).filter(Boolean)
+            : undefined;
+          return { ready: false, question: String(obj.question), options: options && options.length > 0 ? options : undefined };
+        }
         if (Array.isArray(obj.prompts) && obj.prompts.length > 0) {
           let prompts = obj.prompts.map((s: unknown) => String(s));
           while (prompts.length < count) prompts.push(prompts[prompts.length - 1]);
