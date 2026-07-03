@@ -27,8 +27,12 @@ import * as ImagePicker from 'expo-image-picker';
 
 interface Props {
   visible: boolean;
-  onClose: () => void;
+  onClose?: () => void;
   onUseImage: (dataUrl: string) => void;
+  /** trueの場合、Modalで包まずその場に埋め込む（ホーム画面のインラインチャット用） */
+  embedded?: boolean;
+  /** embedded時、ホームのブリーフィング表示に戻るためのコールバック */
+  onBack?: () => void;
 }
 
 type Msg =
@@ -38,7 +42,7 @@ type Msg =
   | { role: 'user_image'; uri: string }
   | { role: 'error'; text: string };
 
-export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
+export default function ImageGenChat({ visible, onClose, onUseImage, embedded, onBack }: Props) {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState('');
   const [chatting, setChatting] = useState(false);
@@ -286,13 +290,18 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
     await runDesign(stored);
   };
 
-  return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+  if (embedded && !visible) return null;
+
+  const content = (
       <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.header}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md }}>
-            <TouchableOpacity onPress={onClose}><Text style={styles.cancel}>閉じる</Text></TouchableOpacity>
             <TouchableOpacity onPress={() => setListVisible(true)}><Text style={styles.menuBtn}>☰</Text></TouchableOpacity>
+            {embedded && onBack ? (
+              <TouchableOpacity onPress={onBack}><Text style={styles.cancel}>‹ ホーム</Text></TouchableOpacity>
+            ) : !embedded ? (
+              <TouchableOpacity onPress={onClose}><Text style={styles.cancel}>閉じる</Text></TouchableOpacity>
+            ) : null}
           </View>
           <View style={{ alignItems: 'flex-end' }}>
             <Text style={styles.remain}>{chatRemainPct == null ? '' : `会話 残り${chatRemainPct}%`}</Text>
@@ -466,6 +475,13 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
           </View>
         )}
       </KeyboardAvoidingView>
+  );
+
+  if (embedded) return content;
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      {content}
     </Modal>
   );
 }

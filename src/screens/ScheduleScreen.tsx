@@ -367,6 +367,17 @@ export default function ScheduleScreen() {
       setOpenImageChatFlag(false);
     }
   }, [openImageChatFlag, setOpenImageChatFlag]);
+
+  // ホームのインラインチャットで「この画像で投稿を作る」を押したときの受け取り
+  const pendingUseImage = useAppStore((s) => s.pendingUseImage);
+  const setPendingUseImage = useAppStore((s) => s.setPendingUseImage);
+  useEffect(() => {
+    if (pendingUseImage) {
+      handleUseGeneratedImage(pendingUseImage);
+      setPendingUseImage(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingUseImage]);
   const [aiInstruction, setAiInstruction] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const [composing, setComposing] = useState(false);

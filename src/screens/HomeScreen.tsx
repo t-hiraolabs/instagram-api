@@ -14,6 +14,7 @@ import { useNavigation } from '@react-navigation/native';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
 import { useAppStore } from '../store/appStore';
 import AccountBadge from '../components/AccountBadge';
+import ImageGenChat from '../components/ImageGenChat';
 
 const QUICK_ACTIONS = [
   { label: '投稿', emoji: '📸', tab: 'Post' },
@@ -79,18 +80,19 @@ function getBestPostingTime(): { label: string; color: string; description: stri
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
-  const { brandSettings, setOpenImageChat, setChatPrefillText, setChatAutoSend, setChatForceNew } = useAppStore();
+  const { brandSettings, setChatPrefillText, setChatAutoSend, setChatForceNew, setPendingUseImage } = useAppStore();
   const bestTime = useMemo(() => getBestPostingTime(), []);
   const todaysIdeas = useMemo(() => getTodaysIdeas(), []);
   const todoItems = useMemo(() => getTodoItems(), []);
   const [miniChatText, setMiniChatText] = useState('');
+  // trueになったら、ホーム画面そのものをチャット表示に切り替える（画面遷移しない）
+  const [chatActive, setChatActive] = useState(false);
 
   const openChat = (text: string) => {
     setChatPrefillText(text);
     setChatAutoSend(true);
     setChatForceNew(true);
-    setOpenImageChat(true);
-    navigation.navigate('Post');
+    setChatActive(true);
   };
 
   const sendMiniChat = () => {
@@ -106,6 +108,20 @@ export default function HomeScreen() {
     if (key === 'story') return openChat('今日のストーリーを作りたいです。');
     return openChat('今日の投稿を作りたいです。');
   };
+
+  const handleUseImage = (dataUrl: string) => {
+    setPendingUseImage(dataUrl);
+    navigation.navigate('Post');
+  };
+
+  if (chatActive) {
+    return (
+      <View style={{ flex: 1, paddingTop: insets.top }}>
+        <ImageGenChat visible embedded onUseImage={handleUseImage} onBack={() => setChatActive(false)} />
+        <AccountBadge hideBadge />
+      </View>
+    );
+  }
 
   return (
     <KeyboardAvoidingView
@@ -191,7 +207,7 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        <AccountBadge />
+        <AccountBadge hideBadge />
       </View>
     </KeyboardAvoidingView>
   );

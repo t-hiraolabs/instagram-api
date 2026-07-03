@@ -79,6 +79,10 @@ interface AppState {
   chatForceNew: boolean;
   setChatForceNew: (v: boolean) => void;
 
+  /** ホームのインラインチャットで「この画像で投稿を作る」を押したとき、投稿タブへ渡す画像 */
+  pendingUseImage: string | null;
+  setPendingUseImage: (v: string | null) => void;
+
   /** AIアシスタントに常に覚えさせる説明（事業・サービス内容） */
   assistantMemory: string;
   setAssistantMemory: (v: string) => void;
@@ -142,6 +146,9 @@ export const useAppStore = create<AppState>((set) => ({
 
   chatForceNew: false,
   setChatForceNew: (v) => set({ chatForceNew: v }),
+
+  pendingUseImage: null,
+  setPendingUseImage: (v) => set({ pendingUseImage: v }),
 
   assistantMemory: '',
   setAssistantMemory: (v) => set({ assistantMemory: v }),

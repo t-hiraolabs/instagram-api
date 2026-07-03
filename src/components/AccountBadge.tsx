@@ -22,7 +22,7 @@ import { getMyPlan } from '../services/scheduleService';
 import { PLANS, Plan, PLAN_RANK } from '../utils/plans';
 import { createCheckoutUrl } from '../services/billingService';
 
-export default function AccountBadge() {
+export default function AccountBadge({ hideBadge }: { hideBadge?: boolean } = {}) {
   const insets = useSafeAreaInsets();
   const [session, setSession] = useState<Session | null>(null);
   const [visible, setVisible] = useState(false);
@@ -169,13 +169,15 @@ export default function AccountBadge() {
   if (!session) {
     return (
       <>
-        <TouchableOpacity
-          style={[styles.loginPill, { top: insets.top + SPACING.sm, right: SPACING.md }]}
-          onPress={() => setAuthVisible(true)}
-          activeOpacity={0.85}
-        >
-          <Text style={styles.loginPillText}>ログイン</Text>
-        </TouchableOpacity>
+        {!hideBadge && (
+          <TouchableOpacity
+            style={[styles.loginPill, { top: insets.top + SPACING.sm, right: SPACING.md }]}
+            onPress={() => setAuthVisible(true)}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.loginPillText}>ログイン</Text>
+          </TouchableOpacity>
+        )}
 
         {/* ログイン / 新規登録モーダル */}
         <Modal visible={authVisible} animationType="slide" onRequestClose={() => setAuthVisible(false)}>
@@ -216,25 +218,29 @@ export default function AccountBadge() {
         </View>
       </Modal>
 
-      {/* 連携済みなら、アカウントアイコンの左に隠れてInstagramのプロフィール写真を表示 */}
-      {activeCredentials?.profilePictureUrl ? (
-        <TouchableOpacity
-          style={[styles.igBadge, { top: insets.top + SPACING.sm + 3, right: SPACING.md + 26 }]}
-          onPress={() => setVisible(true)}
-          activeOpacity={0.8}
-        >
-          <Image source={{ uri: activeCredentials!.profilePictureUrl }} style={styles.igBadgeImg} />
-        </TouchableOpacity>
-      ) : null}
+      {!hideBadge && (
+        <>
+          {/* 連携済みなら、アカウントアイコンの左に隠れてInstagramのプロフィール写真を表示 */}
+          {activeCredentials?.profilePictureUrl ? (
+            <TouchableOpacity
+              style={[styles.igBadge, { top: insets.top + SPACING.sm + 3, right: SPACING.md + 26 }]}
+              onPress={() => setVisible(true)}
+              activeOpacity={0.8}
+            >
+              <Image source={{ uri: activeCredentials!.profilePictureUrl }} style={styles.igBadgeImg} />
+            </TouchableOpacity>
+          ) : null}
 
-      {/* 右上のアカウントアイコン */}
-      <TouchableOpacity
-        style={[styles.badge, { top: insets.top + SPACING.sm, right: SPACING.md }]}
-        onPress={() => setVisible(true)}
-        activeOpacity={0.8}
-      >
-        <Text style={styles.badgeText}>{initial}</Text>
-      </TouchableOpacity>
+          {/* 右上のアカウントアイコン */}
+          <TouchableOpacity
+            style={[styles.badge, { top: insets.top + SPACING.sm, right: SPACING.md }]}
+            onPress={() => setVisible(true)}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.badgeText}>{initial}</Text>
+          </TouchableOpacity>
+        </>
+      )}
 
       {/* アカウント情報モーダル */}
       <Modal visible={visible} transparent animationType="fade" onRequestClose={() => setVisible(false)}>
