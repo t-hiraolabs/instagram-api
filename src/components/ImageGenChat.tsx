@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useImperativeHandle, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -33,6 +33,13 @@ interface Props {
   embedded?: boolean;
   /** embedded時、ホームのブリーフィング表示に戻るためのコールバック */
   onBack?: () => void;
+  /** メッセージが1件もないときに、デフォルトの案内文の代わりに表示する内容（ホームのおすすめ表示用） */
+  emptyState?: React.ReactNode;
+}
+
+export interface ImageGenChatHandle {
+  /** 外部（ホーム画面のおすすめチップなど）からメッセージを送信する */
+  sendMessage: (text: string) => void;
 }
 
 type Msg =
@@ -42,7 +49,10 @@ type Msg =
   | { role: 'user_image'; uri: string }
   | { role: 'error'; text: string };
 
-export default function ImageGenChat({ visible, onClose, onUseImage, embedded, onBack }: Props) {
+function ImageGenChat(
+  { visible, onClose, onUseImage, embedded, onBack, emptyState }: Props,
+  ref: React.Ref<ImageGenChatHandle>
+) {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState('');
   const [chatting, setChatting] = useState(false);
@@ -213,6 +223,10 @@ export default function ImageGenChat({ visible, onClose, onUseImage, embedded, o
     }
   };
 
+  useImperativeHandle(ref, () => ({
+    sendMessage: (text: string) => { send(text); },
+  }));
+
   const answerOption = async (opt: string) => {
     if (chatting || generating) return;
     await send(opt);
@@ -310,13 +324,15 @@ export default function ImageGenChat({ visible, onClose, onUseImage, embedded, o
 
         <ScrollView ref={scrollRef} style={styles.body} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xl }}>
           {messages.length === 0 && (
-            <View style={styles.empty}>
-              <Text style={styles.emptyIcon}>💬</Text>
-              <Text style={styles.emptyText}>
-                作りたい投稿について相談できます。{'\n'}
-                「生成する」を押すと、写真を選んでその写真にデザインを加えます。
-              </Text>
-            </View>
+            emptyState ?? (
+              <View style={styles.empty}>
+                <Text style={styles.emptyIcon}>💬</Text>
+                <Text style={styles.emptyText}>
+                  作りたい投稿について相談できます。{'\n'}
+                  「生成する」を押すと、写真を選んでその写真にデザインを加えます。
+                </Text>
+              </View>
+            )
           )}
           {messages.map((m, i) => {
             if (m.role === 'user') return (
@@ -560,3 +576,5 @@ const styles = StyleSheet.create({
   sendBtnDisabled: { opacity: 0.5 },
   sendBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
 });
+
+export default React.forwardRef(ImageGenChat);

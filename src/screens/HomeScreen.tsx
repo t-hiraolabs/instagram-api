@@ -1,20 +1,11 @@
-import React, { useMemo, useState } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  Image,
-  TextInput,
-  KeyboardAvoidingView,
-  Platform,
-} from 'react-native';
+import React, { useMemo, useRef } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
 import { useAppStore } from '../store/appStore';
 import AccountBadge from '../components/AccountBadge';
-import ImageGenChat from '../components/ImageGenChat';
+import ImageGenChat, { ImageGenChatHandle } from '../components/ImageGenChat';
 
 const QUICK_ACTIONS = [
   { label: '投稿', emoji: '📸', tab: 'Post' },
@@ -51,7 +42,6 @@ function getTodaysIdeas(): string[] {
 
 function getTodoItems(): { key: string; label: string; emoji: string }[] {
   return [
-    { key: 'post', label: '投稿', emoji: '📸' },
     { key: 'story', label: 'ストーリー', emoji: '📖' },
     { key: 'dm', label: 'DM返信', emoji: '💬' },
     { key: 'analytics', label: '分析', emoji: '📊' },
@@ -80,136 +70,88 @@ function getBestPostingTime(): { label: string; color: string; description: stri
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
-  const { brandSettings, setChatPrefillText, setChatAutoSend, setChatForceNew, setPendingUseImage } = useAppStore();
+  const setPendingUseImage = useAppStore((s) => s.setPendingUseImage);
   const bestTime = useMemo(() => getBestPostingTime(), []);
   const todaysIdeas = useMemo(() => getTodaysIdeas(), []);
   const todoItems = useMemo(() => getTodoItems(), []);
-  const [miniChatText, setMiniChatText] = useState('');
-  // trueになったら、ホーム画面そのものをチャット表示に切り替える（画面遷移しない）
-  const [chatActive, setChatActive] = useState(false);
-
-  const openChat = (text: string) => {
-    setChatPrefillText(text);
-    setChatAutoSend(true);
-    setChatForceNew(true);
-    setChatActive(true);
-  };
-
-  const sendMiniChat = () => {
-    const text = miniChatText.trim();
-    if (!text) return;
-    setMiniChatText('');
-    openChat(text);
-  };
-
-  const goTodo = (key: string) => {
-    if (key === 'dm') return navigation.navigate('DM');
-    if (key === 'analytics') return navigation.navigate('Analytics');
-    if (key === 'story') return openChat('今日のストーリーを作りたいです。');
-    return openChat('今日の投稿を作りたいです。');
-  };
+  const chatRef = useRef<ImageGenChatHandle>(null);
 
   const handleUseImage = (dataUrl: string) => {
     setPendingUseImage(dataUrl);
     navigation.navigate('Post');
   };
 
-  if (chatActive) {
-    return (
-      <View style={{ flex: 1, paddingTop: insets.top }}>
-        <ImageGenChat visible embedded onUseImage={handleUseImage} onBack={() => setChatActive(false)} />
-        <AccountBadge hideBadge />
+  const goTodo = (key: string) => {
+    if (key === 'dm') return navigation.navigate('DM');
+    if (key === 'analytics') return navigation.navigate('Analytics');
+    if (key === 'story') return chatRef.current?.sendMessage('今日のストーリーを作りたいです。');
+  };
+
+  const emptyState = (
+    <View style={styles.briefing}>
+      <Text style={styles.chatGreeting}>{getGreeting()}</Text>
+      <Text style={styles.chatPrompt}>{bestTime.description}</Text>
+      <View style={styles.timeRow}>
+        <View style={[styles.timeDot, { backgroundColor: bestTime.color }]} />
+        <Text style={[styles.timeLabel, { color: bestTime.color }]}>{bestTime.label}</Text>
       </View>
-    );
-  }
+
+      <Text style={styles.groupLabel}>今日のおすすめ投稿ネタ</Text>
+      <View style={styles.chipRow}>
+        {todaysIdeas.map((idea) => (
+          <TouchableOpacity
+            key={idea}
+            style={styles.ideaChip}
+            onPress={() => chatRef.current?.sendMessage(`「${idea}」について投稿を作りたいです。`)}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.ideaChipText} numberOfLines={1}>{idea}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      <Text style={styles.groupLabel}>今日のTODO</Text>
+      <View style={styles.chipRow}>
+        {todoItems.map((item) => (
+          <TouchableOpacity key={item.key} style={styles.todoChip} onPress={() => goTodo(item.key)} activeOpacity={0.8}>
+            <Text style={styles.todoChipText}>{item.emoji} {item.label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    </View>
+  );
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      <View style={[styles.container, { paddingTop: insets.top + SPACING.sm }]}>
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.headerLeft}>
-            <Image source={require('../../assets/icon.png')} style={styles.logoIcon} resizeMode="contain" />
-            <Text style={styles.title}>AImark</Text>
-          </View>
-          <View style={styles.quickActions}>
-            {QUICK_ACTIONS.map((a) => (
-              <TouchableOpacity key={a.label} style={styles.quickBtn} onPress={() => navigation.navigate(a.tab)} activeOpacity={0.8}>
-                <Text style={styles.quickEmoji}>{a.emoji}</Text>
-                <Text style={styles.quickLabel}>{a.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+    <View style={[styles.container, { paddingTop: insets.top + SPACING.sm }]}>
+      {/* Header */}
+      <View style={styles.header}>
+        <View style={styles.headerLeft}>
+          <Image source={require('../../assets/icon.png')} style={styles.logoIcon} resizeMode="contain" />
+          <Text style={styles.title}>AImark</Text>
         </View>
-
-        {!brandSettings.industry && (
-          <TouchableOpacity style={styles.setupCard} onPress={() => navigation.navigate('Profile')} activeOpacity={0.8}>
-            <Text style={styles.setupText}>⚡ 業種を設定するとAI精度が向上します</Text>
-            <Text style={styles.setupArrow}>›</Text>
-          </TouchableOpacity>
-        )}
-
-        {/* チャットエリア（Claudeのホームのような構成） */}
-        <View style={styles.chatArea}>
-          <View style={styles.chatTop}>
-            <Text style={styles.chatGreeting}>{getGreeting()}</Text>
-            <Text style={styles.chatPrompt}>{bestTime.description}</Text>
-            <View style={styles.timeRow}>
-              <View style={[styles.timeDot, { backgroundColor: bestTime.color }]} />
-              <Text style={[styles.timeLabel, { color: bestTime.color }]}>{bestTime.label}</Text>
-            </View>
-
-            <Text style={styles.groupLabel}>今日のおすすめ投稿ネタ</Text>
-            <View style={styles.chipRow}>
-              {todaysIdeas.map((idea) => (
-                <TouchableOpacity
-                  key={idea}
-                  style={styles.ideaChip}
-                  onPress={() => openChat(`「${idea}」について投稿を作りたいです。`)}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.ideaChipText} numberOfLines={1}>{idea}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <Text style={styles.groupLabel}>今日のTODO</Text>
-            <View style={styles.chipRow}>
-              {todoItems.map((item) => (
-                <TouchableOpacity key={item.key} style={styles.todoChip} onPress={() => goTodo(item.key)} activeOpacity={0.8}>
-                  <Text style={styles.todoChipText}>{item.emoji} {item.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-
-          {/* 入力欄（送信するとチャット画面が開く） */}
-          <View style={styles.miniChatRow}>
-            <TextInput
-              style={styles.miniChatInput}
-              placeholder="今日は何を投稿すればいい？"
-              placeholderTextColor={COLORS.textMuted}
-              value={miniChatText}
-              onChangeText={setMiniChatText}
-              onSubmitEditing={sendMiniChat}
-              returnKeyType="send"
-            />
-            <TouchableOpacity
-              style={[styles.miniChatSend, !miniChatText.trim() && styles.miniChatSendDisabled]}
-              onPress={sendMiniChat}
-              disabled={!miniChatText.trim()}
-            >
-              <Text style={styles.miniChatSendText}>➤</Text>
+        <View style={styles.quickActions}>
+          {QUICK_ACTIONS.map((a) => (
+            <TouchableOpacity key={a.label} style={styles.quickBtn} onPress={() => navigation.navigate(a.tab)} activeOpacity={0.8}>
+              <Text style={styles.quickEmoji}>{a.emoji}</Text>
+              <Text style={styles.quickLabel}>{a.label}</Text>
             </TouchableOpacity>
-          </View>
+          ))}
         </View>
-
-        <AccountBadge hideBadge />
       </View>
-    </KeyboardAvoidingView>
+
+      {/* ホーム画面そのものがチャット */}
+      <View style={{ flex: 1 }}>
+        <ImageGenChat
+          ref={chatRef}
+          visible
+          embedded
+          onUseImage={handleUseImage}
+          emptyState={emptyState}
+        />
+      </View>
+
+      <AccountBadge hideBadge />
+    </View>
   );
 }
 
@@ -217,14 +159,15 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
-    paddingHorizontal: SPACING.md,
-    paddingBottom: SPACING.md,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    paddingBottom: SPACING.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
   },
   headerLeft: {
     flexDirection: 'row',
@@ -252,27 +195,8 @@ const styles = StyleSheet.create({
   },
   quickEmoji: { fontSize: 18 },
   quickLabel: { color: COLORS.textMuted, fontSize: 10, fontWeight: '600', marginTop: 1 },
-  setupCard: {
-    backgroundColor: COLORS.surfaceElevated,
-    borderRadius: RADIUS.md,
-    paddingVertical: 8,
-    paddingHorizontal: SPACING.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: SPACING.sm,
-    borderWidth: 1,
-    borderColor: COLORS.warning + '44',
-  },
-  setupText: { color: COLORS.text, fontSize: 12, fontWeight: '600' },
-  setupArrow: { color: COLORS.textMuted, fontSize: 16 },
-  chatArea: {
-    flex: 1,
-    justifyContent: 'space-between',
-  },
-  chatTop: {
-    justifyContent: 'center',
-    gap: 4,
+  briefing: {
+    paddingTop: SPACING.xl,
   },
   chatGreeting: {
     color: COLORS.textMuted,
@@ -290,6 +214,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    marginTop: 6,
     marginBottom: SPACING.md,
   },
   timeDot: { width: 7, height: 7, borderRadius: 4 },
@@ -334,38 +259,5 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     fontSize: 12,
     fontWeight: '600',
-  },
-  miniChatRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    marginTop: SPACING.md,
-  },
-  miniChatInput: {
-    flex: 1,
-    backgroundColor: COLORS.surface,
-    color: COLORS.text,
-    borderRadius: RADIUS.full,
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: 14,
-    fontSize: 14,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  miniChatSend: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    backgroundColor: COLORS.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  miniChatSendDisabled: {
-    opacity: 0.4,
-  },
-  miniChatSendText: {
-    color: '#fff',
-    fontSize: 17,
-    fontWeight: '700',
   },
 });
