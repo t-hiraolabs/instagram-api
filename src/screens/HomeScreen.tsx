@@ -1,4 +1,4 @@
-import React, { useMemo, useRef } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -75,6 +75,7 @@ export default function HomeScreen() {
   const todaysIdeas = useMemo(() => getTodaysIdeas(), []);
   const todoItems = useMemo(() => getTodoItems(), []);
   const chatRef = useRef<ImageGenChatHandle>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const handleUseImage = (dataUrl: string) => {
     setPendingUseImage(dataUrl);
@@ -125,9 +126,14 @@ export default function HomeScreen() {
     <View style={[styles.container, { paddingTop: insets.top + SPACING.sm }]}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.headerLeft} onPress={() => chatRef.current?.openMenu()} activeOpacity={0.7}>
+        <TouchableOpacity
+          style={[styles.headerLeft, menuOpen && styles.headerLeftActive]}
+          onPress={() => chatRef.current?.toggleMenu()}
+          activeOpacity={0.7}
+        >
           <Image source={require('../../assets/icon.png')} style={styles.logoIcon} resizeMode="contain" />
           <Text style={styles.title}>AImark</Text>
+          <Text style={[styles.menuCaret, menuOpen && styles.menuCaretOpen]}>▾</Text>
         </TouchableOpacity>
         <View style={styles.quickActions}>
           {QUICK_ACTIONS.map((a) => (
@@ -147,6 +153,7 @@ export default function HomeScreen() {
           embedded
           onUseImage={handleUseImage}
           emptyState={emptyState}
+          onMenuVisibleChange={setMenuOpen}
         />
       </View>
 
@@ -172,7 +179,15 @@ const styles = StyleSheet.create({
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.sm,
+    gap: SPACING.xs,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    paddingRight: 10,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.surfaceElevated,
+  },
+  headerLeftActive: {
+    backgroundColor: COLORS.primary + '22',
   },
   logoIcon: {
     width: 28,
@@ -184,6 +199,15 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '800',
     letterSpacing: -0.3,
+  },
+  menuCaret: {
+    color: COLORS.textMuted,
+    fontSize: 11,
+    marginLeft: 2,
+  },
+  menuCaretOpen: {
+    color: COLORS.primary,
+    transform: [{ rotate: '180deg' }],
   },
   quickActions: {
     flexDirection: 'row',

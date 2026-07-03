@@ -35,13 +35,15 @@ interface Props {
   onBack?: () => void;
   /** メッセージが1件もないときに、デフォルトの案内文の代わりに表示する内容（ホームのおすすめ表示用） */
   emptyState?: React.ReactNode;
+  /** 会話履歴メニューの開閉状態が変わるたびに呼ばれる（ホーム側のロゴの見た目を切り替えるため） */
+  onMenuVisibleChange?: (visible: boolean) => void;
 }
 
 export interface ImageGenChatHandle {
   /** 外部（ホーム画面のおすすめチップなど）からメッセージを送信する */
   sendMessage: (text: string) => void;
-  /** 外部（ホーム画面のロゴタップなど）から会話履歴メニューを開く */
-  openMenu: () => void;
+  /** 外部（ホーム画面のロゴタップなど）から会話履歴メニューの開閉を切り替える */
+  toggleMenu: () => void;
 }
 
 type Msg =
@@ -52,7 +54,7 @@ type Msg =
   | { role: 'error'; text: string };
 
 function ImageGenChat(
-  { visible, onClose, onUseImage, embedded, onBack, emptyState }: Props,
+  { visible, onClose, onUseImage, embedded, onBack, emptyState, onMenuVisibleChange }: Props,
   ref: React.Ref<ImageGenChatHandle>
 ) {
   const [messages, setMessages] = useState<Msg[]>([]);
@@ -64,6 +66,7 @@ function ImageGenChat(
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [convId, setConvId] = useState<string | null>(null);
   const [listVisible, setListVisible] = useState(false);
+  useEffect(() => { onMenuVisibleChange?.(listVisible); }, [listVisible]);
   const assistantMemory = useAppStore((s) => s.assistantMemory);
   const setAssistantMemoryStore = useAppStore((s) => s.setAssistantMemory);
   const [memoryDraft, setMemoryDraft] = useState('');
@@ -228,7 +231,7 @@ function ImageGenChat(
 
   useImperativeHandle(ref, () => ({
     sendMessage: (text: string) => { send(text); },
-    openMenu: () => setListVisible(true),
+    toggleMenu: () => setListVisible((v) => !v),
   }));
 
   const answerOption = async (opt: string) => {
@@ -312,19 +315,14 @@ function ImageGenChat(
 
   const content = (
       <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <View style={styles.header}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md }}>
-            {!embedded && (
-              <>
-                <TouchableOpacity onPress={() => setListVisible(true)}><Text style={styles.menuBtn}>☰</Text></TouchableOpacity>
-                <TouchableOpacity onPress={onClose}><Text style={styles.cancel}>閉じる</Text></TouchableOpacity>
-              </>
-            )}
+        {!embedded && (
+          <View style={styles.header}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md }}>
+              <TouchableOpacity onPress={() => setListVisible(true)}><Text style={styles.menuBtn}>☰</Text></TouchableOpacity>
+              <TouchableOpacity onPress={onClose}><Text style={styles.cancel}>閉じる</Text></TouchableOpacity>
+            </View>
           </View>
-          <View style={{ alignItems: 'flex-end' }}>
-            <Text style={styles.remain}>{chatRemainPct == null ? '' : `会話 残り${chatRemainPct}%`}</Text>
-          </View>
-        </View>
+        )}
 
         <ScrollView ref={scrollRef} style={styles.body} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xl }}>
           {messages.length === 0 && (
@@ -440,6 +438,9 @@ function ImageGenChat(
                 <Text style={styles.listTitle}>会話</Text>
                 <TouchableOpacity onPress={() => setListVisible(false)}><Text style={styles.listClose}>✕</Text></TouchableOpacity>
               </View>
+              {chatRemainPct != null && (
+                <Text style={styles.usageText}>会話の利用量　残り{chatRemainPct}%</Text>
+              )}
               {/* AIに覚えさせる説明（常に参照される） */}
               <View style={styles.memoryBox}>
                 <Text style={styles.memoryLabel}>🧠 AIに覚えさせる説明</Text>
@@ -523,6 +524,7 @@ const styles = StyleSheet.create({
   listPanel: { width: '78%', maxWidth: 320, backgroundColor: COLORS.background, borderRightWidth: 1, borderRightColor: COLORS.border, paddingTop: SPACING.lg },
   listHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: SPACING.md, paddingBottom: SPACING.sm },
   listTitle: { color: COLORS.text, fontSize: 16, fontWeight: '800' },
+  usageText: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600', paddingHorizontal: SPACING.md, marginBottom: SPACING.sm },
   listClose: { color: COLORS.textMuted, fontSize: 16 },
   memoryBox: { marginHorizontal: SPACING.md, marginTop: SPACING.sm, padding: SPACING.sm, backgroundColor: COLORS.surface, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.border },
   memoryLabel: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '700', marginBottom: 6 },
