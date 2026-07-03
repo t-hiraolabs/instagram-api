@@ -149,7 +149,6 @@ function ImageGenChat(
           // メッセージを送るまで会話は作らない（空の会話を保存しないため）
           setConvId(null);
           setMessages([]);
-          setListVisible(false);
         } else if (convs[0]) {
           await openConversation(convs[0].id);
         } else {
