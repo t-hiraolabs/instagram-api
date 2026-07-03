@@ -14,7 +14,7 @@ const LIMITS: Record<string, number> = { free: 5, pro: 50, business: 300 };
 const BRAND_LIMITS: Record<string, number> = { free: 3, pro: 10, business: 10 };
 
 // チャット会話の「1日あたり」上限（トークン数：入力+出力の合計）。表示は「% 使用」で見せる。
-const CHAT_TOKEN_LIMITS: Record<string, number> = { free: 2000, pro: 10000, business: 30000 };
+const CHAT_TOKEN_LIMITS: Record<string, number> = { free: 15000, pro: 120000, business: 300000 };
 
 // 同じ月か判定
 function isSameMonth(periodStartStr: string): boolean {
