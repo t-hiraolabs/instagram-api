@@ -18,7 +18,7 @@ import { composeStoryImage } from '../utils/composeStory';
 import { composeFlyerImage } from '../utils/composeFlyer';
 import {
   listConversations, createConversation, renameConversation, deleteConversation,
-  loadMessages, saveMessage, Conversation,
+  loadMessages, saveMessage, purgeOldConversations, Conversation,
 } from '../services/chatHistoryService';
 import { uploadBlob } from '../services/storage';
 import { useAppStore } from '../store/appStore';
@@ -136,6 +136,7 @@ function ImageGenChat(
       setChatAutoSend(false);
       setChatForceNew(false);
       (async () => {
+        await purgeOldConversations(30).catch(() => {});
         const rawConvs = await listConversations();
         const convs = await purgeEmptyConversations(rawConvs);
         setConversations(convs);

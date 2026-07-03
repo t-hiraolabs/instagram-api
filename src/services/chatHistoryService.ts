@@ -41,6 +41,18 @@ export async function deleteConversation(id: string): Promise<void> {
   await supabase.from('chat_conversations').delete().eq('id', id);
 }
 
+/** 保持期間（日数）より古い会話を削除する（メッセージはON DELETE CASCADEで一緒に消える） */
+export async function purgeOldConversations(days = 30): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
+  const cutoff = new Date(Date.now() - days * 86400000).toISOString();
+  await supabase
+    .from('chat_conversations')
+    .delete()
+    .eq('user_id', user.id)
+    .lt('updated_at', cutoff);
+}
+
 /** 指定した会話のメッセージを古い順に読み込む */
 export async function loadMessages(conversationId: string): Promise<StoredChatMessage[]> {
   const { data, error } = await supabase
