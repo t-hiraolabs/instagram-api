@@ -68,6 +68,9 @@ function ImageGenChat(
   const [listVisible, setListVisible] = useState(false);
   useEffect(() => { onMenuVisibleChange?.(listVisible); }, [listVisible]);
   const [pendingImage, setPendingImage] = useState<{ base64: string; mime: string; uri: string } | null>(null);
+  // 一度取得した分析データはこの会話の間ずっと使い回す（フォローアップの質問でも参照できるように）
+  const [lastAnalysisFacts, setLastAnalysisFacts] = useState<string | null>(null);
+  useEffect(() => { setLastAnalysisFacts(null); }, [convId]);
 
   // 会話を切り替える前に、メッセージが1件も無い会話は保存せず消す
   const convIdRef = useRef<string | null>(null);
@@ -240,12 +243,14 @@ function ImageGenChat(
     setChatting(true);
     toEnd();
     try {
-      // 「分析して」「インサイト見せて」などは、プログラム側で集計した実データをAIに渡して説明させる
-      let analysisFacts: string | undefined;
-      if (/分析|インサイト|振り返り|保存率|いいね率|エンゲージメント|反応(は|が|の).{0,6}(良|悪|どう)/.test(text)) {
+      // 「分析して」「インサイト見せて」などは、プログラム側で集計した実データをAIに渡して説明させる。
+      // 一度取得したら、同じ会話内のフォローアップ質問でも引き続き参照できるようにする。
+      let analysisFacts: string | undefined = lastAnalysisFacts ?? undefined;
+      if (/分析|インサイト|振り返り|保存率|いいね率|エンゲージメント|フォロワー|プロフィール|自己紹介|アカウント(の|を)|改善|伸ば|反応(は|が|の).{0,6}(良|悪|どう)/.test(text)) {
         const facts = await getAutoAnalysisFacts();
         if ('text' in facts) {
           analysisFacts = facts.text;
+          setLastAnalysisFacts(facts.text);
         } else {
           const reason = facts.reason;
           setMessages((m) => [...m, { role: 'error', text: reason }]);
