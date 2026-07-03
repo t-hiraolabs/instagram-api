@@ -337,14 +337,14 @@ export default function GenerateScreen() {
           </Text>
           {usage.plan === 'free' && usage.remaining <= 3 && (
             <Text style={styles.usageWarn}>
-              無料は1アカウント{usage.limit}回までです。Proなら月50回、ビジネスなら月300回まで使えます。
+              無料は1アカウント{usage.limit}回までです。Proなら月50回、ビジネスなら月150回まで使えます。
             </Text>
           )}
           {usage.plan === 'pro' && usage.remaining <= 10 && (
             <Text style={styles.usageWarn}>
               {usage.remaining <= 0
-                ? '今月のAI生成（50回）を使い切りました。ビジネスプランなら月300回まで使えます。'
-                : `Proは月${usage.limit}回までです。たくさん使うならビジネス（月300回）がおすすめです。`}
+                ? '今月のAI生成（50回）を使い切りました。ビジネスプランなら月150回まで使えます。'
+                : `Proは月${usage.limit}回までです。たくさん使うならビジネス（月150回）がおすすめです。`}
             </Text>
           )}
         </View>

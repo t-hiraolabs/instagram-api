@@ -5,7 +5,7 @@ import { COLORS } from './theme';
 export type Plan = 'free' | 'pro' | 'business';
 
 /** プランごとの月間AI生成上限 */
-export const AI_LIMITS: Record<Plan, number> = { free: 5, pro: 50, business: 300 };
+export const AI_LIMITS: Record<Plan, number> = { free: 5, pro: 50, business: 150 };
 
 /** プランの順位（高いほど上位）。アップグレード判定に使う */
 export const PLAN_RANK: Record<Plan, number> = { free: 0, pro: 1, business: 2 };
@@ -63,7 +63,7 @@ export const PLANS: PlanInfo[] = [
     price: '¥4,980/月',
     paid: true,
     features: [
-      'AI生成 月300回',
+      'AI生成 月150回',
       'Proのすべての機能',
       '📊 インサイト分析',
       '過去投稿の反応を分析してAI生成',
