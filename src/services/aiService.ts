@@ -708,6 +708,73 @@ export async function planImageGeneration(fullHistory: ChatTurn[], count: number
   }
 }
 
+export interface StoryDesignPlan {
+  ready: boolean;
+  question?: string;
+  options?: string[];
+  overlay?: { title: string; bodyText: string; cta: string; textColor: string };
+}
+
+/**
+ * ユーザー自身の写真の上に載せる「文字・配色」だけをAIに考えさせる（画像生成AIは使わない）。
+ * ストーリーは画像生成より、手持ち写真＋デザイン生成のほうがコストも品質も良いため。
+ */
+export async function planStoryDesign(fullHistory: ChatTurn[]): Promise<StoryDesignPlan> {
+  const history = trimHistory(fullHistory);
+  const headers = await getAuthHeaders();
+  const msgs = history.map((h) => ({ role: h.role, content: h.content }));
+  if (msgs.length === 0 || msgs[msgs.length - 1].role !== 'user') {
+    msgs.push({ role: 'user', content: 'この写真でストーリーを作ってください。' });
+  }
+  const staticInstructions =
+    IG_CONTEXT +
+    '\nユーザーは自分の写真をすでに用意しています。画像そのものは生成せず、その写真に載せる' +
+    'タイトル・本文・CTA（行動喚起）・文字色だけを考えてください。' +
+    '訴求内容や雰囲気が曖昧で良い文言が作れないと判断したら、選択肢形式で質問してください。';
+  const dynamicInstructions =
+    '\n出力は次のJSONのみ（前置き・説明・コードフェンス禁止）:' +
+    '\n- 情報が十分: {"ready": true, "overlay": {"title": "10文字以内", "bodyText": "40〜60文字、行動を促す内容", "cta": "8文字以内", "textColor": "#FFFFFFまたは#000000"}}' +
+    '\n- 情報が不足: {"ready": false, "question": "確認したいことを1つだけ簡潔に", "options": ["選択肢1", "選択肢2", "選択肢3"]}（optionsは2〜4個、短い言葉で）' +
+    getBrandContext() + getMemoryContext();
+  const system = [
+    { type: 'text', text: staticInstructions, cache_control: { type: 'ephemeral' } },
+    { type: 'text', text: dynamicInstructions },
+  ];
+  try {
+    const res = await axios.post(
+      CLAUDE_API_URL,
+      { model: MODEL, system, max_tokens: 500, messages: msgs, chat: true },
+      { headers }
+    );
+    const text: string = res.data?.content?.[0]?.text ?? res.data?.text ?? '';
+    const m = text.match(/\{[\s\S]*\}/);
+    if (m) {
+      const obj = JSON.parse(m[0]);
+      if (obj.ready === false && obj.question) {
+        const options = Array.isArray(obj.options)
+          ? obj.options.map((s: unknown) => String(s)).filter(Boolean)
+          : undefined;
+        return { ready: false, question: String(obj.question), options: options && options.length > 0 ? options : undefined };
+      }
+      if (obj.ready === true && obj.overlay) {
+        const o = obj.overlay;
+        return {
+          ready: true,
+          overlay: {
+            title: String(o.title ?? ''),
+            bodyText: String(o.bodyText ?? ''),
+            cta: String(o.cta ?? ''),
+            textColor: String(o.textColor ?? '#FFFFFF'),
+          },
+        };
+      }
+    }
+    throw new Error('AI応答のパースに失敗しました');
+  } catch (err) {
+    throw new Error(detailError(err));
+  }
+}
+
 /** 会話から、画像生成用のプロンプト（1〜2文）を作る */
 export async function buildImagePrompt(history: ChatTurn[]): Promise<string> {
   const headers = await getAuthHeaders();

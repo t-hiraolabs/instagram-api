@@ -14,7 +14,8 @@ import {
 } from 'react-native';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
 import { generateImages, getImageUsage, ImageSize } from '../services/imageGenService';
-import { chatWithAssistant, planImageGeneration, getChatUsagePercent, ChatTurn } from '../services/aiService';
+import { chatWithAssistant, planImageGeneration, planStoryDesign, getChatUsagePercent, ChatTurn } from '../services/aiService';
+import { composeStoryImage } from '../utils/composeStory';
 import {
   listConversations, createConversation, renameConversation, deleteConversation,
   loadMessages, saveMessage, Conversation,
@@ -52,6 +53,8 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
   const [chatting, setChatting] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [optVisible, setOptVisible] = useState(false);
+  // 選択肢ボタンをタップしたときに、どちらの生成フローを再開するか
+  const [awaitingMode, setAwaitingMode] = useState<'image' | 'story' | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [convId, setConvId] = useState<string | null>(null);
   const [listVisible, setListVisible] = useState(false);
@@ -197,7 +200,59 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
   const answerOption = async (opt: string) => {
     if (chatting || generating) return;
     await send(opt);
-    await generate();
+    if (awaitingMode === 'story') await generateStoryFromChat();
+    else await generate();
+  };
+
+  // 会話中でユーザーが添付した最後の写真（ストーリーの土台にする）
+  const lastUserPhoto = (): string | null => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m.role === 'user_image') return m.uri;
+    }
+    return null;
+  };
+
+  /** 手持ち写真＋AIが考えた文字・配色でストーリーを作る（画像生成AIを使わないのでコストが安い） */
+  const generateStoryFromChat = async () => {
+    if (generating) return;
+    const photo = lastUserPhoto();
+    if (!photo) {
+      setMessages((m) => [...m, { role: 'error', text: 'まず写真をチャットに添付してください（📎から選択）。' }]);
+      toEnd();
+      return;
+    }
+    const h = history();
+    if (h.length === 0) return;
+    setGenerating(true);
+    setAwaitingMode(null);
+    toEnd();
+    try {
+      const plan = await planStoryDesign(h);
+      if (!plan.ready || !plan.overlay) {
+        const q = plan.question ?? 'どんな内容のストーリーにしたいか、もう少し教えてください。';
+        setAwaitingMode('story');
+        setMessages((m) => [...m, { role: 'assistant', text: q, options: plan.options }]);
+        if (convId) saveMessage(convId, 'assistant', q).catch(() => {});
+        getChatUsagePercent().then((c) => setChatRemainPct(c.remainingPct)).catch(() => {});
+        return;
+      }
+      const { blob, previewUrl } = await composeStoryImage(photo, plan.overlay);
+      let stored = previewUrl;
+      try { stored = await uploadBlob(blob); } catch { /* アップ失敗時はプレビューのまま表示 */ }
+      const listText = `この写真でストーリーを作りました：\n「${plan.overlay.title}」`;
+      setMessages((m) => [...m, { role: 'assistant', text: listText }, { role: 'image', uri: stored }]);
+      if (convId) {
+        saveMessage(convId, 'assistant', listText).catch(() => {});
+        saveMessage(convId, 'image', stored).catch(() => {});
+      }
+      toEnd();
+    } catch (e) {
+      setMessages((m) => [...m, { role: 'error', text: e instanceof Error ? e.message : 'ストーリー作成に失敗しました' }]);
+    } finally {
+      setGenerating(false);
+      toEnd();
+    }
   };
 
   const generate = async () => {
@@ -206,12 +261,14 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
     const h = history();
     if (h.length === 0) return;
     setGenerating(true);
+    setAwaitingMode(null);
     toEnd();
     try {
       const plan = await planImageGeneration(h, count);
       // 情報が足りない場合は生成せず質問する
       if (!plan.ready || !plan.prompts || plan.prompts.length === 0) {
         const q = plan.question ?? 'どんな画像にしたいか、もう少し教えてください（用途・雰囲気・入れたい要素など）。';
+        setAwaitingMode('image');
         setMessages((m) => [...m, { role: 'assistant', text: q, options: plan.options }]);
         if (convId) saveMessage(convId, 'assistant', q).catch(() => {});
         getChatUsagePercent().then((c) => setChatRemainPct(c.remainingPct)).catch(() => {});
@@ -328,6 +385,14 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
             </View>
           )}
         </ScrollView>
+
+        <TouchableOpacity
+          style={[styles.genBtn, styles.storyBtn, generating && styles.genBtnDisabled]}
+          onPress={generateStoryFromChat}
+          disabled={generating}
+        >
+          <Text style={styles.genBtnText}>📖 添付した写真でストーリーを作る</Text>
+        </TouchableOpacity>
 
         <TouchableOpacity
           style={[styles.genBtn, (generating || (remaining ?? 1) <= 0) && styles.genBtnDisabled]}
@@ -535,6 +600,7 @@ const styles = StyleSheet.create({
   optText: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '600' },
   optTextActive: { color: '#fff' },
   genBtn: { backgroundColor: COLORS.secondary, marginHorizontal: SPACING.md, marginTop: SPACING.sm, borderRadius: RADIUS.full, paddingVertical: SPACING.md, alignItems: 'center' },
+  storyBtn: { backgroundColor: COLORS.primary },
   genBtnDisabled: { opacity: 0.5 },
   genBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   inputRow: {
