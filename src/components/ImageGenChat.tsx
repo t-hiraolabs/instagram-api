@@ -14,8 +14,9 @@ import {
 } from 'react-native';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
 import { generateImages, getImageUsage, ImageSize } from '../services/imageGenService';
-import { chatWithAssistant, planImageGeneration, planStoryDesign, getChatUsagePercent, ChatTurn } from '../services/aiService';
+import { chatWithAssistant, planImageGeneration, planDesign, getChatUsagePercent, ChatTurn } from '../services/aiService';
 import { composeStoryImage } from '../utils/composeStory';
+import { composeFlyerImage } from '../utils/composeFlyer';
 import {
   listConversations, createConversation, renameConversation, deleteConversation,
   loadMessages, saveMessage, Conversation,
@@ -213,7 +214,10 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
     return null;
   };
 
-  /** 手持ち写真＋AIが考えた文字・配色でストーリーを作る（画像生成AIを使わないのでコストが安い） */
+  /**
+   * 手持ち写真をもとにデザインを作る（画像生成AIを使わないのでコストが安い）。
+   * 会話の内容から、ストーリー（写真に文字だけ）かパンフレット/チラシ（見出し・詳細・価格など）かをAIが判断する。
+   */
   const generateStoryFromChat = async () => {
     if (generating) return;
     const photo = lastUserPhoto();
@@ -228,27 +232,29 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
     setAwaitingMode(null);
     toEnd();
     try {
-      const plan = await planStoryDesign(h);
-      if (!plan.ready || !plan.overlay) {
-        const q = plan.question ?? 'どんな内容のストーリーにしたいか、もう少し教えてください。';
+      const plan = await planDesign(h);
+      if (!plan.ready || (!plan.storyOverlay && !plan.flyer)) {
+        const q = plan.question ?? 'どんな内容のデザインにしたいか、もう少し教えてください。';
         setAwaitingMode('story');
         setMessages((m) => [...m, { role: 'assistant', text: q, options: plan.options }]);
         if (convId) saveMessage(convId, 'assistant', q).catch(() => {});
         getChatUsagePercent().then((c) => setChatRemainPct(c.remainingPct)).catch(() => {});
         return;
       }
-      const { blob, previewUrl } = await composeStoryImage(photo, plan.overlay);
+      const { blob, previewUrl, label } =
+        plan.designType === 'flyer' && plan.flyer
+          ? { ...(await composeFlyerImage(photo, plan.flyer)), label: `パンフレットを作りました：\n「${plan.flyer.headline}」` }
+          : { ...(await composeStoryImage(photo, plan.storyOverlay!)), label: `この写真でストーリーを作りました：\n「${plan.storyOverlay!.title}」` };
       let stored = previewUrl;
       try { stored = await uploadBlob(blob); } catch { /* アップ失敗時はプレビューのまま表示 */ }
-      const listText = `この写真でストーリーを作りました：\n「${plan.overlay.title}」`;
-      setMessages((m) => [...m, { role: 'assistant', text: listText }, { role: 'image', uri: stored }]);
+      setMessages((m) => [...m, { role: 'assistant', text: label }, { role: 'image', uri: stored }]);
       if (convId) {
-        saveMessage(convId, 'assistant', listText).catch(() => {});
+        saveMessage(convId, 'assistant', label).catch(() => {});
         saveMessage(convId, 'image', stored).catch(() => {});
       }
       toEnd();
     } catch (e) {
-      setMessages((m) => [...m, { role: 'error', text: e instanceof Error ? e.message : 'ストーリー作成に失敗しました' }]);
+      setMessages((m) => [...m, { role: 'error', text: e instanceof Error ? e.message : 'デザイン作成に失敗しました' }]);
     } finally {
       setGenerating(false);
       toEnd();
@@ -391,7 +397,7 @@ export default function ImageGenChat({ visible, onClose, onUseImage }: Props) {
           onPress={generateStoryFromChat}
           disabled={generating}
         >
-          <Text style={styles.genBtnText}>📖 添付した写真でストーリーを作る</Text>
+          <Text style={styles.genBtnText}>📖 添付した写真でデザインを作る</Text>
         </TouchableOpacity>
 
         <TouchableOpacity

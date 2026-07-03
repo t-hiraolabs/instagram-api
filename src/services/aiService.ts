@@ -708,32 +708,49 @@ export async function planImageGeneration(fullHistory: ChatTurn[], count: number
   }
 }
 
-export interface StoryDesignPlan {
+export interface StoryOverlaySpec { title: string; bodyText: string; cta: string; textColor: string; }
+export interface FlyerDesignSpec {
+  headline: string;
+  subheadline?: string;
+  details: string[];
+  price?: string;
+  footer?: string;
+  accentColor: string;
+  textColor?: string;
+}
+export interface DesignPlan {
   ready: boolean;
   question?: string;
   options?: string[];
-  overlay?: { title: string; bodyText: string; cta: string; textColor: string };
+  designType?: 'story' | 'flyer';
+  storyOverlay?: StoryOverlaySpec;
+  flyer?: FlyerDesignSpec;
 }
 
 /**
- * ユーザー自身の写真の上に載せる「文字・配色」だけをAIに考えさせる（画像生成AIは使わない）。
- * ストーリーは画像生成より、手持ち写真＋デザイン生成のほうがコストも品質も良いため。
+ * ユーザー自身の写真をもとに「デザイン」だけをAIに考えさせる（画像生成AIは使わない）。
+ * 会話の流れから、Instagramストーリー（写真に文字だけ乗せる）なのか、
+ * パンフレット・チラシ（見出し・詳細・価格などを含むレイアウト）なのかを判断し、
+ * それぞれに必要な項目だけを返す。
  */
-export async function planStoryDesign(fullHistory: ChatTurn[]): Promise<StoryDesignPlan> {
+export async function planDesign(fullHistory: ChatTurn[]): Promise<DesignPlan> {
   const history = trimHistory(fullHistory);
   const headers = await getAuthHeaders();
   const msgs = history.map((h) => ({ role: h.role, content: h.content }));
   if (msgs.length === 0 || msgs[msgs.length - 1].role !== 'user') {
-    msgs.push({ role: 'user', content: 'この写真でストーリーを作ってください。' });
+    msgs.push({ role: 'user', content: 'この写真でデザインを作ってください。' });
   }
   const staticInstructions =
     IG_CONTEXT +
-    '\nユーザーは自分の写真をすでに用意しています。画像そのものは生成せず、その写真に載せる' +
-    'タイトル・本文・CTA（行動喚起）・文字色だけを考えてください。' +
-    '訴求内容や雰囲気が曖昧で良い文言が作れないと判断したら、選択肢形式で質問してください。';
+    '\nユーザーは自分の写真をすでに用意しています。画像そのものは生成せず、その写真の上に載せる文字やレイアウトだけを考えてください。' +
+    '会話の内容から、次のどちらが適切か判断してください:' +
+    '\n- story: Instagramストーリーのように、写真に短いタイトル・一言・CTAだけをシンプルに乗せたいとき' +
+    '\n- flyer: 「パンフレットを作って」「チラシを作って」のように、見出し・詳細（メニュー/料金/特徴など複数項目）・価格・連絡先を含んだ、情報量の多い案内を作りたいとき' +
+    '訴求内容や雰囲気が曖昧で良いデザインが作れないと判断したら、生成せず選択肢形式で質問してください。';
   const dynamicInstructions =
     '\n出力は次のJSONのみ（前置き・説明・コードフェンス禁止）:' +
-    '\n- 情報が十分: {"ready": true, "overlay": {"title": "10文字以内", "bodyText": "40〜60文字、行動を促す内容", "cta": "8文字以内", "textColor": "#FFFFFFまたは#000000"}}' +
+    '\n- ストーリーの場合: {"ready": true, "designType": "story", "storyOverlay": {"title": "10文字以内", "bodyText": "40〜60文字、行動を促す内容", "cta": "8文字以内", "textColor": "#FFFFFFまたは#000000"}}' +
+    '\n- パンフレット/チラシの場合: {"ready": true, "designType": "flyer", "flyer": {"headline": "15文字以内", "subheadline": "一言（任意）", "details": ["項目1", "項目2", "項目3"], "price": "価格表記（任意）", "footer": "連絡先やCTA（任意）", "accentColor": "#HEX", "textColor": "#HEX（任意、本文色）"}}（detailsは2〜4個）' +
     '\n- 情報が不足: {"ready": false, "question": "確認したいことを1つだけ簡潔に", "options": ["選択肢1", "選択肢2", "選択肢3"]}（optionsは2〜4個、短い言葉で）' +
     getBrandContext() + getMemoryContext();
   const system = [
@@ -743,7 +760,7 @@ export async function planStoryDesign(fullHistory: ChatTurn[]): Promise<StoryDes
   try {
     const res = await axios.post(
       CLAUDE_API_URL,
-      { model: MODEL, system, max_tokens: 500, messages: msgs, chat: true },
+      { model: MODEL, system, max_tokens: 700, messages: msgs, chat: true },
       { headers }
     );
     const text: string = res.data?.content?.[0]?.text ?? res.data?.text ?? '';
@@ -756,11 +773,28 @@ export async function planStoryDesign(fullHistory: ChatTurn[]): Promise<StoryDes
           : undefined;
         return { ready: false, question: String(obj.question), options: options && options.length > 0 ? options : undefined };
       }
-      if (obj.ready === true && obj.overlay) {
-        const o = obj.overlay;
+      if (obj.ready === true && obj.designType === 'flyer' && obj.flyer) {
+        const f = obj.flyer;
         return {
           ready: true,
-          overlay: {
+          designType: 'flyer',
+          flyer: {
+            headline: String(f.headline ?? ''),
+            subheadline: f.subheadline ? String(f.subheadline) : undefined,
+            details: Array.isArray(f.details) ? f.details.map((s: unknown) => String(s)).slice(0, 4) : [],
+            price: f.price ? String(f.price) : undefined,
+            footer: f.footer ? String(f.footer) : undefined,
+            accentColor: String(f.accentColor ?? '#E1306C'),
+            textColor: f.textColor ? String(f.textColor) : undefined,
+          },
+        };
+      }
+      if (obj.ready === true && obj.storyOverlay) {
+        const o = obj.storyOverlay;
+        return {
+          ready: true,
+          designType: 'story',
+          storyOverlay: {
             title: String(o.title ?? ''),
             bodyText: String(o.bodyText ?? ''),
             cta: String(o.cta ?? ''),
