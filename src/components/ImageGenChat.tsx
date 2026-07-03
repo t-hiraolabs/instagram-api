@@ -507,43 +507,53 @@ function ImageGenChat(
                       <Text style={styles.convTitle} numberOfLines={1}>{c.title || '新しい会話'}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      onPress={() => setOpenActionsId((id) => (id === c.id ? null : c.id))}
+                      onPress={() => setOpenActionsId(c.id)}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
                       <Text style={styles.convMore}>⋮</Text>
                     </TouchableOpacity>
-                    {openActionsId === c.id && (
-                      <View style={styles.convActionsMenu}>
-                        <TouchableOpacity style={styles.convActionItem} onPress={() => renameConversationPrompt(c)}>
-                          <Text style={styles.convActionText}>名前の変更</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={styles.convActionItem}
-                          onPress={() => {
-                            setOpenActionsId(null);
-                            const run = () => removeConversation(c.id);
-                            if (Platform.OS === 'web') { if (window.confirm('この会話を削除しますか？')) run(); }
-                            else run();
-                          }}
-                        >
-                          <Text style={[styles.convActionText, styles.convActionDanger]}>削除</Text>
-                        </TouchableOpacity>
-                      </View>
-                    )}
                   </View>
                 ))}
                 {conversations.length === 0 && <Text style={styles.convEmpty}>会話はまだありません</Text>}
               </ScrollView>
-              {openActionsId && (
-                <TouchableOpacity
-                  style={styles.convActionsBackdrop}
-                  activeOpacity={1}
-                  onPress={() => setOpenActionsId(null)}
-                />
-              )}
             </View>
           </View>
         )}
+
+        {/* 会話ごとのアクションメニュー（名前の変更・削除） */}
+        {listVisible && openActionsId && (() => {
+          const target = conversations.find((c) => c.id === openActionsId);
+          if (!target) return null;
+          return (
+            <View style={styles.convActionsOverlay}>
+              <TouchableOpacity
+                style={styles.convActionsBackdrop}
+                activeOpacity={1}
+                onPress={() => setOpenActionsId(null)}
+              />
+              <View style={styles.convActionsSheet}>
+                <Text style={styles.convActionsTitle} numberOfLines={1}>{target.title || '新しい会話'}</Text>
+                <TouchableOpacity style={styles.convActionItem} onPress={() => renameConversationPrompt(target)}>
+                  <Text style={styles.convActionText}>名前の変更</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.convActionItem}
+                  onPress={() => {
+                    setOpenActionsId(null);
+                    const run = () => removeConversation(target.id);
+                    if (Platform.OS === 'web') { if (window.confirm('この会話を削除しますか？')) run(); }
+                    else run();
+                  }}
+                >
+                  <Text style={[styles.convActionText, styles.convActionDanger]}>削除</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.convActionItem} onPress={() => setOpenActionsId(null)}>
+                  <Text style={styles.convActionText}>キャンセル</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          );
+        })()}
       </KeyboardAvoidingView>
   );
 
@@ -580,14 +590,19 @@ const styles = StyleSheet.create({
   convRowActive: { backgroundColor: COLORS.surface },
   convTitle: { color: COLORS.text, fontSize: 14 },
   convMore: { fontSize: 18, color: COLORS.textMuted, fontWeight: '700', paddingHorizontal: 4 },
-  convActionsBackdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
-  convActionsMenu: {
-    position: 'absolute', right: SPACING.md, top: '100%', zIndex: 10,
-    backgroundColor: COLORS.surfaceElevated, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.border,
-    paddingVertical: 4, minWidth: 140, elevation: 4, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 6, shadowOffset: { width: 0, height: 2 },
+  convActionsOverlay: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    alignItems: 'center', justifyContent: 'center', padding: SPACING.lg,
   },
-  convActionItem: { paddingVertical: 10, paddingHorizontal: SPACING.md },
-  convActionText: { color: COLORS.text, fontSize: 14, fontWeight: '600' },
+  convActionsBackdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.4)' },
+  convActionsSheet: {
+    width: '100%', maxWidth: 280,
+    backgroundColor: COLORS.surfaceElevated, borderRadius: RADIUS.lg, borderWidth: 1, borderColor: COLORS.border,
+    paddingVertical: 8, overflow: 'hidden',
+  },
+  convActionsTitle: { color: COLORS.textMuted, fontSize: 12, fontWeight: '700', paddingHorizontal: SPACING.md, paddingVertical: 10 },
+  convActionItem: { paddingVertical: 14, paddingHorizontal: SPACING.md, borderTopWidth: 1, borderTopColor: COLORS.border },
+  convActionText: { color: COLORS.text, fontSize: 15, fontWeight: '600', textAlign: 'center' },
   convActionDanger: { color: COLORS.error },
   convEmpty: { color: COLORS.textMuted, fontSize: 13, textAlign: 'center', marginTop: SPACING.xl },
   empty: { alignItems: 'center', marginTop: SPACING.xxl, paddingHorizontal: SPACING.lg },
