@@ -5,16 +5,18 @@ import {
   ScrollView,
   TouchableOpacity,
   StyleSheet,
+  Image,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
 import { useAppStore } from '../store/appStore';
-import { getSeasonalThemes } from '../services/aiService';
+import AccountBadge from '../components/AccountBadge';
 import { getAiUsage, AiUsage } from '../services/scheduleService';
 
 const QUICK_ACTIONS = [
   { label: '投稿する', emoji: '📸', tab: 'Post', color: COLORS.primary },
+  { label: 'AIで画像を作る', emoji: '🎨', tab: 'Post', imageChat: true, color: COLORS.secondary },
   { label: '予約投稿', emoji: '📅', tab: 'Schedule', color: '#F77737' },
   { label: '設定', emoji: '⚙️', tab: 'Profile', color: '#4FC3F7' },
 ];
@@ -59,14 +61,8 @@ function getBestPostingTime(): { label: string; color: string; description: stri
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
-  const { brandSettings, instagramCredentials } = useAppStore();
-  const greeting = useMemo(() => getGreeting(), []);
-  const postingTime = useMemo(() => getBestPostingTime(), []);
-  const month = new Date().getMonth() + 1;
-  const seasonalEvents = useMemo(() => getSeasonalThemes(month), [month]);
-  const tipIndex = useMemo(() => new Date().getDate() % JAPAN_TIPS.length, []);
-  const todayTip = JAPAN_TIPS[tipIndex];
-
+  const { brandSettings, instagramCredentials: creds1, secondInstagramCredentials: creds2, activeAccountSlot, setOpenImageChat } = useAppStore();
+  const instagramCredentials = activeAccountSlot === 2 ? creds2 : creds1;
   const [usage, setUsage] = useState<AiUsage | null>(null);
   useEffect(() => {
     getAiUsage().then(setUsage).catch(() => {});
@@ -77,6 +73,7 @@ export default function HomeScreen() {
     : null;
 
   return (
+    <View style={{ flex: 1 }}>
     <ScrollView
       style={styles.container}
       contentContainerStyle={{ paddingTop: insets.top + SPACING.md, paddingBottom: 100 }}
@@ -84,39 +81,23 @@ export default function HomeScreen() {
     >
       {/* Header */}
       <View style={styles.header}>
-        <View>
-          <Text style={styles.greeting}>{greeting}</Text>
-          <Text style={styles.title}>
-            {brandSettings.brandName ? brandSettings.brandName : 'InstaAI'}
-          </Text>
-          {displayName && (
-            <Text style={styles.username}>{displayName}</Text>
-          )}
-        </View>
-        {!instagramCredentials && (
-          <View style={[styles.badge, styles.badgeInactive]}>
-            <Text style={styles.badgeText}>PRO</Text>
-          </View>
-        )}
-      </View>
-
-      {/* Best Posting Time Banner */}
-      <View style={[styles.timeBanner, { borderColor: postingTime.color + '66' }]}>
-        <View style={styles.timeBannerLeft}>
-          <Text style={styles.timeBannerIcon}>⏰</Text>
+        <View style={styles.headerLeft}>
+          <Image
+            source={require('../../assets/icon.png')}
+            style={styles.logoIcon}
+            resizeMode="contain"
+          />
           <View>
-            <Text style={[styles.timeBannerLabel, { color: postingTime.color }]}>
-              {postingTime.label}
-            </Text>
-            <Text style={styles.timeBannerDesc}>{postingTime.description}</Text>
+            <Text style={styles.title}>AImark</Text>
+            <Text style={{ fontSize: 11, color: COLORS.textMuted, marginTop: -2, marginBottom: 2 }}>アイマーク</Text>
+            {brandSettings.brandName ? (
+              <Text style={styles.greeting}>{brandSettings.brandName}</Text>
+            ) : null}
+            {displayName && (
+              <Text style={styles.username}>{displayName}</Text>
+            )}
           </View>
         </View>
-        <TouchableOpacity
-          style={[styles.postNowBtn, { backgroundColor: postingTime.color }]}
-          onPress={() => navigation.navigate('Post')}
-        >
-          <Text style={styles.postNowBtnText}>投稿作成</Text>
-        </TouchableOpacity>
       </View>
 
       {/* Stats */}
@@ -145,7 +126,10 @@ export default function HomeScreen() {
           <TouchableOpacity
             key={action.label}
             style={[styles.actionCard, { borderColor: action.color + '44' }]}
-            onPress={() => navigation.navigate(action.tab)}
+            onPress={() => {
+              if ((action as { imageChat?: boolean }).imageChat) setOpenImageChat(true);
+              navigation.navigate(action.tab);
+            }}
             activeOpacity={0.8}
           >
             <Text style={styles.actionEmoji}>{action.emoji}</Text>
@@ -153,34 +137,6 @@ export default function HomeScreen() {
           </TouchableOpacity>
         ))}
       </View>
-
-      {/* Seasonal Events */}
-      {seasonalEvents.length > 0 && (
-        <>
-          <Text style={styles.sectionTitle}>🗓 今月のイベント活用</Text>
-          {seasonalEvents.map((ev) => (
-            <TouchableOpacity
-              key={ev.event}
-              style={styles.seasonCard}
-              onPress={() => navigation.navigate('Post')}
-              activeOpacity={0.8}
-            >
-              <View style={styles.seasonHeader}>
-                <Text style={styles.seasonEmoji}>{ev.emoji}</Text>
-                <Text style={styles.seasonEvent}>{ev.event}</Text>
-                <Text style={styles.seasonArrow}>›</Text>
-              </View>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                {ev.themes.map((t) => (
-                  <View key={t} style={styles.themeChip}>
-                    <Text style={styles.themeChipText}>{t}</Text>
-                  </View>
-                ))}
-              </ScrollView>
-            </TouchableOpacity>
-          ))}
-        </>
-      )}
 
       {/* Industry Setup Prompt */}
       {!brandSettings.industry && (
@@ -198,17 +154,9 @@ export default function HomeScreen() {
         </TouchableOpacity>
       )}
 
-      {/* Today's Tip */}
-      <View style={styles.tipCard}>
-        <View style={styles.tipHeader}>
-          <Text style={styles.tipCategory}>💡 本日のヒント</Text>
-          <View style={styles.tipCategoryBadge}>
-            <Text style={styles.tipCategoryText}>{todayTip.category}</Text>
-          </View>
-        </View>
-        <Text style={styles.tipText}>{todayTip.tip}</Text>
-      </View>
     </ScrollView>
+    <AccountBadge />
+    </View>
   );
 }
 
@@ -223,6 +171,16 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     marginBottom: SPACING.lg,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  logoIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
   },
   greeting: {
     color: COLORS.textMuted,

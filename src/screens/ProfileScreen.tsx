@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
+  Animated,
+  Dimensions,
   ScrollView,
   StyleSheet,
   Alert,
@@ -10,18 +12,33 @@ import {
   TextInput,
   ActivityIndicator,
   Platform,
+  Linking,
+  Switch,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as SecureStore from 'expo-secure-store';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
-import { useAppStore, InstagramCredentials, BrandSettings } from '../store/appStore';
-import { INDUSTRIES } from '../services/aiService';
-import { ACCOUNT_THEMES } from '../utils/accountThemes';
+import { useAppStore, InstagramCredentials, BrandSettings, DEFAULT_BRAND_SETTINGS } from '../store/appStore';
+import { INDUSTRIES, analyzeBrandFromPosts } from '../services/aiService';
+import { getInsightsSummary } from '../services/insightsService';
+import axios from 'axios';
+import { loadBrandSettingsFromDb, saveBrandSettingsToDb, brandLocalKey } from '../services/brandSettingsService';
 import { supabase } from '../services/supabaseClient';
 import { getMyPlan } from '../services/scheduleService';
-import { connectInstagram, clearInstagramStorage, SK_USER_ID, SK_TOKEN, SK_USERNAME, SK_PICTURE } from '../utils/instagram';
+import { ensureLoggedIn } from '../utils/requireLogin';
+import { createCheckoutUrl } from '../services/billingService';
+import { PLANS, Plan, PLAN_RANK, canAnalytics } from '../utils/plans';
+import { registerPush, unregisterPush, isPushSupported, isPushEnabled } from '../services/pushService';
+import {
+  connectInstagram,
+  clearInstagramStorage,
+  clearInstagramStorage2,
+  SK_USER_ID, SK_TOKEN, SK_USERNAME, SK_PICTURE,
+  SK_USER_ID_2, SK_TOKEN_2, SK_USERNAME_2, SK_PICTURE_2,
+} from '../utils/instagram';
 
-const SK_BRAND = 'brand_settings_v1';
+const SK_BRAND_1 = 'brand_settings_v1';
+const SK_BRAND_2 = 'brand_settings_v2';
 
 async function save(key: string, value: string) {
   if (Platform.OS === 'web') localStorage.setItem(key, value);
@@ -33,44 +50,134 @@ async function load(key: string): Promise<string | null> {
   return SecureStore.getItemAsync(key);
 }
 
+async function remove(key: string) {
+  if (Platform.OS === 'web') localStorage.removeItem(key);
+  else await SecureStore.deleteItemAsync(key);
+}
+
 const TONES = ['明るい・ポジティブ', 'プロフェッショナル', 'カジュアル', '感情的・共感', 'ユーモラス'];
 
-const PLANS = [
-  {
-    id: 'free',
-    name: 'フリー',
-    price: '無料',
-    features: ['AI生成 月10回', '予約投稿 2件まで', '今すぐ投稿 無制限', '写真に文字を合成'],
-    color: COLORS.textMuted,
+const SCREEN_WIDTH = Dimensions.get('window').width;
+
+function SlideScreen({ visible, onBack, title, children }: {
+  visible: boolean;
+  onBack: () => void;
+  title: string;
+  children: React.ReactNode;
+}) {
+  const translateX = useRef(new Animated.Value(SCREEN_WIDTH)).current;
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    if (visible) {
+      setMounted(true);
+      Animated.timing(translateX, {
+        toValue: 0,
+        duration: 280,
+        useNativeDriver: true,
+      }).start();
+    } else {
+      Animated.timing(translateX, {
+        toValue: SCREEN_WIDTH,
+        duration: 250,
+        useNativeDriver: true,
+      }).start(() => setMounted(false));
+    }
+  }, [visible]);
+
+  if (!mounted) return null;
+
+  return (
+    <Animated.View style={[slideStyles.container, { transform: [{ translateX }] }]}>
+      <View style={slideStyles.header}>
+        <TouchableOpacity onPress={onBack} hitSlop={8}>
+          <Text style={slideStyles.back}>‹ 戻る</Text>
+        </TouchableOpacity>
+        <Text style={slideStyles.title}>{title}</Text>
+        <View style={{ width: 60 }} />
+      </View>
+      {children}
+    </Animated.View>
+  );
+}
+
+const slideStyles = StyleSheet.create({
+  container: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: COLORS.background,
+    zIndex: 100,
   },
-  {
-    id: 'pro',
-    name: 'Pro',
-    price: '¥980/月',
-    features: [
-      'AI生成 月300回',
-      '予約投稿 無制限',
-      'くりかえし投稿（毎日/毎週/毎月/平日）',
-      '複数アカウント連携',
-    ],
-    color: COLORS.secondary,
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACING.md,
+    paddingTop: SPACING.xl,
+    paddingBottom: SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
   },
-];
+  back: { color: COLORS.primary, fontSize: 17, fontWeight: '700' },
+  title: { color: COLORS.text, fontSize: 17, fontWeight: '800' },
+});
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
-  const { instagramCredentials, setInstagramCredentials, brandSettings, setBrandSettings } = useAppStore();
+  const {
+    instagramCredentials, setInstagramCredentials,
+    secondInstagramCredentials, setSecondInstagramCredentials,
+    activeAccountSlot, setActiveAccountSlot,
+    brandSettings, setBrandSettings, resetBrandSettings,
+    brandSettings2, setBrandSettings2, resetBrandSettings2,
+  } = useAppStore();
+
+  const activeBrandSettings = activeAccountSlot === 2 ? brandSettings2 : brandSettings;
+  const setActiveBrandSettings = activeAccountSlot === 2 ? setBrandSettings2 : setBrandSettings;
+  const resetActiveBrandSettings = activeAccountSlot === 2 ? resetBrandSettings2 : resetBrandSettings;
+  const SK_BRAND = activeAccountSlot === 2 ? SK_BRAND_2 : SK_BRAND_1;
 
   const [brandModalVisible, setBrandModalVisible] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [currentPlan, setCurrentPlan] = useState<'free' | 'pro'>('free');
+  const [currentPlan, setCurrentPlan] = useState<Plan>('free');
+  const [upgrading, setUpgrading] = useState(false);
 
   // Brand form
-  const [draftBrand, setDraftBrand] = useState<BrandSettings>({ ...brandSettings });
+  const [draftBrand, setDraftBrand] = useState<BrandSettings>({ ...activeBrandSettings });
 
   useEffect(() => {
     getMyPlan().then(setCurrentPlan).catch(() => {});
   }, []);
+
+  // 決済から戻ってきたとき（?upgrade=success）の処理
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const params = new URLSearchParams(window.location.search);
+    const u = params.get('upgrade');
+    if (u === 'success') {
+      window.alert('🎉 Proへのアップグレードが完了しました！反映に少し時間がかかる場合があります。');
+      setTimeout(() => getMyPlan().then(setCurrentPlan).catch(() => {}), 1500);
+      window.history.replaceState({}, '', window.location.pathname);
+    } else if (u === 'cancel') {
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
+
+  // アップグレード（Stripe Checkoutへ遷移）。target で 'pro' / 'business' を指定
+  const handleUpgrade = async (target: 'pro' | 'business') => {
+    if (upgrading) return;
+    setUpgrading(true);
+    try {
+      const url = await createCheckoutUrl(target);
+      if (Platform.OS === 'web') window.location.href = url;
+      else await Linking.openURL(url);
+    } catch (e) {
+      const msg = (e as { message?: string })?.message || '決済を開始できませんでした';
+      if (Platform.OS === 'web') window.alert(msg);
+      else Alert.alert('エラー', msg);
+      setUpgrading(false);
+    }
+  };
 
   useEffect(() => {
     (async () => {
@@ -87,23 +194,64 @@ export default function ProfileScreen() {
         });
       }
 
-      const savedBrand = await load(SK_BRAND);
-      if (savedBrand) {
-        try {
-          const parsed = JSON.parse(savedBrand) as BrandSettings;
-          setBrandSettings(parsed);
-        } catch {}
+      const savedUserId2 = await load(SK_USER_ID_2);
+      const savedToken2 = await load(SK_TOKEN_2);
+      const savedUsername2 = await load(SK_USERNAME_2);
+      const savedPicture2 = await load(SK_PICTURE_2);
+      if (savedUserId2 && savedToken2) {
+        setSecondInstagramCredentials({
+          userId: savedUserId2,
+          accessToken: savedToken2,
+          username: savedUsername2 ?? undefined,
+          profilePictureUrl: savedPicture2 ?? undefined,
+        });
+      }
+
+      // ブランド設定はInstagramアカウント(userId)単位で読み込む。
+      // DB→ローカルの順でフォールバック。未連携のスロットは読み込まない。
+      const loadBrandFor = async (igUserId: string | null): Promise<BrandSettings | null> => {
+        if (!igUserId) return null;
+        const db = await loadBrandSettingsFromDb(igUserId).catch(() => null);
+        if (db) return db;
+        const raw = await load(brandLocalKey(igUserId));
+        if (raw) { try { return JSON.parse(raw) as BrandSettings; } catch {} }
+        return null;
+      };
+      const [b1, b2] = await Promise.all([
+        loadBrandFor(savedUserId),
+        loadBrandFor(savedUserId2),
+      ]);
+      if (b1) {
+        setBrandSettings(b1);
+        if (savedUserId && Platform.OS === 'web') localStorage.setItem(brandLocalKey(savedUserId), JSON.stringify(b1));
+      }
+      if (b2) {
+        setBrandSettings2(b2);
+        if (savedUserId2 && Platform.OS === 'web') localStorage.setItem(brandLocalKey(savedUserId2), JSON.stringify(b2));
       }
     })();
   }, []);
 
-  const handleInstagramLogin = () => {
-    connectInstagram();
+  const handleInstagramLogin = async () => {
+    if (!(await ensureLoggedIn('Instagram連携にはログインが必要です'))) return;
+    connectInstagram(1);
+  };
+  const handleInstagramLogin2 = async () => {
+    if (!(await ensureLoggedIn('Instagram連携にはログインが必要です'))) return;
+    connectInstagram(2);
   };
 
   const doDisconnect = async () => {
     await clearInstagramStorage();
     setInstagramCredentials(null);
+    // 連携解除したら、このスロットのブランド設定（メモリ上）も初期化して混ざらないようにする
+    resetBrandSettings();
+  };
+
+  const doDisconnect2 = async () => {
+    await clearInstagramStorage2();
+    setSecondInstagramCredentials(null);
+    resetBrandSettings2();
   };
 
   const handleDisconnect = () => {
@@ -119,16 +267,111 @@ export default function ProfileScreen() {
     ]);
   };
 
+  const handleDisconnect2 = () => {
+    if (Platform.OS === 'web') {
+      if (window.confirm('2つ目のInstagramアカウントの連携を解除しますか？')) {
+        doDisconnect2();
+      }
+      return;
+    }
+    Alert.alert('連携解除', '2つ目のInstagramアカウントの連携を解除しますか？', [
+      { text: 'キャンセル', style: 'cancel' },
+      { text: '解除', style: 'destructive', onPress: doDisconnect2 },
+    ]);
+  };
+
   const openBrandModal = () => {
-    setDraftBrand({ ...brandSettings });
+    setDraftBrand({ ...activeBrandSettings });
     setBrandModalVisible(true);
   };
 
-  const handleSaveBrand = async () => {
+  const activeCredentials = activeAccountSlot === 2 ? secondInstagramCredentials : instagramCredentials;
+
+  // Instagram投稿のキャプションを取得（インサイト→基本メディアの順でフォールバック）
+  const fetchCaptions = async (token: string): Promise<string[]> => {
+    try {
+      const insights = await getInsightsSummary(token, 20);
+      const caps = insights.media.map((m) => m.caption ?? '').filter((c) => c.trim().length > 0);
+      if (caps.length > 0) return caps;
+    } catch {
+      // ビジネスアカウント以外では失敗するため無視
+    }
+    const res = await axios.get(
+      `https://graph.instagram.com/me/media?fields=caption&limit=20&access_token=${token}`
+    );
+    const items: Array<{ caption?: string }> = res.data?.data ?? [];
+    return items.map((m) => m.caption ?? '').filter((c) => c.trim().length > 0);
+  };
+
+  // 投稿が無い場合のフォールバック：プロフィールの自己紹介文・名前を取得する
+  const fetchProfileText = async (token: string): Promise<string> => {
+    try {
+      const res = await axios.get(
+        `https://graph.instagram.com/me?fields=name,username,biography&access_token=${token}`
+      );
+      const { name, username, biography } = res.data ?? {};
+      return [name, username, biography].filter((v: string) => v && v.trim()).join(' / ');
+    } catch {
+      return '';
+    }
+  };
+
+  // 連携済みアカウントの投稿を分析してブランド設定を自動生成する
+  const handleAutoBrand = async () => {
+    if (!activeCredentials?.accessToken) {
+      Alert.alert('Instagram未連携', '先にこのアカウントでInstagramを連携してください');
+      return;
+    }
     setSaving(true);
     try {
-      setBrandSettings(draftBrand);
-      await save(SK_BRAND, JSON.stringify({ ...brandSettings, ...draftBrand }));
+      let captions = await fetchCaptions(activeCredentials.accessToken);
+      // 投稿が無い場合：プロフィール情報→手入力の順でフォールバック
+      if (captions.length === 0) {
+        const profileText = await fetchProfileText(activeCredentials.accessToken);
+        if (profileText.trim()) captions = [profileText];
+      }
+      if (captions.length === 0 && Platform.OS === 'web') {
+        const desc = window.prompt(
+          '投稿がまだ無いようです。お店・アカウントの内容を一言で入力してください（例：渋谷のまつ毛エクステサロン、30代向け）'
+        );
+        if (desc && desc.trim()) captions = [desc.trim()];
+      }
+      if (captions.length === 0) {
+        Alert.alert(
+          '分析できる情報がありません',
+          '投稿・プロフィール情報が見つかりませんでした。ブランド設定は手動で入力してください。'
+        );
+        return;
+      }
+      const s = await analyzeBrandFromPosts(captions, activeCredentials.username);
+      setDraftBrand((p) => ({
+        ...p,
+        brandName: s.brandName || p.brandName,
+        industry: s.industry || p.industry,
+        atmosphere: s.atmosphere || p.atmosphere,
+        targetAudience: s.targetAudience || p.targetAudience,
+        tone: s.tone || p.tone,
+      }));
+      Alert.alert('自動生成しました ✨', '内容を確認して「保存」を押してください');
+    } catch {
+      Alert.alert('エラー', 'ブランドの自動生成に失敗しました');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSaveBrand = async () => {
+    const igUserId = activeCredentials?.userId ?? '';
+    if (!igUserId) {
+      Alert.alert('Instagram未連携', 'ブランド設定を保存するには、先にこのアカウントでInstagramを連携してください');
+      return;
+    }
+    setSaving(true);
+    try {
+      setActiveBrandSettings(draftBrand);
+      // ローカルとSupabase両方に、Instagramアカウント単位で保存（デバイス間同期）
+      await save(brandLocalKey(igUserId), JSON.stringify(draftBrand));
+      await saveBrandSettingsToDb(draftBrand, igUserId).catch(() => {});
       setBrandModalVisible(false);
       Alert.alert('保存しました ✅', 'ブランド設定を更新しました');
     } catch {
@@ -137,6 +380,76 @@ export default function ProfileScreen() {
       setSaving(false);
     }
   };
+
+  // 表示中アカウントのブランド設定をすべて初期状態に戻す（ローカル・Supabaseの保存データも削除）
+  const doResetBrand = async () => {
+    const igUserId = activeCredentials?.userId ?? '';
+    setSaving(true);
+    try {
+      resetActiveBrandSettings();
+      setDraftBrand({ ...DEFAULT_BRAND_SETTINGS });
+      if (igUserId) await remove(brandLocalKey(igUserId));
+      // Supabaseも初期値で上書きしておく（次回読み込みで古い設定が復活しないように）
+      await saveBrandSettingsToDb({ ...DEFAULT_BRAND_SETTINGS }, igUserId).catch(() => {});
+      setBrandModalVisible(false);
+      if (Platform.OS === 'web') window.alert('ブランド設定をリセットしました');
+      else Alert.alert('リセットしました ✅', 'ブランド設定を初期状態に戻しました');
+    } catch {
+      if (Platform.OS === 'web') window.alert('リセットに失敗しました');
+      else Alert.alert('エラー', 'リセットに失敗しました');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleResetBrand = () => {
+    const msg = 'ブランド設定をすべて初期状態に戻します。よろしいですか？（保存した内容は消えます）';
+    if (Platform.OS === 'web') {
+      if (window.confirm(msg)) doResetBrand();
+      return;
+    }
+    Alert.alert('ブランド設定をリセット', msg, [
+      { text: 'キャンセル', style: 'cancel' },
+      { text: 'リセット', style: 'destructive', onPress: doResetBrand },
+    ]);
+  };
+
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushLoading, setPushLoading] = useState(false);
+  const [settingsVisible, setSettingsVisible] = useState(false);
+  const [notifVisible, setNotifVisible] = useState(false);
+  const [loggedIn, setLoggedIn] = useState(false);
+  const [accountMenu, setAccountMenu] = useState<1 | 2 | null>(null);
+
+  useEffect(() => {
+    isPushEnabled().then(setPushEnabled);
+  }, []);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setLoggedIn(!!data.session));
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setLoggedIn(!!session);
+    });
+    return () => listener.subscription.unsubscribe();
+  }, []);
+
+  const handleTogglePush = useCallback(async (value: boolean) => {
+    setPushLoading(true);
+    try {
+      if (value) {
+        const ok = await registerPush();
+        if (!ok) {
+          Alert.alert('通知を許可してください', 'ブラウザの設定から通知を許可してください。');
+        }
+        setPushEnabled(ok);
+      } else {
+        await unregisterPush();
+        setPushEnabled(false);
+      }
+    } finally {
+      setPushLoading(false);
+    }
+  }, []);
 
   const handleLogout = () => {
     if (Platform.OS === 'web') {
@@ -158,8 +471,9 @@ export default function ProfileScreen() {
   };
 
   const isConnected = !!instagramCredentials;
-  const hasBrandSetup = !!(brandSettings.brandName || brandSettings.industry);
-  const industryInfo = INDUSTRIES.find((i) => i.key === brandSettings.industry);
+  const isConnected2 = !!secondInstagramCredentials;
+  const hasBrandSetup = !!(activeBrandSettings.brandName || activeBrandSettings.industry);
+  const industryInfo = INDUSTRIES.find((i) => i.key === activeBrandSettings.industry);
 
   return (
     <View style={styles.wrapper}>
@@ -169,10 +483,18 @@ export default function ProfileScreen() {
       >
         <Text style={styles.title}>プロフィール</Text>
 
-        {/* Instagram account card */}
-        <View style={[styles.accountCard, isConnected && styles.accountCardConnected]}>
+        {/* Instagram account card（タップで切り替え/解除メニュー） */}
+        <TouchableOpacity
+          style={[
+            styles.accountCard,
+            isConnected && styles.accountCardConnected,
+            isConnected && activeAccountSlot === 1 && styles.accountCardActive,
+          ]}
+          onPress={isConnected ? () => setAccountMenu(1) : undefined}
+          activeOpacity={isConnected ? 0.7 : 1}
+        >
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{isConnected ? '📷' : '🧑'}</Text>
+            <Text style={styles.avatarText}>{isConnected ? '📷' : '👤'}</Text>
           </View>
           <View style={styles.accountInfo}>
             {isConnected ? (
@@ -190,49 +512,88 @@ export default function ProfileScreen() {
             )}
           </View>
           {isConnected ? (
-            <TouchableOpacity style={styles.disconnectBtn} onPress={handleDisconnect}>
-              <Text style={styles.disconnectBtnText}>解除</Text>
-            </TouchableOpacity>
+            activeAccountSlot === 1 ? (
+              <Text style={styles.activeLabel}>使用中</Text>
+            ) : (
+              <Text style={styles.brandArrow}>›</Text>
+            )
           ) : (
             <TouchableOpacity style={styles.connectBtn} onPress={handleInstagramLogin}>
               <Text style={styles.connectBtnText}>連携する</Text>
             </TouchableOpacity>
           )}
-        </View>
+        </TouchableOpacity>
 
-        {isConnected && (
-          <View style={styles.connectedBadge}>
-            <Text style={styles.connectedBadgeText}>✅ 予約自動投稿が利用できます</Text>
+        {/* Second Instagram account card */}
+        <TouchableOpacity
+          style={[
+            styles.accountCard,
+            isConnected2 && styles.accountCardConnected,
+            isConnected2 && activeAccountSlot === 2 && styles.accountCardActive,
+          ]}
+          onPress={isConnected2 ? () => setAccountMenu(2) : undefined}
+          activeOpacity={isConnected2 ? 0.7 : 1}
+        >
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>{isConnected2 ? '📷' : '➕'}</Text>
           </View>
-        )}
+          <View style={styles.accountInfo}>
+            {isConnected2 ? (
+              <>
+                <Text style={styles.accountName}>
+                  {secondInstagramCredentials!.username ? `@${secondInstagramCredentials!.username}` : 'Instagram連携済み'}
+                </Text>
+                <Text style={styles.accountSub}>ID: {secondInstagramCredentials!.userId}</Text>
+              </>
+            ) : (
+              <>
+                <Text style={styles.accountName}>未連携</Text>
+                <Text style={styles.accountSub}>2つ目のInstagramアカウントを連携</Text>
+              </>
+            )}
+          </View>
+          {isConnected2 ? (
+            activeAccountSlot === 2 ? (
+              <Text style={styles.activeLabel}>使用中</Text>
+            ) : (
+              <Text style={styles.brandArrow}>›</Text>
+            )
+          ) : (
+            <TouchableOpacity style={styles.connectBtn} onPress={handleInstagramLogin2}>
+              <Text style={styles.connectBtnText}>連携する</Text>
+            </TouchableOpacity>
+          )}
+        </TouchableOpacity>
 
         {/* Brand Settings Card */}
-        <Text style={styles.sectionTitle}>ブランド設定</Text>
+        <Text style={styles.sectionTitle}>
+          ブランド設定{activeAccountSlot === 2 ? '（アカウント②）' : '（アカウント①）'}
+        </Text>
         <TouchableOpacity style={styles.brandCard} onPress={openBrandModal} activeOpacity={0.8}>
           <View style={styles.brandInfo}>
             <Text style={styles.brandEmoji}>
               {industryInfo ? industryInfo.emoji : '🏪'}
             </Text>
             <View style={styles.brandText}>
-              <Text style={styles.brandName}>
-                {brandSettings.brandName || 'ブランド名を設定'}
+              <Text style={styles.brandName} numberOfLines={1} ellipsizeMode="tail">
+                {activeBrandSettings.brandName || 'ブランド名を設定'}
               </Text>
-              <Text style={styles.brandSub}>
-                {industryInfo ? industryInfo.label : '業種を設定するとAI精度が向上します'}
+              <Text style={styles.brandSub} numberOfLines={1} ellipsizeMode="tail">
+                {activeBrandSettings.industry || '業種を設定するとAI精度が向上します'}
               </Text>
             </View>
             <Text style={styles.brandArrow}>›</Text>
           </View>
           {hasBrandSetup && (
             <View style={styles.brandTags}>
-              {brandSettings.tone && (
+              {activeBrandSettings.tone && (
                 <View style={styles.brandTag}>
-                  <Text style={styles.brandTagText}>{brandSettings.tone}</Text>
+                  <Text style={styles.brandTagText} numberOfLines={1} ellipsizeMode="tail">{activeBrandSettings.tone}</Text>
                 </View>
               )}
-              {brandSettings.targetAudience && (
-                <View style={styles.brandTag}>
-                  <Text style={styles.brandTagText}>{brandSettings.targetAudience}</Text>
+              {activeBrandSettings.targetAudience && (
+                <View style={[styles.brandTag, { flexShrink: 1 }]}>
+                  <Text style={styles.brandTagText} numberOfLines={1} ellipsizeMode="tail">{activeBrandSettings.targetAudience}</Text>
                 </View>
               )}
             </View>
@@ -254,12 +615,17 @@ export default function ProfileScreen() {
               {plan.features.map((f) => (
                 <Text key={f} style={styles.planFeature}>✓ {f}</Text>
               ))}
-              {!isCurrent && plan.id === 'pro' && (
+              {plan.paid && PLAN_RANK[plan.id] > PLAN_RANK[currentPlan] && (
                 <TouchableOpacity
-                  style={[styles.planUpgradeBtn, { backgroundColor: plan.color }]}
-                  onPress={() => Alert.alert('近日公開', `${plan.name}プランは近日公開予定です`)}
+                  style={[styles.planUpgradeBtn, { backgroundColor: plan.color }, upgrading && { opacity: 0.6 }]}
+                  onPress={() => handleUpgrade(plan.id as 'pro' | 'business')}
+                  disabled={upgrading}
                 >
-                  <Text style={styles.planUpgradeBtnText}>アップグレード</Text>
+                  {upgrading ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={styles.planUpgradeBtnText}>アップグレード</Text>
+                  )}
                 </TouchableOpacity>
               )}
             </View>
@@ -273,7 +639,8 @@ export default function ProfileScreen() {
           { label: 'AIの使い方ガイド', emoji: '📖', action: () => Alert.alert('ガイド', 'AI生成タブで写真を選択するか、テーマを入力してAIに投稿を生成させましょう。業種を設定するとより精度が上がります。') },
           { label: 'ハッシュタグについて', emoji: '#️⃣', action: () => Alert.alert('ハッシュタグ', '日本のInstagramではハッシュタグ検索がグローバル平均の3倍！15〜20個のタグを使い、人気タグとニッチタグをバランスよく組み合わせましょう。') },
           { label: '最適な投稿時間', emoji: '⏰', action: () => Alert.alert('投稿時間', '平日: 12〜13時 / 18〜21時\n休日: 11〜13時 / 19〜21時\n\nこの時間帯は日本のInstagramユーザーのアクティブ率が最も高くなります。') },
-          { label: 'お問い合わせ', emoji: '💬', action: () => Alert.alert('お問い合わせ', 'support@instaai.jp までご連絡ください') },
+          { label: 'お問い合わせ', emoji: '💬', action: () => Alert.alert('お問い合わせ', 'support@aimark.jp までご連絡ください') },
+          { label: 'プライバシーポリシー', emoji: '🔒', action: () => { if (Platform.OS === 'web') { window.open('/privacy', '_blank'); } else { Alert.alert('プライバシーポリシー', 'https://instagram-api-alpha.vercel.app/privacy'); } } },
         ].map((item) => (
           <TouchableOpacity key={item.label} style={styles.helpRow} onPress={item.action} activeOpacity={0.7}>
             <Text style={styles.helpEmoji}>{item.emoji}</Text>
@@ -282,14 +649,64 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         ))}
 
-        <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.8}>
-          <Text style={styles.logoutBtnText}>ログアウト</Text>
+        {/* 設定セクション */}
+        <Text style={styles.sectionTitle}>設定</Text>
+        <TouchableOpacity style={styles.helpRow} onPress={() => setSettingsVisible(true)} activeOpacity={0.7}>
+          <Text style={styles.helpEmoji}>⚙️</Text>
+          <Text style={styles.helpLabel}>設定</Text>
+          <Text style={styles.helpArrow}>›</Text>
         </TouchableOpacity>
 
-        <Text style={styles.version}>InstaAI v1.0.0 — 日本の個人事業主向け</Text>
+        {loggedIn && (
+          <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.8}>
+            <Text style={styles.logoutBtnText}>ログアウト</Text>
+          </TouchableOpacity>
+        )}
+
+        <Text style={styles.version}>AImark v1.0.0 — 日本の個人事業主向け</Text>
       </ScrollView>
 
-      {/* Brand Settings Modal */}
+      {/* 設定画面（右スライド） */}
+      <SlideScreen visible={settingsVisible} onBack={() => setSettingsVisible(false)} title="設定">
+        <ScrollView>
+          <Text style={[styles.sectionTitle, { marginTop: SPACING.md }]}>設定項目</Text>
+          <TouchableOpacity style={styles.helpRow} onPress={() => setNotifVisible(true)} activeOpacity={0.7}>
+            <Text style={styles.helpEmoji}>🔔</Text>
+            <Text style={styles.helpLabel}>通知</Text>
+            <Text style={styles.helpArrow}>›</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </SlideScreen>
+
+      {/* 通知設定画面（右スライド） */}
+      <SlideScreen visible={notifVisible} onBack={() => setNotifVisible(false)} title="通知">
+        <ScrollView contentContainerStyle={{ padding: SPACING.md }}>
+          {isPushSupported() ? (
+            <View style={styles.notifRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.notifLabel}>プッシュ通知</Text>
+                <Text style={styles.notifDesc}>予約投稿の完了・失敗を通知します</Text>
+              </View>
+              {pushLoading ? (
+                <ActivityIndicator color={COLORS.primary} />
+              ) : (
+                <Switch
+                  value={pushEnabled}
+                  onValueChange={handleTogglePush}
+                  trackColor={{ false: COLORS.border, true: COLORS.primary }}
+                  thumbColor="#fff"
+                />
+              )}
+            </View>
+          ) : (
+            <View style={styles.notifRow}>
+              <Text style={styles.notifDesc}>このブラウザはプッシュ通知に対応していません</Text>
+            </View>
+          )}
+        </ScrollView>
+      </SlideScreen>
+
+            {/* Brand Settings Modal */}
       <Modal visible={brandModalVisible} animationType="slide" presentationStyle="pageSheet">
         <ScrollView style={styles.modal} keyboardShouldPersistTaps="handled">
           <View style={styles.modalHeader}>
@@ -313,46 +730,13 @@ export default function ProfileScreen() {
             />
 
             <Text style={styles.fieldLabel}>業種・ジャンル</Text>
-            <View style={styles.industryGrid}>
-              {INDUSTRIES.filter((i) => i.key !== '').map((ind) => (
-                <TouchableOpacity
-                  key={ind.key}
-                  style={[styles.industryBtn, draftBrand.industry === ind.key && styles.industryBtnActive]}
-                  onPress={() => setDraftBrand((p) => ({ ...p, industry: ind.key }))}
-                >
-                  <Text style={styles.industryBtnEmoji}>{ind.emoji}</Text>
-                  <Text style={[styles.industryBtnLabel, draftBrand.industry === ind.key && styles.industryBtnLabelActive]}>
-                    {ind.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-            <Text style={[styles.fieldLabel, { marginTop: SPACING.sm }]}>
-              または業種を自由に入力
-            </Text>
             <TextInput
               style={styles.input}
               value={draftBrand.industry}
               onChangeText={(v) => setDraftBrand((p) => ({ ...p, industry: v }))}
-              placeholder="例: クラフトビール専門店、出張カメラマン など"
+              placeholder="例: 美容・ネイル、飲食・カフェ、クラフトビール専門店 など"
               placeholderTextColor={COLORS.textMuted}
             />
-
-            <Text style={styles.fieldLabel}>アカウントタイプ（文字・デザインに反映）</Text>
-            <View style={styles.industryGrid}>
-              {ACCOUNT_THEMES.map((at) => (
-                <TouchableOpacity
-                  key={at.key}
-                  style={[styles.industryBtn, draftBrand.accountType === at.key && styles.industryBtnActive]}
-                  onPress={() => setDraftBrand((p) => ({ ...p, accountType: at.key }))}
-                >
-                  <Text style={styles.industryBtnEmoji}>{at.emoji}</Text>
-                  <Text style={[styles.industryBtnLabel, draftBrand.accountType === at.key && styles.industryBtnLabelActive]}>
-                    {at.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
 
             <Text style={styles.fieldLabel}>お店の雰囲気・こだわり（任意）</Text>
             <TextInput
@@ -386,13 +770,107 @@ export default function ProfileScreen() {
               ))}
             </View>
 
+            <Text style={styles.fieldLabel}>
+              過去の人気投稿を反映 {!canAnalytics(currentPlan) && '⭐ビジネス'}
+            </Text>
+            <View style={styles.insightToggleRow}>
+              <View style={styles.insightToggleTextWrap}>
+                <Text style={styles.insightToggleTitle}>反応が良かった投稿の傾向をAIに反映</Text>
+                <Text style={styles.insightToggleDesc}>
+                  ONにすると、テーマや写真からの生成時に、連携アカウントのいいね数が多い投稿の傾向を自動で分析して文章に反映します。
+                </Text>
+              </View>
+              <Switch
+                value={draftBrand.useTopPostsInsight}
+                disabled={!canAnalytics(currentPlan)}
+                onValueChange={(v) => setDraftBrand((p) => ({ ...p, useTopPostsInsight: v }))}
+                trackColor={{ true: COLORS.primary, false: COLORS.border }}
+              />
+            </View>
+            {!canAnalytics(currentPlan) && (
+              <Text style={styles.insightToggleLocked}>
+                この機能はビジネスプラン限定です。
+              </Text>
+            )}
+
             <View style={styles.brandTip}>
               <Text style={styles.brandTipText}>
                 💡 ブランド設定を入力するとAIが自動的に業種やブランドに合わせた投稿を生成します
               </Text>
             </View>
+
+            <TouchableOpacity
+              style={styles.autoBrandBtn}
+              onPress={handleAutoBrand}
+              disabled={saving}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.autoBrandText}>
+                {saving ? '生成中...' : '✨ AIで投稿を分析して自動入力'}
+              </Text>
+            </TouchableOpacity>
+            <Text style={styles.resetBrandHint}>
+              ※ 連携中のInstagram投稿をAIが分析し、上の項目を自動入力します
+            </Text>
+
+            <TouchableOpacity
+              style={styles.resetBrandBtn}
+              onPress={handleResetBrand}
+              disabled={saving}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.resetBrandText}>🗑 ブランド設定をリセット</Text>
+            </TouchableOpacity>
+            <Text style={styles.resetBrandHint}>
+              ※ すべての項目を初期状態に戻します（この端末の保存データも削除されます）
+            </Text>
           </View>
         </ScrollView>
+      </Modal>
+
+      {/* アカウント切り替え/解除メニュー（Google風） */}
+      <Modal visible={accountMenu !== null} transparent animationType="fade" onRequestClose={() => setAccountMenu(null)}>
+        <TouchableOpacity style={styles.menuOverlay} activeOpacity={1} onPress={() => setAccountMenu(null)}>
+          <TouchableOpacity activeOpacity={1} style={styles.menuSheet} onPress={(e) => e.stopPropagation?.()}>
+            {(() => {
+              const slot = accountMenu;
+              if (!slot) return null;
+              const creds = slot === 2 ? secondInstagramCredentials : instagramCredentials;
+              const isActive = activeAccountSlot === slot;
+              return (
+                <>
+                  <Text style={styles.menuTitle}>
+                    {creds?.username ? `@${creds.username}` : `アカウント${slot}`}
+                  </Text>
+                  {!isActive && (
+                    <TouchableOpacity
+                      style={styles.menuItem}
+                      onPress={() => { setActiveAccountSlot(slot); setAccountMenu(null); }}
+                    >
+                      <Text style={styles.menuItemText}>✅ このアカウントに切り替える</Text>
+                    </TouchableOpacity>
+                  )}
+                  {isActive && (
+                    <Text style={styles.menuActiveNote}>使用中のアカウントです</Text>
+                  )}
+                  <TouchableOpacity
+                    style={styles.menuItem}
+                    onPress={() => {
+                      setAccountMenu(null);
+                      if (slot === 2) handleDisconnect2();
+                      else handleDisconnect();
+                    }}
+                  >
+                    <Text style={[styles.menuItemText, { color: COLORS.error }]}>🔌 連携を解除する</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.menuCancel} onPress={() => setAccountMenu(null)}>
+                    <Text style={styles.menuCancelText}>キャンセル</Text>
+                  </TouchableOpacity>
+                </>
+              );
+            })()}
+          </TouchableOpacity>
+        </TouchableOpacity>
       </Modal>
 
     </View>
@@ -415,6 +893,8 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
   },
   accountCardConnected: { borderColor: COLORS.primary + '66' },
+  accountCardActive: { borderColor: COLORS.primary, borderWidth: 3 },
+  activeLabel: { color: COLORS.primary, fontSize: 12, fontWeight: '800' },
   avatar: {
     width: 48,
     height: 48,
@@ -450,6 +930,40 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.full,
   },
   disconnectBtnText: { color: COLORS.error, fontWeight: '600', fontSize: 12 },
+  menuOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+  },
+  menuSheet: {
+    backgroundColor: COLORS.surface,
+    borderTopLeftRadius: RADIUS.lg,
+    borderTopRightRadius: RADIUS.lg,
+    padding: SPACING.lg,
+    paddingBottom: SPACING.xl,
+  },
+  menuTitle: {
+    color: COLORS.text,
+    fontSize: 16,
+    fontWeight: '800',
+    marginBottom: SPACING.md,
+    textAlign: 'center',
+  },
+  menuItem: {
+    paddingVertical: SPACING.md,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
+  menuItemText: { color: COLORS.text, fontSize: 15, fontWeight: '600', textAlign: 'center' },
+  menuActiveNote: {
+    color: COLORS.primary,
+    fontSize: 13,
+    fontWeight: '700',
+    textAlign: 'center',
+    paddingVertical: SPACING.sm,
+  },
+  menuCancel: { paddingVertical: SPACING.md, marginTop: SPACING.sm },
+  menuCancelText: { color: COLORS.textMuted, fontSize: 15, fontWeight: '600', textAlign: 'center' },
   connectedBadge: {
     backgroundColor: COLORS.success + '22',
     borderRadius: RADIUS.md,
@@ -545,6 +1059,19 @@ const styles = StyleSheet.create({
   helpEmoji: { fontSize: 20 },
   helpLabel: { flex: 1, color: COLORS.text, fontSize: 14 },
   helpArrow: { color: COLORS.textMuted, fontSize: 20 },
+  notifRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.md,
+    padding: SPACING.md,
+    marginTop: SPACING.sm,
+    marginBottom: SPACING.sm,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  notifLabel: { color: COLORS.text, fontSize: 15, fontWeight: '700', marginBottom: 2 },
+  notifDesc: { color: COLORS.textSecondary, fontSize: 12 },
   logoutBtn: {
     marginTop: SPACING.xl,
     paddingVertical: SPACING.md,
@@ -568,6 +1095,29 @@ const styles = StyleSheet.create({
   modalTitle: { color: COLORS.text, fontSize: 17, fontWeight: '700' },
   modalCancel: { color: COLORS.textMuted, fontSize: 16 },
   modalSave: { color: COLORS.primary, fontSize: 16, fontWeight: '700' },
+  autoBrandBtn: {
+    marginTop: SPACING.lg,
+    backgroundColor: COLORS.primary,
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.md,
+    alignItems: 'center',
+  },
+  autoBrandText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  resetBrandBtn: {
+    marginTop: SPACING.lg,
+    borderWidth: 1,
+    borderColor: COLORS.error,
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.md,
+    alignItems: 'center',
+  },
+  resetBrandText: { color: COLORS.error, fontSize: 15, fontWeight: '700' },
+  resetBrandHint: {
+    color: COLORS.textMuted,
+    fontSize: 12,
+    marginTop: SPACING.sm,
+    textAlign: 'center',
+  },
   modalBody: { paddingHorizontal: SPACING.md, paddingTop: SPACING.md, paddingBottom: SPACING.xxl },
   oauthBtn: {
     backgroundColor: COLORS.primary,
@@ -630,6 +1180,19 @@ const styles = StyleSheet.create({
   toneBtnActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   toneBtnText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '500' },
   toneBtnTextActive: { color: '#fff' },
+  insightToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.md,
+    padding: SPACING.md,
+    marginBottom: SPACING.sm,
+  },
+  insightToggleTextWrap: { flex: 1 },
+  insightToggleTitle: { color: COLORS.text, fontSize: 14, fontWeight: '600', marginBottom: 2 },
+  insightToggleDesc: { color: COLORS.textSecondary, fontSize: 12, lineHeight: 17 },
+  insightToggleLocked: { color: COLORS.textMuted, fontSize: 12, marginBottom: SPACING.sm },
   brandTip: {
     backgroundColor: COLORS.secondary + '18',
     borderRadius: RADIUS.md,

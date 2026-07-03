@@ -13,6 +13,7 @@ import {
   Platform,
   Image,
   PanResponder,
+  Dimensions,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -23,11 +24,19 @@ import {
   StoryTransform,
   DEFAULT_TRANSFORM,
 } from '../utils/composeStory';
+import FeedCropEditor from '../components/FeedCropEditor';
 import StoryEditor from '../components/StoryEditor';
 import ReelScreen from './ReelScreen';
 import RosterScreen from './RosterScreen';
 import { addTextToVideo, composeImageWithHeadline } from '../utils/createReel';
 import { generateStory, generatePost, generateFromImage, generateFromImages, refineCaption } from '../services/aiService';
+import { getTopPostsForGeneration } from '../services/insightsService';
+import {
+  getTemplates,
+  saveTemplate,
+  deleteTemplate,
+  PostTemplate,
+} from '../services/templateService';
 
 // 動画の1フレームを取り出してbase64画像にする（AI見出し生成用・web）
 function extractVideoFrame(blob: Blob): Promise<{ base64: string; mime: string }> {
@@ -83,6 +92,8 @@ import {
 import { ensureLoggedIn } from '../utils/requireLogin';
 import { useAppStore } from '../store/appStore';
 import { publishNow } from '../services/publishNow';
+import ImageGenChat from '../components/ImageGenChat';
+import { Plan, canRecurring } from '../utils/plans';
 
 type Filter = 'all' | 'draft' | 'pending' | 'published' | 'failed';
 
@@ -157,13 +168,43 @@ const REPEAT_SHORT: Record<RepeatOption, string> = {
   weekdays: '平日',
 };
 
-export default function ScheduleScreen({ route }: any) {
-  // mode='now' は「投稿」タブ（今すぐ投稿のみ）／ 'schedule' は「予約投稿」タブ（予約のみ）
-  const mode: 'now' | 'schedule' = route?.params?.mode === 'now' ? 'now' : 'schedule';
+// カレンダーで状態を色分けするための定義（予約中=青/投稿済み=緑/下書き=グレー/失敗=赤）
+type PostStatus = 'pending' | 'published' | 'draft' | 'failed';
+const STATUS_ORDER: PostStatus[] = ['pending', 'published', 'draft', 'failed'];
+const STATUS_COLORS: Record<PostStatus, string> = {
+  pending: '#4FC3F7',
+  published: '#4CAF50',
+  draft: '#888888',
+  failed: '#FF5252',
+};
+const STATUS_LABELS: Record<PostStatus, string> = {
+  pending: '予約中',
+  published: '投稿済み',
+  draft: '下書き',
+  failed: '失敗',
+};
+
+// web の日付/時間ピッカー（<input type="date|time">）の見た目。RNのStyleSheetは使えないのでCSSで指定
+const webDateInputStyle: React.CSSProperties = {
+  width: '100%',
+  boxSizing: 'border-box',
+  backgroundColor: COLORS.surface,
+  border: `1px solid ${COLORS.border}`,
+  borderRadius: RADIUS.md,
+  padding: '10px 12px',
+  color: COLORS.text,
+  fontSize: 15,
+  colorScheme: 'dark',
+};
+
+export default function ScheduleScreen() {
   const insets = useSafeAreaInsets();
   const draft = useAppStore((s) => s.draft);
   const clearDraft = useAppStore((s) => s.clearDraft);
-  const instagramCredentials = useAppStore((s) => s.instagramCredentials);
+  const instagramCredentials1 = useAppStore((s) => s.instagramCredentials);
+  const instagramCredentials2 = useAppStore((s) => s.secondInstagramCredentials);
+  const activeAccountSlot = useAppStore((s) => s.activeAccountSlot);
+  const instagramCredentials = activeAccountSlot === 2 ? instagramCredentials2 : instagramCredentials1;
   const brandSettings = useAppStore((s) => s.brandSettings);
 
   const [posts, setPosts] = useState<ScheduledPost[]>([]);
@@ -181,6 +222,7 @@ export default function ScheduleScreen({ route }: any) {
 
   const [caption, setCaption] = useState('');
   const [hashtagsText, setHashtagsText] = useState('');
+  const [newFeedTag, setNewFeedTag] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [imageUrls, setImageUrls] = useState<string[]>([]); // フィードのカルーセル用（複数）
   const [feedPreviews, setFeedPreviews] = useState<string[]>([]); // 選択した写真のサムネ表示用
@@ -189,8 +231,36 @@ export default function ScheduleScreen({ route }: any) {
   const [dateText, setDateText] = useState('');
   const [type, setType] = useState<'feed' | 'story'>('feed');
   const [repeat, setRepeat] = useState<RepeatOption>('none');
-  const [plan, setPlan] = useState<'free' | 'pro'>('free');
+  const [scheduleModalVisible, setScheduleModalVisible] = useState(false); // 「予約する」で日時入力を別画面表示
+  const scheduleFromResult = useRef(false); // 結果画面から予約モーダルを開いたか
+  const editingDraftId = useRef<string | null>(null); // 結果画面で既存の下書きを編集中ならそのID
+  const draftOriginalRef = useRef<string | null>(null); // 編集開始時の内容スナップショット（変更検知用）
+  const [plan, setPlan] = useState<Plan>('free');
   const [nowSub, setNowSub] = useState<'menu' | 'reel' | 'roster'>('menu'); // 投稿タブ内の表示
+
+  // テンプレート（ひな形）: この端末だけに保存して再利用する
+  const [templates, setTemplates] = useState<PostTemplate[]>([]);
+  const [templatePickerVisible, setTemplatePickerVisible] = useState(false);
+  const [savingTemplate, setSavingTemplate] = useState(false);
+
+  // 詳細モーダル用
+  const [detailPost, setDetailPost] = useState<ScheduledPost | null>(null);
+  const [carouselW, setCarouselW] = useState(0);
+  const [carouselIdx, setCarouselIdx] = useState(0);
+  useEffect(() => { setCarouselIdx(0); }, [detailPost]);
+  const [rCarW, setRCarW] = useState(0);
+  const [rCarIdx, setRCarIdx] = useState(0);
+  // 写真トリミング編集（選択→調整→AI生成の流れ）
+  const [cropVisible, setCropVisible] = useState(false);
+  const [cropRawImages, setCropRawImages] = useState<string[]>([]);
+  const [cropInitialIndex, setCropInitialIndex] = useState(0);
+  const cropAppendRef = useRef(false); // 追加（追記）モードか、置き換えモードか
+  const cropReturnRef = useRef<'create' | 'result' | null>(null); // 編集後に戻るモーダル
+
+  // AI生成結果画面用
+  const [resultVisible, setResultVisible] = useState(false);
+  const [closeConfirmVisible, setCloseConfirmVisible] = useState(false);
+  useEffect(() => { setRCarIdx(0); }, [resultVisible]);
 
   // 編集モーダル用
   const [editVisible, setEditVisible] = useState(false);
@@ -279,6 +349,24 @@ export default function ScheduleScreen({ route }: any) {
     ...DEFAULT_TRANSFORM,
   });
   const [feedTheme, setFeedTheme] = useState('');
+  // タグ・場所
+  const [userTags, setUserTags] = useState<string[]>([]);
+  const [newUserTag, setNewUserTag] = useState('');
+  const [productTags, setProductTags] = useState<string[]>([]);
+  const [newProductTag, setNewProductTag] = useState('');
+  const [locationId, setLocationId] = useState('');
+  // AI画像生成（チャット）
+  const [imgChatVisible, setImgChatVisible] = useState(false);
+  const openImageChatFlag = useAppStore((s) => s.openImageChat);
+  const setOpenImageChatFlag = useAppStore((s) => s.setOpenImageChat);
+  const imgChatFromHome = useRef(false);
+  useEffect(() => {
+    if (openImageChatFlag) {
+      imgChatFromHome.current = true;
+      setImgChatVisible(true);
+      setOpenImageChatFlag(false);
+    }
+  }, [openImageChatFlag, setOpenImageChatFlag]);
   const [aiInstruction, setAiInstruction] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const [composing, setComposing] = useState(false);
@@ -287,18 +375,19 @@ export default function ScheduleScreen({ route }: any) {
 
   const fetchPosts = useCallback(async () => {
     try {
-      const data = await getScheduledPosts();
+      const data = await getScheduledPosts(instagramCredentials?.userId);
       setPosts(data);
     } catch {
       Alert.alert('エラー', 'Supabaseの設定を確認してください。');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [instagramCredentials?.userId]);
 
   useEffect(() => {
     fetchPosts();
     getMyPlan().then(setPlan).catch(() => {});
+    getTemplates().then(setTemplates).catch(() => {});
   }, [fetchPosts]);
 
   // 動画ストーリーのプレビュー：選んだ動画を<video>で表示
@@ -359,7 +448,19 @@ export default function ScheduleScreen({ route }: any) {
     setStoryTextColor('#FFFFFF');
     setStoryTransform({ ...DEFAULT_TRANSFORM });
     setRepeat('none');
+    setUserTags([]);
+    setNewUserTag('');
+    setProductTags([]);
+    setNewProductTag('');
+    setLocationId('');
+    setScheduleModalVisible(false);
     setModalVisible(true);
+  };
+
+  // 「投稿を作成」：作成モーダルを開きつつ、すぐ写真選択→調整画面へ進む
+  const startNewPost = () => {
+    openModal();
+    setTimeout(() => { pickFeedImages(); }, 0);
   };
 
   const alertMsg = (msg: string, title = 'エラー') => {
@@ -369,7 +470,7 @@ export default function ScheduleScreen({ route }: any) {
 
   // くりかえしの選択（Pro限定。無料が選んだら案内を出す）
   const selectRepeat = (r: RepeatOption) => {
-    if (r !== 'none' && plan !== 'pro') {
+    if (r !== 'none' && !canRecurring(plan)) {
       alertMsg(
         'くりかえし投稿はProプラン限定です。Proにアップグレードすると、毎日・毎週・毎月・平日の自動くりかえし投稿が使えます。',
         '⭐ Pro限定の機能です'
@@ -403,7 +504,37 @@ export default function ScheduleScreen({ route }: any) {
       return;
     }
 
-    // フィードは複数選択OK（カルーセル投稿）
+    // フィードは複数選択OK（カルーセル投稿）→ まずトリミング編集へ
+    await pickFeedImages();
+  };
+
+  // 画像生成チャットを開く（作成モーダルは隠してz-index競合を防ぐ）
+  const openImgChat = async () => {
+    if (!(await ensureLoggedIn('画像生成を使うにはログインが必要です'))) return;
+    imgChatFromHome.current = false;
+    setModalVisible(false);
+    setImgChatVisible(true);
+  };
+
+  // チャットで生成した画像を使って調整画面へ
+  const handleUseGeneratedImage = (dataUrl: string) => {
+    setImgChatVisible(false);
+    cropAppendRef.current = false;
+    cropReturnRef.current = 'create';
+    setCropInitialIndex(0);
+    setCropRawImages([dataUrl]);
+    setCropVisible(true);
+  };
+
+  // フィード写真を選んで、そのまま「写真を調整する画面」へ
+  const pickFeedImages = async () => {
+    if (Platform.OS !== 'web') {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('権限エラー', '写真へのアクセスを許可してください');
+        return;
+      }
+    }
     const res = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsMultipleSelection: true,
@@ -412,22 +543,12 @@ export default function ScheduleScreen({ route }: any) {
     });
     if (res.canceled) return;
 
-    setFeedPreviews(res.assets.map((a) => a.uri));
-    setImagePreview(res.assets[0].uri);
-    setImageUploading(true);
-    try {
-      const urls: string[] = [];
-      for (const a of res.assets) {
-        urls.push(await uploadPostImage(a.uri));
-      }
-      setImageUrls(urls);
-      setImageUrl(urls[0]);
-    } catch (e) {
-      setImagePreview('');
-      alertMsg(e instanceof Error ? e.message : '画像アップロードに失敗しました');
-    } finally {
-      setImageUploading(false);
-    }
+    cropAppendRef.current = false;
+    cropReturnRef.current = 'create';
+    setCropInitialIndex(0);
+    setModalVisible(false); // 下のモーダルと重なってz-indexで隠れるのを防ぐ
+    setCropRawImages(res.assets.map((a) => a.uri));
+    setCropVisible(true);
   };
 
   // ストーリー用のメディア（写真 または 動画）を選ぶ
@@ -531,6 +652,7 @@ export default function ScheduleScreen({ route }: any) {
         return;
       }
       const allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+      const topPosts = await getTopPostsForGeneration();
       const g = await generateFromImage({
         imageBase64: base64,
         mimeType: (allowed.includes(mime) ? mime : 'image/jpeg') as 'image/jpeg',
@@ -540,6 +662,7 @@ export default function ScheduleScreen({ route }: any) {
         instruction:
           'ストーリーにのせる短い見出しを1つだけ。8〜14文字、記号や改行・ハッシュタグなし。' +
           (aiInstruction.trim() ? ` ${aiInstruction.trim()}` : ''),
+        topPosts,
       });
       setStoryVideoText((g.caption || '').replace(/[\n#]/g, ' ').trim().slice(0, 24));
     } catch (e) {
@@ -558,11 +681,13 @@ export default function ScheduleScreen({ route }: any) {
     if (!(await ensureLoggedIn('AI生成を使うにはログインが必要です'))) return;
     setAiLoading(true);
     try {
+      const topPosts = await getTopPostsForGeneration();
       const g = await generateStory({
         theme: storyVideoTheme.trim(),
         type: 'announcement',
         details:
           storyVideoTheme.trim() + (aiInstruction.trim() ? ` 指示:${aiInstruction.trim()}` : ''),
+        topPosts,
       });
       setStoryVideoText((g.title || g.bodyText || '').replace(/[\n#]/g, ' ').trim().slice(0, 24));
     } catch (e) {
@@ -586,6 +711,7 @@ export default function ScheduleScreen({ route }: any) {
         alertMsg('動画の読み込みに失敗しました');
         return;
       }
+      const topPosts = await getTopPostsForGeneration();
       const g = await generateFromImage({
         imageBase64: base64,
         mimeType: mime as 'image/jpeg',
@@ -595,6 +721,7 @@ export default function ScheduleScreen({ route }: any) {
         instruction:
           '動画にのせる短い見出しを1つだけ。8〜14文字、記号や改行・ハッシュタグなし。' +
           (aiInstruction.trim() ? ` ${aiInstruction.trim()}` : ''),
+        topPosts,
       });
       setStoryVideoText((g.caption || '').replace(/[\n#]/g, ' ').trim().slice(0, 24));
     } catch (e) {
@@ -613,6 +740,7 @@ export default function ScheduleScreen({ route }: any) {
     if (!(await ensureLoggedIn('AI生成を使うにはログインが必要です'))) return;
     setAiLoading(true);
     try {
+      const topPosts = await getTopPostsForGeneration();
       const g = await generatePost({
         theme: feedTheme.trim(),
         tone: brandSettings.tone || '明るい・ポジティブ',
@@ -621,9 +749,12 @@ export default function ScheduleScreen({ route }: any) {
         language: 'ja',
         industry: brandSettings.industry,
         instruction: aiInstruction.trim() || undefined,
+        topPosts,
       });
       setCaption(g.caption);
       setHashtagsText(g.hashtags.join(' '));
+      setModalVisible(false);
+      setResultVisible(true);
     } catch (e) {
       alertMsg(e instanceof Error ? e.message : 'AI生成に失敗しました');
     } finally {
@@ -655,14 +786,18 @@ export default function ScheduleScreen({ route }: any) {
         alertMsg('写真の読み込みに失敗しました');
         return;
       }
+      const topPosts = await getTopPostsForGeneration();
       const g = await generateFromImages({
         images,
         tone: brandSettings.tone || '明るい・ポジティブ',
         industry: brandSettings.industry,
         instruction: aiInstruction.trim() || undefined,
+        topPosts,
       });
       setCaption(g.caption);
       setHashtagsText(g.hashtags.join(' '));
+      setModalVisible(false);
+      setResultVisible(true);
     } catch (e) {
       alertMsg(e instanceof Error ? e.message : 'AI生成に失敗しました');
     } finally {
@@ -700,10 +835,12 @@ export default function ScheduleScreen({ route }: any) {
     if (!(await ensureLoggedIn('AI生成を使うにはログインが必要です'))) return;
     setAiLoading(true);
     try {
+      const topPosts = await getTopPostsForGeneration();
       const g = await generateStory({
         theme: storyTheme.trim() || storyDetails.trim().slice(0, 20),
         type: 'announcement',
         details: storyDetails.trim() || storyTheme.trim(),
+        topPosts,
       });
       setStoryTitle(g.title);
       setStoryBody(g.bodyText);
@@ -756,6 +893,154 @@ export default function ScheduleScreen({ route }: any) {
       .map((h) => h.trim())
       .filter(Boolean);
 
+  // ハッシュタグを1枠ずつ（チップ式）で管理する。canonicalは hashtagsText（スペース区切り）
+  const MAX_TAGS = 30;
+  const feedTags = hashtagsText
+    .split(/[\s,、　]+/)
+    .map((t) => t.trim())
+    .filter(Boolean);
+  const setFeedTags = (tags: string[]) => setHashtagsText(tags.join(' '));
+
+  const addFeedTag = () => {
+    const parsed = newFeedTag
+      .split(/[\s,、　]+/)
+      .map((t) => t.replace(/#/g, '').trim())
+      .filter(Boolean)
+      .map((t) => `#${t}`);
+    if (parsed.length === 0) {
+      setNewFeedTag('');
+      return;
+    }
+    const seen = new Set(feedTags.map((h) => h.toLowerCase()));
+    const merged = [...feedTags];
+    let skipped = false;
+    for (const t of parsed) {
+      if (merged.length >= MAX_TAGS) {
+        skipped = true;
+        break;
+      }
+      if (!seen.has(t.toLowerCase())) {
+        merged.push(t);
+        seen.add(t.toLowerCase());
+      }
+    }
+    setFeedTags(merged);
+    setNewFeedTag('');
+    if (skipped) alertMsg(`ハッシュタグは${MAX_TAGS}個までです`);
+  };
+
+  const removeFeedTag = (index: number) => {
+    setFeedTags(feedTags.filter((_, i) => i !== index));
+  };
+
+  // いまの投稿内容をテンプレート（ひな形）として保存する
+  const handleSaveTemplate = async () => {
+    if (type !== 'feed') {
+      alertMsg('テンプレートはフィード投稿の文章を保存します（ストーリーは未対応）', 'お知らせ');
+      return;
+    }
+    if (!caption.trim() && feedTags.length === 0) {
+      alertMsg('保存するキャプションかハッシュタグを入力してください');
+      return;
+    }
+    const fallbackName =
+      caption.trim().slice(0, 20) || feedTags.join(' ').slice(0, 20) || 'テンプレート';
+    let name = fallbackName;
+    if (Platform.OS === 'web') {
+      const input = window.prompt('テンプレートの名前を入力してください', fallbackName);
+      if (input === null) return; // キャンセル
+      name = input.trim() || fallbackName;
+    }
+    setSavingTemplate(true);
+    try {
+      // カルーセル（複数枚）はテンプレートに含めない。1枚のときだけアップロード済みURLを保存
+      const next = await saveTemplate({
+        name,
+        caption: caption.trim(),
+        hashtags: feedTags,
+        type: 'feed',
+        image_url: imageUrls.length > 1 ? undefined : imageUrl.trim() || undefined,
+      });
+      setTemplates(next);
+      alertMsg('テンプレートに保存しました。次回「テンプレートから選ぶ」で使えます', '保存しました');
+    } catch {
+      alertMsg('テンプレートの保存に失敗しました');
+    } finally {
+      setSavingTemplate(false);
+    }
+  };
+
+  const handleResultClose = () => {
+    // 写真もキャプションもハッシュタグも無ければ、何も聞かずに閉じる
+    if (!caption.trim() && feedTags.length === 0 && feedPreviews.length === 0) {
+      editingDraftId.current = null;
+      draftOriginalRef.current = null;
+      setResultVisible(false);
+      return;
+    }
+    // 既存下書きを編集中で、内容が変わっていなければ何も聞かずに閉じる
+    if (draftOriginalRef.current != null) {
+      const now = JSON.stringify({
+        caption,
+        tags: feedTags.join(' '),
+        images: feedPreviews.join('\n'),
+      });
+      if (now === draftOriginalRef.current) {
+        editingDraftId.current = null;
+        draftOriginalRef.current = null;
+        setResultVisible(false);
+        return;
+      }
+    }
+    // キャンセル/いいえ/はい の3択ダイアログ（アプリ内モーダル）
+    setCloseConfirmVisible(true);
+  };
+
+  const discardResult = () => {
+    editingDraftId.current = null;
+    draftOriginalRef.current = null;
+    setCloseConfirmVisible(false);
+    setResultVisible(false);
+  };
+  const saveResultAsDraft = async () => {
+    setCloseConfirmVisible(false);
+    await handleSaveDraft();
+    draftOriginalRef.current = null;
+    setResultVisible(false);
+  };
+
+  // テンプレートを作成画面に読み込む（編集して再利用できる）
+  const applyTemplate = (t: PostTemplate) => {
+    setType(t.type);
+    setCaption(t.caption);
+    setHashtagsText(t.hashtags.join(' '));
+    if (t.type === 'feed' && t.image_url) {
+      setImageUrl(t.image_url);
+      setImageUrls([t.image_url]);
+      setImagePreview(t.image_url);
+      setFeedPreviews([t.image_url]);
+    }
+    setTemplatePickerVisible(false);
+  };
+
+  const handleDeleteTemplate = (id: string) => {
+    const run = async () => {
+      try {
+        setTemplates(await deleteTemplate(id));
+      } catch {
+        alertMsg('削除に失敗しました');
+      }
+    };
+    if (Platform.OS === 'web') {
+      if (window.confirm('このテンプレートを削除しますか？')) run();
+    } else {
+      Alert.alert('削除', 'テンプレートを削除しますか？', [
+        { text: 'キャンセル', style: 'cancel' },
+        { text: '削除', style: 'destructive', onPress: run },
+      ]);
+    }
+  };
+
   // 今すぐInstagramに投稿（テスト/手動投稿）
   const handlePublishNow = async () => {
     const isStory = type === 'story';
@@ -793,8 +1078,33 @@ export default function ScheduleScreen({ route }: any) {
         type,
         instagram_user_id: instagramCredentials.userId,
         access_token: instagramCredentials.accessToken,
+        user_tags: type === 'feed' && userTags.length > 0 ? userTags : undefined,
+        product_tags: type === 'feed' && productTags.length > 0 ? productTags : undefined,
+        location_id: type === 'feed' && locationId.trim() ? locationId.trim() : undefined,
       });
+      // 投稿履歴として記録（status:'published'。pendingではないので無料の予約2件制限には当たらない）
+      try {
+        await createScheduledPost({
+          caption: caption.trim(),
+          hashtags: buildHashtags(),
+          image_url: isStory
+            ? storyMedia!.url
+            : type === 'feed' && imageUrls.length > 1
+              ? imageUrls.join('\n')
+              : imageUrl.trim() || undefined,
+          scheduled_at: new Date(),
+          type,
+          status: 'published',
+          instagram_user_id: instagramCredentials.userId,
+          access_token: instagramCredentials.accessToken,
+        });
+        await finishDraftEdit();
+        await fetchPosts();
+      } catch {
+        // 履歴の記録に失敗しても投稿自体は成功しているので、続行する
+      }
       clearDraft();
+      setResultVisible(false);
       setModalVisible(false);
       const kind = result.posted_type === 'story' ? 'ストーリー' : 'フィード';
       const ok = `投稿しました ✅（${kind}として投稿）\nInstagramアプリで確認してください`;
@@ -857,8 +1167,15 @@ export default function ScheduleScreen({ route }: any) {
         repeat,
         instagram_user_id: instagramCredentials?.userId || undefined,
         access_token: instagramCredentials?.accessToken || undefined,
+        user_tags: type === 'feed' && userTags.length > 0 ? userTags : undefined,
+        product_tags: type === 'feed' && productTags.length > 0 ? productTags : undefined,
+        location_id: type === 'feed' && locationId.trim() ? locationId.trim() : undefined,
       });
+      await finishDraftEdit();
       clearDraft();
+      scheduleFromResult.current = false;
+      setScheduleModalVisible(false);
+      setResultVisible(false);
       setModalVisible(false);
       await fetchPosts();
     } catch (e) {
@@ -874,12 +1191,9 @@ export default function ScheduleScreen({ route }: any) {
   };
 
   // 下書き保存：日時を決めずに内容だけ保存しておく（自動投稿の対象外）
+  // 下書きはキャプション未入力でも保存OK（写真だけ先に保存しておける）
   const handleSaveDraft = async () => {
     const isStory = type === 'story';
-    if (type === 'feed' && !caption.trim()) {
-      alertMsg('キャプションを入力してください', '入力に不備があります');
-      return;
-    }
     if (isStory) {
       if (!storyMediaType) {
         alertMsg('写真または動画を選んでください', 'メディアが必要です');
@@ -908,7 +1222,11 @@ export default function ScheduleScreen({ route }: any) {
         status: 'draft',
         instagram_user_id: instagramCredentials?.userId || undefined,
         access_token: instagramCredentials?.accessToken || undefined,
+        user_tags: type === 'feed' && userTags.length > 0 ? userTags : undefined,
+        product_tags: type === 'feed' && productTags.length > 0 ? productTags : undefined,
+        location_id: type === 'feed' && locationId.trim() ? locationId.trim() : undefined,
       });
+      await finishDraftEdit();
       clearDraft();
       setModalVisible(false);
       setFilter('draft');
@@ -957,19 +1275,179 @@ export default function ScheduleScreen({ route }: any) {
     }
   };
 
-  // 編集
-  // 複製：編集画面を開いてから保存（保存時に新規作成）
+  // 結果画面で下書きを編集中だった場合、元の下書きを削除する（保存・投稿の成功後に呼ぶ）
+  const finishDraftEdit = async () => {
+    if (editingDraftId.current) {
+      await deleteScheduledPost(editingDraftId.current).catch(() => {});
+      editingDraftId.current = null;
+    }
+  };
+
+  // 下書きを「生成結果画面」で開いて編集する
+  const openEditDraftInResult = (post: ScheduledPost) => {
+    const urls = post.image_url?.includes('\n')
+      ? post.image_url.split('\n').filter(Boolean)
+      : post.image_url ? [post.image_url] : [];
+    setCaption(post.caption ?? '');
+    setHashtagsText((post.hashtags ?? []).join(' '));
+    setType('feed');
+    setImageUrl(urls[0] ?? '');
+    setImageUrls(urls);
+    setFeedPreviews(urls);
+    setImagePreview(urls[0] ?? '');
+    setAiInstruction('');
+    setUserTags((post as { user_tags?: string[] }).user_tags ?? []);
+    setProductTags((post as { product_tags?: string[] }).product_tags ?? []);
+    setLocationId((post as { location_id?: string }).location_id ?? '');
+    editingDraftId.current = post.id;
+    // 変更検知用に開始時の内容を記録
+    draftOriginalRef.current = JSON.stringify({
+      caption: post.caption ?? '',
+      tags: (post.hashtags ?? []).join(' '),
+      images: urls.join('\n'),
+    });
+    setDetailPost(null);
+    setResultVisible(true);
+  };
+
+  // 生成結果画面で写真を追加する（トリミング編集を経て追記）
+  const addFeedImages = async () => {
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsMultipleSelection: true,
+      selectionLimit: 10,
+      quality: 0.9,
+    });
+    if (res.canceled) return;
+    // 既存の写真と新しく選んだ写真をまとめて調整画面へ（置き換え）。追加分を選択状態で開く
+    cropAppendRef.current = false;
+    cropReturnRef.current = 'result';
+    setResultVisible(false);
+    setCropInitialIndex(feedPreviews.length); // 最初の追加写真を選択
+    setCropRawImages([...feedPreviews, ...res.assets.map((a) => a.uri)]);
+    setCropVisible(true);
+  };
+
+  // 選択済みの写真を再調整する（元画像があればそれ、無ければ現在の画像から）
+  const reAdjustImages = () => {
+    const src = cropRawImages.length > 0 ? cropRawImages : feedPreviews;
+    if (src.length === 0) return;
+    cropAppendRef.current = false;
+    cropReturnRef.current = 'create';
+    setCropInitialIndex(0);
+    setCropRawImages(src);
+    setModalVisible(false);
+    setCropVisible(true);
+  };
+
+  // 生成結果画面で、現在の画像を調整し直す（下書き編集時など）
+  const reAdjustResultImages = () => {
+    if (feedPreviews.length === 0) return;
+    cropAppendRef.current = false;
+    cropReturnRef.current = 'result';
+    setCropInitialIndex(0);
+    setResultVisible(false);
+    setCropRawImages(feedPreviews);
+    setCropVisible(true);
+  };
+
+  // トリミング編集を閉じて、元のモーダルに戻す
+  const restoreFromCrop = () => {
+    if (cropReturnRef.current === 'create') setModalVisible(true);
+    else if (cropReturnRef.current === 'result') setResultVisible(true);
+    cropReturnRef.current = null;
+  };
+
+  const handleCropCancel = () => {
+    setCropVisible(false);
+    cropAppendRef.current = false;
+    restoreFromCrop();
+  };
+
+  // トリミング編集の完了：合成画像をアップロードして反映し、生成画面（ステップ2）へ
+  const handleCropDone = async (results: { blob: Blob; previewUrl: string }[]) => {
+    setCropVisible(false);
+    // 追記でなく新規の写真選択なら、下書き編集の変更検知をリセット
+    if (!cropAppendRef.current) draftOriginalRef.current = null;
+    cropReturnRef.current = null;
+    setModalVisible(false);
+    setResultVisible(true); // 写真調整 → キャプション/生成画面へ直行
+    setImageUploading(true);
+    try {
+      const urls: string[] = [];
+      for (const r of results) urls.push(await uploadBlob(r.blob));
+      const previews = results.map((r) => r.previewUrl);
+      if (cropAppendRef.current) {
+        setFeedPreviews((p) => [...p, ...previews]);
+        setImageUrls((p) => {
+          const merged = [...p, ...urls];
+          setImageUrl(merged[0]);
+          return merged;
+        });
+      } else {
+        setFeedPreviews(previews);
+        setImagePreview(previews[0] ?? '');
+        setImageUrls(urls);
+        setImageUrl(urls[0] ?? '');
+      }
+    } catch (e) {
+      alertMsg(e instanceof Error ? e.message : '画像アップロードに失敗しました');
+    } finally {
+      setImageUploading(false);
+      cropAppendRef.current = false;
+    }
+  };
+
+  // 生成結果画面で写真を1枚削除する
+  const removeFeedImage = (index: number) => {
+    setFeedPreviews((p) => p.filter((_, i) => i !== index));
+    setImageUrls((p) => {
+      const next = p.filter((_, i) => i !== index);
+      setImageUrl(next[0] ?? '');
+      return next;
+    });
+  };
+
+  // 複製：投稿作成モーダルに内容を引き継いで開く
   const openDuplicate = (post: ScheduledPost) => {
-    let d = new Date(new Date(post.scheduled_at).getTime() + 7 * 24 * 3600 * 1000);
-    if (d <= new Date()) d = new Date(Date.now() + 24 * 3600 * 1000);
-    setEditingPost(null);
-    setEditPublishDraft(false);
-    setEditDuplicateSource(post);
-    setEditCaption(post.caption ?? '');
-    setEditHashtags((post.hashtags ?? []).join(' '));
-    setEditDate(toLocalInput(d.toISOString()));
-    setEditRepeat(post.repeat ?? 'none');
-    setEditVisible(true);
+    const urls = post.image_url?.includes('\n')
+      ? post.image_url.split('\n').filter(Boolean)
+      : post.image_url ? [post.image_url] : [];
+    setCaption(post.caption ?? '');
+    setHashtagsText((post.hashtags ?? []).join(' '));
+    setType((post.type === 'reel' ? 'feed' : post.type) as 'feed' | 'story');
+    setImageUrl(urls[0] ?? '');
+    setImageUrls(urls);
+    setFeedPreviews(urls);
+    setImagePreview(urls[0] ?? '');
+    setDateText('');
+    setStoryRawUri('');
+    setStoryMode('image');
+    setStoryMediaType('');
+    setStoryImageUri('');
+    setStoryVideoUri('');
+    setStoryVideoBlob(null);
+    setStoryVideoText('');
+    setStoryVideoTheme('');
+    setStoryVideoTextXY({ x: 0.5, y: 0.85 });
+    setStoryVideoTextScale(1);
+    setStoryTheme('');
+    setFeedTheme('');
+    setAiInstruction('');
+    setStoryDetails('');
+    setStoryTitle('');
+    setStoryBody('');
+    setStoryCta('');
+    setStoryTextColor('#FFFFFF');
+    setStoryTransform({ ...DEFAULT_TRANSFORM });
+    setRepeat('none');
+    setScheduleModalVisible(false);
+    if (scheduleFromResult.current) {
+      scheduleFromResult.current = false;
+      setResultVisible(true);
+    } else {
+      setModalVisible(true);
+    }
   };
 
   const openEdit = (post: ScheduledPost) => {
@@ -1038,7 +1516,7 @@ export default function ScheduleScreen({ route }: any) {
   };
 
   const editSelectRepeat = (r: RepeatOption) => {
-    if (r !== 'none' && plan !== 'pro') {
+    if (r !== 'none' && !canRecurring(plan)) {
       alertMsg('くりかえし投稿はProプラン限定です', '⭐ Pro限定の機能です');
       return;
     }
@@ -1067,7 +1545,7 @@ export default function ScheduleScreen({ route }: any) {
   const todayKey = dayKey(new Date());
 
   const renderPostCard = (post: ScheduledPost) => (
-    <View key={post.id} style={styles.postCard}>
+    <TouchableOpacity key={post.id} style={styles.postCard} onPress={() => setDetailPost(post)} activeOpacity={0.85}>
       <View style={styles.postHeader}>
         <View style={styles.postMeta}>
           <View style={[styles.typeBadge, post.type !== 'feed' && styles.typeBadgeStory]}>
@@ -1099,19 +1577,21 @@ export default function ScheduleScreen({ route }: any) {
           )}
         </View>
         <View style={styles.cardActions}>
-          {post.status === 'draft' && (
-            <TouchableOpacity onPress={() => openScheduleDraft(post)} hitSlop={8}>
-              <Text style={styles.editBtn}>📅</Text>
+          {post.status === 'draft' ? (
+            // 下書きカードはゴミ箱のみ（その他の操作はタップして詳細から）
+            <TouchableOpacity onPress={() => handleDelete(post.id)} hitSlop={8}>
+              <Text style={styles.deleteBtn}>🗑</Text>
             </TouchableOpacity>
-          )}
-          <TouchableOpacity onPress={() => openDuplicate(post)} hitSlop={8}>
-            <Text style={styles.editBtn}>📄</Text>
-          </TouchableOpacity>
-          {(post.status === 'pending' || post.status === 'draft') && (
+          ) : (
             <>
-              <TouchableOpacity onPress={() => openEdit(post)} hitSlop={8}>
-                <Text style={styles.editBtn}>✏️</Text>
+              <TouchableOpacity onPress={() => openDuplicate(post)} hitSlop={8}>
+                <Text style={styles.editBtn}>📄</Text>
               </TouchableOpacity>
+              {post.status === 'pending' && (
+                <TouchableOpacity onPress={() => openEdit(post)} hitSlop={8}>
+                  <Text style={styles.editBtn}>✏️</Text>
+                </TouchableOpacity>
+              )}
               <TouchableOpacity onPress={() => handleDelete(post.id)} hitSlop={8}>
                 <Text style={styles.deleteBtn}>🗑</Text>
               </TouchableOpacity>
@@ -1134,14 +1614,14 @@ export default function ScheduleScreen({ route }: any) {
           {post.status === 'draft' ? '🕐 日時未定（📅で予約）' : `🕐 ${formatDate(post.scheduled_at)}`}
         </Text>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 
   // 投稿タブのサブ画面（リール／本日の出勤）
-  if (mode === 'now' && nowSub === 'reel') {
+  if (nowSub === 'reel') {
     return <ReelScreen onBack={() => setNowSub('menu')} />;
   }
-  if (mode === 'now' && nowSub === 'roster') {
+  if (nowSub === 'roster') {
     return <RosterScreen onBack={() => setNowSub('menu')} />;
   }
 
@@ -1152,42 +1632,31 @@ export default function ScheduleScreen({ route }: any) {
         contentContainerStyle={{ paddingTop: insets.top + SPACING.md, paddingBottom: 100 }}
       >
         <View style={styles.header}>
-          <Text style={styles.title}>{mode === 'now' ? '投稿' : '予約投稿'}</Text>
-          <TouchableOpacity style={styles.addBtn} onPress={openModal}>
-            <Text style={styles.addBtnText}>
-              {mode === 'now' ? '＋ 投稿を作成' : '＋ 追加'}
-            </Text>
+          <Text style={styles.title}>投稿</Text>
+          <TouchableOpacity style={styles.addBtn} onPress={startNewPost}>
+            <Text style={styles.addBtnText}>＋ 投稿を作成</Text>
           </TouchableOpacity>
         </View>
 
-        {mode === 'now' ? (
-          /* 「投稿」タブ: 何を作るか選ぶ */
-          <View style={styles.empty}>
-            <Text style={styles.emptyEmoji}>📸</Text>
-            <Text style={styles.emptyTitle}>何を投稿しますか？</Text>
-            <Text style={styles.emptyDesc}>
-              作成して、すぐにInstagramへ投稿できます
-            </Text>
-            <TouchableOpacity style={styles.emptyAddBtn} onPress={openModal}>
-              <Text style={styles.emptyAddBtnText}>📷 フィード・ストーリーを作成</Text>
+        {/* 何を作るか選ぶ */}
+        <View style={styles.createMenu}>
+          <Text style={styles.createMenuTitle}>何を投稿しますか？</Text>
+          <View style={styles.createMenuRow}>
+            <TouchableOpacity style={styles.createMenuBtn} onPress={openModal} activeOpacity={0.85}>
+              <Text style={styles.createMenuEmoji}>📷</Text>
+              <Text style={styles.createMenuLabel}>フィード・ストーリー</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.emptyAddBtn, styles.reelChoiceBtn]}
+              style={styles.createMenuBtn}
               onPress={() => setNowSub('reel')}
+              activeOpacity={0.85}
             >
-              <Text style={styles.emptyAddBtnText}>🎬 リールを作成</Text>
+              <Text style={styles.createMenuEmoji}>🎬</Text>
+              <Text style={styles.createMenuLabel}>リール</Text>
             </TouchableOpacity>
-            {/* 「本日の出勤」は機能を練ってから公開予定。準備ができたら下を有効化する
-            <TouchableOpacity
-              style={[styles.emptyAddBtn, styles.rosterChoiceBtn]}
-              onPress={() => setNowSub('roster')}
-            >
-              <Text style={styles.emptyAddBtnText}>🗓 本日の出勤を作成</Text>
-            </TouchableOpacity>
-            */}
           </View>
-        ) : (
-          <>
+        </View>
+
         {/* Japan best time hint */}
         <View style={styles.hintCard}>
           <Text style={styles.hintText}>
@@ -1234,10 +1703,10 @@ export default function ScheduleScreen({ route }: any) {
             ) : filtered.length === 0 ? (
               <View style={styles.empty}>
                 <Text style={styles.emptyEmoji}>📭</Text>
-                <Text style={styles.emptyTitle}>予約投稿はありません</Text>
-                <Text style={styles.emptyDesc}>AI生成した投稿を最適な時間に自動投稿できます</Text>
-                <TouchableOpacity style={styles.emptyAddBtn} onPress={openModal}>
-                  <Text style={styles.emptyAddBtnText}>＋ 最初の予約を追加する</Text>
+                <Text style={styles.emptyTitle}>まだ投稿がありません</Text>
+                <Text style={styles.emptyDesc}>今すぐ投稿も、予約投稿もここに履歴として残ります</Text>
+                <TouchableOpacity style={styles.emptyAddBtn} onPress={startNewPost}>
+                  <Text style={styles.emptyAddBtnText}>＋ 最初の投稿を作成する</Text>
                 </TouchableOpacity>
               </View>
             ) : (
@@ -1281,8 +1750,19 @@ export default function ScheduleScreen({ route }: any) {
                   >
                     <Text style={styles.calDayNum}>{cell}</Text>
                     {cnt > 0 && (
-                      <View style={styles.calDot}>
-                        <Text style={styles.calDotText}>{cnt}</Text>
+                      <View style={styles.calDotRow}>
+                        {STATUS_ORDER.map((st) => {
+                          const c = (postsByDay[key] || []).filter((p) => p.status === st).length;
+                          if (c === 0) return null;
+                          return (
+                            <View
+                              key={st}
+                              style={[styles.calStatusDot, { backgroundColor: STATUS_COLORS[st] }]}
+                            >
+                              <Text style={styles.calStatusDotText}>{c}</Text>
+                            </View>
+                          );
+                        })}
                       </View>
                     )}
                   </TouchableOpacity>
@@ -1290,11 +1770,21 @@ export default function ScheduleScreen({ route }: any) {
               })}
             </View>
 
+            {/* 色の凡例 */}
+            <View style={styles.calLegend}>
+              {STATUS_ORDER.map((st) => (
+                <View key={st} style={styles.calLegendItem}>
+                  <View style={[styles.calLegendDot, { backgroundColor: STATUS_COLORS[st] }]} />
+                  <Text style={styles.calLegendText}>{STATUS_LABELS[st]}</Text>
+                </View>
+              ))}
+            </View>
+
             {calSelected ? (
               <>
-                <Text style={styles.calSelTitle}>{calSelected.replace(/-/g, '/')} の予約</Text>
+                <Text style={styles.calSelTitle}>{calSelected.replace(/-/g, '/')} の投稿</Text>
                 {(postsByDay[calSelected] || []).length === 0 ? (
-                  <Text style={styles.calHint}>この日の予約はありません</Text>
+                  <Text style={styles.calHint}>この日の投稿はありません</Text>
                 ) : (
                   (postsByDay[calSelected] || []).map(renderPostCard)
                 )}
@@ -1304,9 +1794,476 @@ export default function ScheduleScreen({ route }: any) {
             )}
           </>
         )}
-          </>
-        )}
       </ScrollView>
+
+      {/* 写真トリミング編集（選択→調整→AI生成） */}
+      <FeedCropEditor
+        visible={cropVisible}
+        images={cropRawImages}
+        initialIndex={cropInitialIndex}
+        onCancel={handleCropCancel}
+        onDone={handleCropDone}
+      />
+
+      {/* AI画像生成チャット */}
+      <ImageGenChat
+        visible={imgChatVisible}
+        onClose={() => { setImgChatVisible(false); if (!imgChatFromHome.current) setModalVisible(true); imgChatFromHome.current = false; }}
+        onUseImage={handleUseGeneratedImage}
+      />
+
+      {/* AI生成結果モーダル */}
+      <Modal visible={resultVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => handleResultClose()}>
+        <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.background }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={handleResultClose}>
+              <Text style={styles.modalCancel}>✕ キャンセル</Text>
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>投稿を作成</Text>
+            <View style={{ width: 70 }} />
+          </View>
+
+          <ScrollView style={styles.modalBody} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 40 }}>
+            {/* 画像プレビュー（Instagram風スライド） */}
+            {feedPreviews.length > 0 && (
+              <View
+                style={{ marginBottom: SPACING.sm }}
+                onLayout={(e) => {
+                  const w = e.nativeEvent.layout.width;
+                  if (w > 0 && w !== rCarW) setRCarW(w);
+                }}
+              >
+                <ScrollView
+                  horizontal
+                  pagingEnabled
+                  showsHorizontalScrollIndicator={false}
+                  scrollEventThrottle={16}
+                  onScroll={(e) => {
+                    const w = rCarW || e.nativeEvent.layoutMeasurement.width;
+                    if (w > 0) {
+                      const idx = Math.round(e.nativeEvent.contentOffset.x / w);
+                      if (idx !== rCarIdx) setRCarIdx(idx);
+                    }
+                  }}
+                >
+                  {feedPreviews.map((uri, i) => (
+                    <View key={i} style={{ width: rCarW || Dimensions.get('window').width - SPACING.md * 2 }}>
+                      <Image
+                        source={{ uri }}
+                        style={{ width: '100%', aspectRatio: 1, borderRadius: RADIUS.md }}
+                        resizeMode="cover"
+                      />
+                      <TouchableOpacity style={styles.carouselRemove} onPress={() => removeFeedImage(i)} hitSlop={8}>
+                        <Text style={styles.carouselRemoveText}>✕</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </ScrollView>
+                {feedPreviews.length > 1 && (
+                  <>
+                    <View style={styles.carouselCounter}>
+                      <Text style={styles.carouselCounterText}>{rCarIdx + 1}/{feedPreviews.length}</Text>
+                    </View>
+                    <View style={styles.carouselDots}>
+                      {feedPreviews.map((_, i) => (
+                        <View key={i} style={[styles.carouselDot, i === rCarIdx && styles.carouselDotActive]} />
+                      ))}
+                    </View>
+                  </>
+                )}
+              </View>
+            )}
+            {/* 写真の追加 */}
+            <TouchableOpacity
+              style={[styles.aiBtnGhost, { marginBottom: SPACING.md }, imageUploading && styles.publishNowBtnDisabled]}
+              onPress={addFeedImages}
+              disabled={imageUploading}
+              activeOpacity={0.85}
+            >
+              {imageUploading ? (
+                <ActivityIndicator color={COLORS.secondary} />
+              ) : (
+                <Text style={styles.aiBtnGhostText}>{feedPreviews.length > 0 ? '＋ 写真を追加' : '🖼 写真を選ぶ'}</Text>
+              )}
+            </TouchableOpacity>
+            {feedPreviews.length > 0 && (
+              <TouchableOpacity
+                style={[styles.aiBtnGhost, { marginBottom: SPACING.md }, imageUploading && styles.publishNowBtnDisabled]}
+                onPress={reAdjustResultImages}
+                disabled={imageUploading}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.aiBtnGhostText}>✏️ 写真を調整する</Text>
+              </TouchableOpacity>
+            )}
+
+            {/* AIでキャプションを生成 */}
+            <Text style={styles.sectionDivider}>AIでキャプションを作る</Text>
+            <Text style={styles.fieldLabel}>テーマ（任意）</Text>
+            <TextInput
+              style={styles.input}
+              value={feedTheme}
+              onChangeText={setFeedTheme}
+              placeholder="例: 夏の新メニュー紹介、週末セールのお知らせ"
+              placeholderTextColor={COLORS.textMuted}
+            />
+            <View style={{ flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.sm }}>
+              {feedPreviews.length > 0 && (
+                <TouchableOpacity
+                  style={[styles.aiBtn, { flex: 1 }, aiLoading && styles.publishNowBtnDisabled]}
+                  onPress={handleGenerateFeedFromPhoto}
+                  disabled={aiLoading}
+                  activeOpacity={0.85}
+                >
+                  {aiLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.aiBtnText}>📷 写真から生成</Text>}
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                style={[styles.aiBtn, { flex: 1, backgroundColor: COLORS.secondary }, aiLoading && styles.publishNowBtnDisabled]}
+                onPress={handleGenerateFeedText}
+                disabled={aiLoading}
+                activeOpacity={0.85}
+              >
+                {aiLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.aiBtnText}>✨ テーマから生成</Text>}
+              </TouchableOpacity>
+            </View>
+
+            {/* AIへの指示で書き直す */}
+            <Text style={[styles.fieldLabel, { marginTop: SPACING.md }]}>AIへの指示で書き直す（任意）</Text>
+            <TextInput
+              style={[styles.input, styles.aiInstructionInput]}
+              value={aiInstruction}
+              onChangeText={setAiInstruction}
+              placeholder={'例: もっとカジュアルに\n絵文字多めで\n短く3行で'}
+              placeholderTextColor={COLORS.textMuted}
+              multiline
+            />
+            <TouchableOpacity
+              style={[styles.aiBtnGhost, { marginBottom: SPACING.md }, aiLoading && styles.publishNowBtnDisabled]}
+              onPress={handleRefineCaption}
+              disabled={aiLoading}
+              activeOpacity={0.85}
+            >
+              {aiLoading ? (
+                <ActivityIndicator color={COLORS.secondary} />
+              ) : (
+                <Text style={styles.aiBtnGhostText}>✏️ 指示で書き直す</Text>
+              )}
+            </TouchableOpacity>
+
+            {/* キャプション（広めの入力欄） */}
+            <Text style={styles.fieldLabel}>キャプション</Text>
+            <TextInput
+              style={[styles.input, { height: 440, textAlignVertical: 'top', fontSize: 15, lineHeight: 22 }]}
+              value={caption}
+              onChangeText={setCaption}
+              placeholder="キャプションを入力"
+              placeholderTextColor={COLORS.textMuted}
+              multiline
+            />
+
+            {/* ハッシュタグ */}
+            <Text style={[styles.fieldLabel, { marginTop: SPACING.md }]}>ハッシュタグ（{feedTags.length}/{MAX_TAGS}）</Text>
+            <View style={styles.tagWrap}>
+              {feedTags.map((tag, i) => (
+                <View key={`${tag}-${i}`} style={styles.tagChip}>
+                  <Text style={styles.tagChipText}>{tag}</Text>
+                  <TouchableOpacity onPress={() => removeFeedTag(i)} hitSlop={{ top: 8, bottom: 8, left: 4, right: 8 }}>
+                    <Text style={styles.tagChipRemove}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+              {feedTags.length === 0 && <Text style={styles.tagEmpty}>ハッシュタグなし</Text>}
+            </View>
+            <View style={styles.tagAddRow}>
+              <TextInput
+                style={styles.tagInput}
+                value={newFeedTag}
+                onChangeText={setNewFeedTag}
+                onSubmitEditing={addFeedTag}
+                placeholder="#タグを追加"
+                placeholderTextColor={COLORS.textMuted}
+                autoCapitalize="none"
+                returnKeyType="done"
+              />
+              <TouchableOpacity style={styles.tagAddBtn} onPress={addFeedTag}>
+                <Text style={styles.tagAddBtnText}>追加</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* タグ・場所（フィードのみ） */}
+            <Text style={[styles.sectionDivider, { marginTop: SPACING.lg }]}>タグ・場所（任意）</Text>
+
+            <Text style={styles.fieldLabel}>アカウントをタグ付け</Text>
+            <View style={styles.tagWrap}>
+              {userTags.map((u, i) => (
+                <View key={`${u}-${i}`} style={styles.tagChip}>
+                  <Text style={styles.tagChipText}>@{u}</Text>
+                  <TouchableOpacity onPress={() => setUserTags(userTags.filter((_, j) => j !== i))} hitSlop={{ top: 8, bottom: 8, left: 4, right: 8 }}>
+                    <Text style={styles.tagChipRemove}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+              {userTags.length === 0 && <Text style={styles.tagEmpty}>なし</Text>}
+            </View>
+            <View style={styles.tagAddRow}>
+              <TextInput
+                style={styles.tagInput}
+                value={newUserTag}
+                onChangeText={setNewUserTag}
+                onSubmitEditing={() => { const v = newUserTag.replace(/^@/, '').trim(); if (v) { setUserTags([...userTags, v]); setNewUserTag(''); } }}
+                placeholder="ユーザー名（@なし）"
+                placeholderTextColor={COLORS.textMuted}
+                autoCapitalize="none"
+                returnKeyType="done"
+              />
+              <TouchableOpacity style={styles.tagAddBtn} onPress={() => { const v = newUserTag.replace(/^@/, '').trim(); if (v) { setUserTags([...userTags, v]); setNewUserTag(''); } }}>
+                <Text style={styles.tagAddBtnText}>追加</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={[styles.fieldLabel, { marginTop: SPACING.md }]}>場所ID（Facebook Place ID）</Text>
+            <TextInput
+              style={styles.input}
+              value={locationId}
+              onChangeText={setLocationId}
+              placeholder="例: 123456789012345"
+              placeholderTextColor={COLORS.textMuted}
+              keyboardType="number-pad"
+            />
+
+            <Text style={[styles.fieldLabel, { marginTop: SPACING.md }]}>商品タグ（商品ID・要ショッピング設定）</Text>
+            <View style={styles.tagWrap}>
+              {productTags.map((p, i) => (
+                <View key={`${p}-${i}`} style={styles.tagChip}>
+                  <Text style={styles.tagChipText}>{p}</Text>
+                  <TouchableOpacity onPress={() => setProductTags(productTags.filter((_, j) => j !== i))} hitSlop={{ top: 8, bottom: 8, left: 4, right: 8 }}>
+                    <Text style={styles.tagChipRemove}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+              {productTags.length === 0 && <Text style={styles.tagEmpty}>なし</Text>}
+            </View>
+            <View style={styles.tagAddRow}>
+              <TextInput
+                style={styles.tagInput}
+                value={newProductTag}
+                onChangeText={setNewProductTag}
+                onSubmitEditing={() => { const v = newProductTag.trim(); if (v) { setProductTags([...productTags, v]); setNewProductTag(''); } }}
+                placeholder="商品ID"
+                placeholderTextColor={COLORS.textMuted}
+                autoCapitalize="none"
+                returnKeyType="done"
+              />
+              <TouchableOpacity style={styles.tagAddBtn} onPress={() => { const v = newProductTag.trim(); if (v) { setProductTags([...productTags, v]); setNewProductTag(''); } }}>
+                <Text style={styles.tagAddBtnText}>追加</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* 投稿方法 */}
+            <Text style={[styles.sectionDivider, { marginTop: SPACING.lg }]}>投稿方法を選ぶ</Text>
+
+            <TouchableOpacity
+              style={[styles.publishNowBtn, { marginTop: SPACING.sm }, (publishing || !imageUrl) && styles.publishNowBtnDisabled]}
+              onPress={async () => { await handlePublishNow(); setResultVisible(false); }}
+              disabled={publishing || !imageUrl}
+              activeOpacity={0.85}
+            >
+              {publishing ? <ActivityIndicator color="#fff" /> : <Text style={styles.publishNowText}>⚡ 今すぐ投稿する</Text>}
+            </TouchableOpacity>
+            {!imageUrl && <Text style={styles.aiHintText}>※ 写真を選ぶと今すぐ投稿できます</Text>}
+
+            <TouchableOpacity
+              style={[styles.aiBtn, { marginTop: SPACING.sm, backgroundColor: '#F77737' }]}
+              onPress={() => { scheduleFromResult.current = true; setScheduleModalVisible(true); }}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.aiBtnText}>📅 予約する</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.draftSaveBtn, { marginTop: SPACING.sm }]}
+              onPress={async () => { await handleSaveDraft(); }}
+              disabled={savingDraft}
+              activeOpacity={0.85}
+            >
+              {savingDraft ? <ActivityIndicator color={COLORS.textSecondary} /> : <Text style={styles.draftSaveBtnText}>📝 下書き保存</Text>}
+            </TouchableOpacity>
+
+            <Text style={[styles.sectionDivider, { marginTop: SPACING.lg }]}>テンプレート</Text>
+            <TouchableOpacity
+              style={[styles.templateSaveBtn, savingTemplate && styles.publishNowBtnDisabled]}
+              onPress={handleSaveTemplate}
+              disabled={savingTemplate}
+              activeOpacity={0.85}
+            >
+              {savingTemplate ? <ActivityIndicator color={COLORS.secondary} /> : <Text style={styles.templateSaveText}>💾 テンプレートとして保存</Text>}
+            </TouchableOpacity>
+            <Text style={styles.publishNowHint}>
+              ※ 文章・ハッシュタグ・画像をこの端末に保存して、次回そのまま使い回せます
+            </Text>
+
+          </ScrollView>
+
+          {/* キャンセル時の下書き保存確認（生成画面の内側オーバーレイ） */}
+          {closeConfirmVisible && (
+            <View style={styles.confirmOverlay}>
+              <View style={styles.confirmCard}>
+                <Text style={styles.confirmTitle}>内容は破棄されます</Text>
+                <Text style={styles.confirmDesc}>下書きとして保存しますか？</Text>
+                <TouchableOpacity style={styles.confirmYes} onPress={saveResultAsDraft} activeOpacity={0.85}>
+                  <Text style={styles.confirmYesText}>はい（下書き保存）</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.confirmNo} onPress={discardResult} activeOpacity={0.85}>
+                  <Text style={styles.confirmNoText}>いいえ（保存せず閉じる）</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.confirmCancel} onPress={() => setCloseConfirmVisible(false)} activeOpacity={0.7}>
+                  <Text style={styles.confirmCancelText}>キャンセル</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* 詳細モーダル */}
+      <Modal visible={!!detailPost} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setDetailPost(null)}>
+        {detailPost && (
+          <View style={{ flex: 1, backgroundColor: COLORS.background }}>
+            <View style={styles.modalHeader}>
+              <TouchableOpacity onPress={() => setDetailPost(null)}>
+                <Text style={styles.modalCancel}>閉じる</Text>
+              </TouchableOpacity>
+              <Text style={styles.modalTitle}>投稿詳細</Text>
+              {detailPost.status === 'draft' ? (
+                <TouchableOpacity onPress={() => openEditDraftInResult(detailPost)}>
+                  <Text style={[styles.modalCancel, { color: COLORS.primary }]}>✏️ 編集</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity onPress={() => { setDetailPost(null); openDuplicate(detailPost); }}>
+                  <Text style={[styles.modalCancel, { color: COLORS.primary }]}>📄 複製</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            <ScrollView style={styles.modalBody} contentContainerStyle={{ paddingBottom: 40 }}>
+              {/* 画像（複数枚はInstagram風にスライド） */}
+              {detailPost.image_url && (() => {
+                const imgs = detailPost.image_url.split('\n').map((s) => s.trim()).filter(Boolean);
+                return (
+                  <View
+                    style={{ marginBottom: SPACING.md }}
+                    onLayout={(e) => {
+                      const w = e.nativeEvent.layout.width;
+                      if (w > 0 && w !== carouselW) setCarouselW(w);
+                    }}
+                  >
+                    <ScrollView
+                      horizontal
+                      pagingEnabled
+                      showsHorizontalScrollIndicator={false}
+                      scrollEventThrottle={16}
+                      onScroll={(e) => {
+                        const w = carouselW || e.nativeEvent.layoutMeasurement.width;
+                        if (w > 0) {
+                          const idx = Math.round(e.nativeEvent.contentOffset.x / w);
+                          if (idx !== carouselIdx) setCarouselIdx(idx);
+                        }
+                      }}
+                    >
+                      {imgs.map((uri, i) => (
+                        <Image
+                          key={i}
+                          source={{ uri }}
+                          style={{ width: carouselW || Dimensions.get('window').width - SPACING.md * 2, aspectRatio: 1, borderRadius: RADIUS.md }}
+                          resizeMode="cover"
+                        />
+                      ))}
+                    </ScrollView>
+                    {imgs.length > 1 && (
+                      <>
+                        <View style={styles.carouselCounter}>
+                          <Text style={styles.carouselCounterText}>{carouselIdx + 1}/{imgs.length}</Text>
+                        </View>
+                        <View style={styles.carouselDots}>
+                          {imgs.map((_, i) => (
+                            <View key={i} style={[styles.carouselDot, i === carouselIdx && styles.carouselDotActive]} />
+                          ))}
+                        </View>
+                      </>
+                    )}
+                  </View>
+                );
+              })()}
+              {/* ステータス・タイプ */}
+              <View style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.md, flexWrap: 'wrap' }}>
+                <View style={[styles.typeBadge, detailPost.type !== 'feed' && styles.typeBadgeStory]}>
+                  <Text style={styles.typeBadgeText}>
+                    {detailPost.type === 'feed' ? '📷 フィード' : detailPost.type === 'reel' ? '🎬 リール' : '📖 ストーリー'}
+                  </Text>
+                </View>
+                <View style={[styles.statusBadge, detailPost.status === 'published' && styles.statusPublished, detailPost.status === 'failed' && styles.statusFailed]}>
+                  <Text style={styles.statusText}>
+                    {detailPost.status === 'draft' ? '📝 下書き' : detailPost.status === 'pending' ? '⏳ 予約中' : detailPost.status === 'published' ? '✅ 投稿済' : '❌ 失敗'}
+                  </Text>
+                </View>
+              </View>
+              {/* 日時 */}
+              <Text style={[styles.fieldLabel, { marginBottom: 4 }]}>日時</Text>
+              <Text style={{ color: COLORS.text, fontSize: 15, marginBottom: SPACING.md }}>
+                {detailPost.status === 'draft' ? '未定' : formatDate(detailPost.scheduled_at)}
+              </Text>
+              {/* キャプション */}
+              <Text style={[styles.fieldLabel, { marginBottom: 4 }]}>キャプション</Text>
+              <Text style={{ color: COLORS.text, fontSize: 15, lineHeight: 22, marginBottom: SPACING.md }}>
+                {detailPost.caption || '（なし）'}
+              </Text>
+              {/* ハッシュタグ */}
+              {detailPost.hashtags?.length > 0 && (
+                <>
+                  <Text style={[styles.fieldLabel, { marginBottom: 4 }]}>ハッシュタグ</Text>
+                  <Text style={{ color: COLORS.primary, fontSize: 13, lineHeight: 20, marginBottom: SPACING.md }}>
+                    {detailPost.hashtags.join(' ')}
+                  </Text>
+                </>
+              )}
+              {/* 削除に関する注意 */}
+              {detailPost.status === 'published' && (
+                <View style={{ backgroundColor: COLORS.surface, borderRadius: RADIUS.md, padding: SPACING.md, marginTop: SPACING.lg, borderWidth: 1, borderColor: COLORS.border }}>
+                  <Text style={{ color: COLORS.textSecondary, fontSize: 13, lineHeight: 19 }}>
+                    ⚠️ Instagram APIの仕様上、アプリから Instagram 上の投稿を削除することはできません。{'\n'}
+                    Instagram 本体から手動で削除してください。{'\n'}
+                    下の「削除」はアプリ内の履歴のみを削除します。
+                  </Text>
+                </View>
+              )}
+              {/* 下書き: 予約・編集 */}
+              {detailPost.status === 'draft' && (
+                <>
+                  <TouchableOpacity
+                    style={[styles.modalSaveBtn, { backgroundColor: COLORS.primary, marginTop: SPACING.md }]}
+                    onPress={() => { const p = detailPost; setDetailPost(null); openScheduleDraft(p); }}
+                  >
+                    <Text style={styles.modalSaveBtnText}>📅 予約する</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+              {/* 削除ボタン */}
+              <TouchableOpacity
+                style={[styles.modalSaveBtn, { backgroundColor: COLORS.error ?? '#FF3B30', marginTop: SPACING.md }]}
+                onPress={() => {
+                  const run = () => { setDetailPost(null); handleDelete(detailPost.id); };
+                  if (Platform.OS === 'web') { if (window.confirm('この投稿を削除しますか？')) run(); }
+                  else Alert.alert('削除', 'この投稿を削除しますか？', [{ text: 'キャンセル', style: 'cancel' }, { text: '削除', style: 'destructive', onPress: run }]);
+                }}
+              >
+                <Text style={styles.modalSaveBtnText}>
+                  {detailPost.status === 'published' ? '🗑 履歴から削除する' : '🗑 削除する'}
+                </Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        )}
+      </Modal>
 
       <Modal visible={modalVisible} animationType="slide" presentationStyle="pageSheet">
         <KeyboardAvoidingView
@@ -1317,20 +2274,8 @@ export default function ScheduleScreen({ route }: any) {
             <TouchableOpacity onPress={() => setModalVisible(false)}>
               <Text style={styles.modalCancel}>キャンセル</Text>
             </TouchableOpacity>
-            <Text style={styles.modalTitle}>
-              {mode === 'now' ? '投稿を作成' : '予約投稿を追加'}
-            </Text>
-            {mode === 'schedule' ? (
-              <TouchableOpacity onPress={handleSave} disabled={saving}>
-                {saving ? (
-                  <ActivityIndicator color={COLORS.primary} />
-                ) : (
-                  <Text style={styles.modalSave}>保存</Text>
-                )}
-              </TouchableOpacity>
-            ) : (
-              <View style={{ width: 48 }} />
-            )}
+            <Text style={styles.modalTitle}>投稿を作成</Text>
+            <View style={{ width: 48 }} />
           </View>
 
           <ScrollView
@@ -1338,6 +2283,18 @@ export default function ScheduleScreen({ route }: any) {
             keyboardShouldPersistTaps="handled"
             scrollEnabled={!storyDragging}
           >
+            {templates.length > 0 && (
+              <TouchableOpacity
+                style={styles.templateOpenBtn}
+                onPress={() => setTemplatePickerVisible(true)}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.templateOpenBtnText}>
+                  📁 テンプレートから選ぶ（{templates.length}）
+                </Text>
+              </TouchableOpacity>
+            )}
+
             <Text style={styles.fieldLabel}>投稿タイプ</Text>
             <View style={styles.typeRow}>
               {(['feed', 'story'] as const).map((t) => (
@@ -1383,6 +2340,26 @@ export default function ScheduleScreen({ route }: any) {
                       <Text style={styles.imageUploadingText}>アップロード中...</Text>
                     </View>
                   )}
+                </TouchableOpacity>
+                {feedPreviews.length > 0 && (
+                  <TouchableOpacity
+                    style={[styles.aiBtnGhost, { marginTop: SPACING.sm }]}
+                    onPress={reAdjustImages}
+                    disabled={imageUploading}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.aiBtnGhostText}>✏️ 写真を調整する</Text>
+                  </TouchableOpacity>
+                )}
+
+                {/* AIで画像を生成（チャット） */}
+                <Text style={[styles.sectionDivider, { marginTop: SPACING.lg }]}>または AIで画像を作る</Text>
+                <TouchableOpacity
+                  style={[styles.aiBtn, { backgroundColor: COLORS.secondary }]}
+                  onPress={openImgChat}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.aiBtnText}>🎨 AIで画像を作る（チャット）</Text>
                 </TouchableOpacity>
               </>
             ) : (
@@ -1546,188 +2523,37 @@ export default function ScheduleScreen({ route }: any) {
 
             {type === 'feed' ? (
               <>
-                {/* AI生成カード */}
-                <View style={styles.aiCard}>
-                  <Text style={styles.aiCardTitle}>✨ AIで文章を作る</Text>
-
-                  <Text style={styles.fieldLabel}>AIへの指示（任意・どちらにも反映）</Text>
-                  <TextInput
-                    style={[styles.input, styles.aiInstructionInput]}
-                    value={aiInstruction}
-                    onChangeText={setAiInstruction}
-                    placeholder={'例: もっとカジュアルに\n絵文字多めで\n短く3行で'}
-                    placeholderTextColor={COLORS.textMuted}
-                    multiline
-                  />
-
-                  {/* 書き直し（生成後のみ表示・指示欄の下） */}
-                  {caption.trim() ? (
-                    <TouchableOpacity
-                      style={[styles.aiBtnGhost, aiLoading && styles.publishNowBtnDisabled]}
-                      onPress={handleRefineCaption}
-                      disabled={aiLoading}
-                      activeOpacity={0.85}
-                    >
-                      {aiLoading ? (
-                        <ActivityIndicator color={COLORS.secondary} />
-                      ) : (
-                        <Text style={styles.aiBtnGhostText}>✏️ 今の文章を指示で書き直す</Text>
-                      )}
-                    </TouchableOpacity>
-                  ) : null}
-
-                  {/* 方法A: テーマから */}
-                  <View style={styles.aiMethod}>
-                    <Text style={styles.aiMethodTitle}>📝 テーマから作る</Text>
-                    <TextInput
-                      style={styles.input}
-                      value={feedTheme}
-                      onChangeText={setFeedTheme}
-                      placeholder="例: 夏の新メニュー紹介"
-                      placeholderTextColor={COLORS.textMuted}
-                    />
-                    <TouchableOpacity
-                      style={[styles.aiBtn, { marginTop: SPACING.sm }, aiLoading && styles.publishNowBtnDisabled]}
-                      onPress={handleGenerateFeedText}
-                      disabled={aiLoading}
-                      activeOpacity={0.85}
-                    >
-                      {aiLoading ? (
-                        <ActivityIndicator color="#fff" />
-                      ) : (
-                        <Text style={styles.aiBtnText}>✨ テーマから作る</Text>
-                      )}
-                    </TouchableOpacity>
-                  </View>
-
-                  {/* 方法B: 写真から */}
-                  <View style={styles.aiMethod}>
-                    <Text style={styles.aiMethodTitle}>📷 写真から作る</Text>
-                    <Text style={styles.aiHintText}>
-                      投稿用に選んだ写真（最大5枚）を見て作ります
-                    </Text>
-                    <TouchableOpacity
-                      style={[styles.aiBtn, aiLoading && styles.publishNowBtnDisabled]}
-                      onPress={handleGenerateFeedFromPhoto}
-                      disabled={aiLoading}
-                      activeOpacity={0.85}
-                    >
-                      {aiLoading ? (
-                        <ActivityIndicator color="#fff" />
-                      ) : (
-                        <Text style={styles.aiBtnText}>📷 選んだ写真から作る</Text>
-                      )}
-                    </TouchableOpacity>
-                  </View>
-                </View>
-
-                <Text style={styles.sectionDivider}>投稿内容</Text>
-                <Text style={styles.fieldLabel}>キャプション</Text>
-                <TextInput
-                  style={[styles.input, styles.textArea]}
-                  value={caption}
-                  onChangeText={setCaption}
-                  placeholder="投稿のキャプションを入力"
-                  placeholderTextColor={COLORS.textMuted}
-                  multiline
-                  numberOfLines={4}
-                />
-                <Text style={styles.fieldLabel}>ハッシュタグ（スペース区切り）</Text>
-                <TextInput
-                  style={styles.input}
-                  value={hashtagsText}
-                  onChangeText={setHashtagsText}
-                  placeholder="#春コーデ #新作 #ファッション"
-                  placeholderTextColor={COLORS.textMuted}
-                />
-                {imageUrl && !imageUploading ? (
-                  <Text style={styles.imageReadyText}>
-                    ✅ {imageUrls.length > 1 ? `画像${imageUrls.length}枚（カルーセル）の準備ができました` : '画像の準備ができました'}
-                  </Text>
-                ) : null}
+                {/* 次のステップ（キャプション作成）へ */}
+                <TouchableOpacity
+                  style={[styles.aiBtn, { marginTop: SPACING.lg }]}
+                  onPress={() => { draftOriginalRef.current = null; setModalVisible(false); setResultVisible(true); }}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.aiBtnText}>次へ（キャプション作成）›</Text>
+                </TouchableOpacity>
               </>
             ) : null}
 
-            {mode === 'schedule' && (
+            {type !== 'feed' && (
               <>
-                <Text style={styles.fieldLabel}>予約日時</Text>
-
-                {/* Quick date buttons */}
-                <Text style={styles.quickLabel}>おすすめ時間帯</Text>
-                <View style={styles.quickDatesGrid}>
-                  {quickDates.map((qd) => (
-                    <TouchableOpacity
-                      key={qd.value}
-                      style={[styles.quickDateBtn, dateText === qd.value && styles.quickDateBtnActive, qd.isOptimal && styles.quickDateBtnOptimal]}
-                      onPress={() => setDateText(qd.value)}
-                    >
-                      {qd.isOptimal && <Text style={styles.quickDateOptimalDot}>●</Text>}
-                      <Text style={[styles.quickDateText, dateText === qd.value && styles.quickDateTextActive]}>
-                        {qd.label}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-
-                <TextInput
-                  style={[styles.input, { marginTop: SPACING.sm }]}
-                  value={dateText}
-                  onChangeText={setDateText}
-                  placeholder="例: 2026-06-15T18:00"
-                  placeholderTextColor={COLORS.textMuted}
-                  autoCapitalize="none"
-                />
-
-                <Text style={styles.fieldLabel}>
-                  くりかえし {plan !== 'pro' && '⭐Pro'}
-                </Text>
-                <View style={styles.repeatRow}>
-                  {REPEAT_OPTIONS.map((opt) => {
-                    const active = repeat === opt.key;
-                    const locked = opt.key !== 'none' && plan !== 'pro';
-                    return (
-                      <TouchableOpacity
-                        key={opt.key}
-                        style={[styles.repeatBtn, active && styles.repeatBtnActive]}
-                        onPress={() => selectRepeat(opt.key)}
-                        activeOpacity={0.85}
-                      >
-                        <Text
-                          style={[styles.repeatBtnText, active && styles.repeatBtnTextActive]}
-                        >
-                          {opt.label}
-                          {locked ? ' 🔒' : ''}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-                {repeat !== 'none' && (
-                  <Text style={styles.repeatHint}>
-                    🔁 上の日時を1回目として、{REPEAT_SHORT[repeat]}くりかえし自動投稿します
-                  </Text>
+                <Text style={styles.sectionDivider}>Instagram</Text>
+                {instagramCredentials ? (
+                  <View style={styles.igConnectedBox}>
+                    <Text style={styles.igConnectedText}>
+                      ✅ {instagramCredentials.username ? `@${instagramCredentials.username}` : '連携済み'} に投稿します
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={styles.igWarnBox}>
+                    <Text style={styles.igWarnText}>
+                      ⚠️ 未連携です。右上のアイコンからInstagramを連携してください
+                    </Text>
+                  </View>
                 )}
-              </>
-            )}
 
-            <Text style={styles.sectionDivider}>Instagram</Text>
-            {instagramCredentials ? (
-              <View style={styles.igConnectedBox}>
-                <Text style={styles.igConnectedText}>
-                  ✅ {instagramCredentials.username ? `@${instagramCredentials.username}` : '連携済み'} に投稿します
-                </Text>
-              </View>
-            ) : (
-              <View style={styles.igWarnBox}>
-                <Text style={styles.igWarnText}>
-                  ⚠️ 未連携です。右上のアイコンからInstagramを連携してください
-                </Text>
-              </View>
-            )}
+                <Text style={styles.sectionDivider}>出し方を選ぶ</Text>
 
-            {mode === 'now' ? (
-              <>
-                {/* 今すぐ投稿 */}
+                {/* ① 今すぐ投稿 */}
                 <TouchableOpacity
                   style={[styles.publishNowBtn, (publishing || !instagramCredentials) && styles.publishNowBtnDisabled]}
                   onPress={handlePublishNow}
@@ -1740,47 +2566,38 @@ export default function ScheduleScreen({ route }: any) {
                     <Text style={styles.publishNowText}>🚀 今すぐ投稿する</Text>
                   )}
                 </TouchableOpacity>
-                <Text style={styles.publishNowHint}>
-                  ※ すぐにInstagramへ投稿します
-                </Text>
-              </>
-            ) : (
-              <>
-                {/* 予約を保存 */}
+                <Text style={styles.publishNowHint}>※ すぐにInstagramへ投稿します（履歴に残ります）</Text>
+
+                {/* ② 予約する */}
+                <Text style={styles.orDivider}>または、日時を決めて予約する</Text>
                 <TouchableOpacity
-                  style={[styles.publishNowBtn, saving && styles.publishNowBtnDisabled]}
-                  onPress={handleSave}
-                  disabled={saving}
+                  style={styles.scheduleSaveBtn}
+                  onPress={() => setScheduleModalVisible(true)}
                   activeOpacity={0.85}
                 >
-                  {saving ? (
-                    <ActivityIndicator color="#fff" />
+                  <Text style={styles.publishNowText}>📅 予約する</Text>
+                </TouchableOpacity>
+                <Text style={styles.publishNowHint}>※ 次の画面で日時を選びます</Text>
+
+                {/* ③ 下書き保存 */}
+                <Text style={styles.orDivider}>または、あとで決める</Text>
+                <TouchableOpacity
+                  style={[styles.draftSaveBtn, savingDraft && styles.publishNowBtnDisabled]}
+                  onPress={handleSaveDraft}
+                  disabled={savingDraft}
+                  activeOpacity={0.85}
+                >
+                  {savingDraft ? (
+                    <ActivityIndicator color={COLORS.primary} />
                   ) : (
-                    <Text style={styles.publishNowText}>📅 この内容で予約する</Text>
+                    <Text style={styles.draftSaveText}>📝 下書きに保存</Text>
                   )}
                 </TouchableOpacity>
                 <Text style={styles.publishNowHint}>
-                  ※ 指定した日時に自動で投稿されます
+                  ※ 日時を決めずに保存。「下書き」から後で予約できます
                 </Text>
               </>
             )}
-
-            {/* 下書き保存（日時は決めずに内容だけ保存） */}
-            <TouchableOpacity
-              style={[styles.draftSaveBtn, savingDraft && styles.publishNowBtnDisabled]}
-              onPress={handleSaveDraft}
-              disabled={savingDraft}
-              activeOpacity={0.85}
-            >
-              {savingDraft ? (
-                <ActivityIndicator color={COLORS.primary} />
-              ) : (
-                <Text style={styles.draftSaveText}>📝 下書きに保存</Text>
-              )}
-            </TouchableOpacity>
-            <Text style={styles.publishNowHint}>
-              ※ 日時を決めずに保存。「予約投稿」タブの「下書き」から後で予約できます
-            </Text>
           </ScrollView>
         </KeyboardAvoidingView>
       </Modal>
@@ -1859,11 +2676,11 @@ export default function ScheduleScreen({ route }: any) {
               autoCapitalize="none"
             />
 
-            <Text style={styles.fieldLabel}>くりかえし {plan !== 'pro' && '⭐Pro'}</Text>
+            <Text style={styles.fieldLabel}>くりかえし {!canRecurring(plan) && '⭐Pro'}</Text>
             <View style={styles.repeatRow}>
               {REPEAT_OPTIONS.map((opt) => {
                 const active = editRepeat === opt.key;
-                const locked = opt.key !== 'none' && plan !== 'pro';
+                const locked = opt.key !== 'none' && !canRecurring(plan);
                 return (
                   <TouchableOpacity
                     key={opt.key}
@@ -1893,6 +2710,198 @@ export default function ScheduleScreen({ route }: any) {
             </TouchableOpacity>
           </ScrollView>
         </KeyboardAvoidingView>
+      </Modal>
+
+      {/* 予約日時の入力（別画面） */}
+      <Modal visible={scheduleModalVisible} animationType="slide" presentationStyle="pageSheet">
+        <KeyboardAvoidingView
+          style={styles.modal}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => setScheduleModalVisible(false)}>
+              <Text style={styles.modalCancel}>戻る</Text>
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>予約日時を設定</Text>
+            <View style={{ width: 48 }} />
+          </View>
+
+          <ScrollView style={styles.modalBody} keyboardShouldPersistTaps="handled">
+            <Text style={styles.quickLabel}>おすすめの時間帯から選ぶ</Text>
+            <View style={styles.quickDatesGrid}>
+              {quickDates.map((q) => {
+                const active = dateText === q.value;
+                return (
+                  <TouchableOpacity
+                    key={q.value}
+                    style={[
+                      styles.quickDateBtn,
+                      q.isOptimal && styles.quickDateBtnOptimal,
+                      active && styles.quickDateBtnActive,
+                    ]}
+                    onPress={() => setDateText(q.value)}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={[styles.quickDateText, active && styles.quickDateTextActive]}>
+                      {q.isOptimal && <Text style={styles.quickDateOptimalDot}>● </Text>}
+                      {q.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <View style={styles.dateTimeRow}>
+              <View style={styles.dateTimeCol}>
+                <Text style={styles.fieldLabel}>日付</Text>
+                {Platform.OS === 'web' ? (
+                  <input
+                    type="date"
+                    value={dateText.split('T')[0] || ''}
+                    min={todayKey}
+                    onChange={(e: any) => {
+                      const d = e.target.value;
+                      const t = dateText.split('T')[1] || '18:00';
+                      setDateText(d ? `${d}T${t}` : '');
+                    }}
+                    style={webDateInputStyle}
+                  />
+                ) : (
+                  <TextInput
+                    style={styles.input}
+                    value={dateText.split('T')[0] || ''}
+                    onChangeText={(d) => {
+                      const t = dateText.split('T')[1] || '18:00';
+                      setDateText(d ? `${d}T${t}` : '');
+                    }}
+                    placeholder="2026-06-15"
+                    placeholderTextColor={COLORS.textMuted}
+                    autoCapitalize="none"
+                  />
+                )}
+              </View>
+              <View style={styles.dateTimeCol}>
+                <Text style={styles.fieldLabel}>時間</Text>
+                {Platform.OS === 'web' ? (
+                  <input
+                    type="time"
+                    value={dateText.split('T')[1] || ''}
+                    onChange={(e: any) => {
+                      const t = e.target.value;
+                      const d = dateText.split('T')[0] || todayKey;
+                      setDateText(t ? `${d}T${t}` : '');
+                    }}
+                    style={webDateInputStyle}
+                  />
+                ) : (
+                  <TextInput
+                    style={styles.input}
+                    value={dateText.split('T')[1] || ''}
+                    onChangeText={(t) => {
+                      const d = dateText.split('T')[0] || todayKey;
+                      setDateText(t ? `${d}T${t}` : '');
+                    }}
+                    placeholder="18:00"
+                    placeholderTextColor={COLORS.textMuted}
+                    autoCapitalize="none"
+                  />
+                )}
+              </View>
+            </View>
+
+            <Text style={styles.fieldLabel}>くりかえし {!canRecurring(plan) && '⭐Pro'}</Text>
+            <View style={styles.repeatRow}>
+              {REPEAT_OPTIONS.map((opt) => {
+                const active = repeat === opt.key;
+                const locked = opt.key !== 'none' && !canRecurring(plan);
+                return (
+                  <TouchableOpacity
+                    key={opt.key}
+                    style={[styles.repeatBtn, active && styles.repeatBtnActive]}
+                    onPress={() => selectRepeat(opt.key)}
+                  >
+                    <Text style={[styles.repeatBtnText, active && styles.repeatBtnTextActive]}>
+                      {opt.label}
+                      {locked ? ' 🔒' : ''}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            <Text style={styles.repeatHint}>
+              ※ くりかえしを設定すると、指定した間隔で自動的に投稿されます
+            </Text>
+
+            <TouchableOpacity
+              style={[styles.publishNowBtn, saving && styles.publishNowBtnDisabled]}
+              onPress={handleSave}
+              disabled={saving}
+              activeOpacity={0.85}
+            >
+              {saving ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.publishNowText}>📅 この日時で予約する</Text>
+              )}
+            </TouchableOpacity>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* テンプレート選択モーダル */}
+      <Modal visible={templatePickerVisible} animationType="slide" presentationStyle="pageSheet">
+        <View style={styles.modal}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => setTemplatePickerVisible(false)}>
+              <Text style={styles.modalCancel}>閉じる</Text>
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>テンプレート</Text>
+            <View style={{ width: 48 }} />
+          </View>
+          <ScrollView style={styles.modalBody} keyboardShouldPersistTaps="handled">
+            {templates.length === 0 ? (
+              <View style={styles.empty}>
+                <Text style={styles.emptyEmoji}>📁</Text>
+                <Text style={styles.emptyTitle}>テンプレートはありません</Text>
+                <Text style={styles.emptyDesc}>
+                  投稿作成画面で「テンプレートとして保存」すると、ここに表示されます
+                </Text>
+              </View>
+            ) : (
+              templates.map((t) => (
+                <View key={t.id} style={styles.templateCard}>
+                  <TouchableOpacity
+                    style={{ flex: 1 }}
+                    onPress={() => applyTemplate(t)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.templateName}>
+                      {t.type === 'story' ? '📖' : '📷'} {t.name}
+                    </Text>
+                    {t.caption ? (
+                      <Text style={styles.templateCaption} numberOfLines={2}>
+                        {t.caption}
+                      </Text>
+                    ) : null}
+                    {t.hashtags.length > 0 ? (
+                      <Text style={styles.templateTags} numberOfLines={1}>
+                        {t.hashtags.join(' ')}
+                      </Text>
+                    ) : null}
+                  </TouchableOpacity>
+                  <View style={styles.templateActions}>
+                    <TouchableOpacity onPress={() => applyTemplate(t)} hitSlop={8}>
+                      <Text style={styles.templateUseText}>使う →</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => handleDeleteTemplate(t.id)} hitSlop={8}>
+                      <Text style={styles.deleteBtn}>🗑</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))
+            )}
+          </ScrollView>
+        </View>
       </Modal>
     </View>
   );
@@ -2016,6 +3025,66 @@ const styles = StyleSheet.create({
   statusText: { color: COLORS.text, fontSize: 11, fontWeight: '600' },
   deleteBtn: { fontSize: 18 },
   cardActions: { flexDirection: 'row', gap: SPACING.md, alignItems: 'center' },
+  carouselCounter: {
+    position: 'absolute',
+    top: SPACING.sm,
+    right: SPACING.sm,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: RADIUS.full,
+  },
+  carouselCounterText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+  carouselDots: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: SPACING.sm,
+  },
+  carouselDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: COLORS.border,
+  },
+  carouselDotActive: { backgroundColor: COLORS.primary },
+  confirmOverlay: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: SPACING.lg,
+  },
+  confirmCard: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  confirmTitle: { color: COLORS.text, fontSize: 17, fontWeight: '800', textAlign: 'center', marginBottom: SPACING.sm },
+  confirmDesc: { color: COLORS.textSecondary, fontSize: 14, textAlign: 'center', marginBottom: SPACING.lg },
+  confirmYes: { backgroundColor: COLORS.primary, borderRadius: RADIUS.full, paddingVertical: SPACING.md, alignItems: 'center' },
+  confirmYesText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  confirmNo: { marginTop: SPACING.sm, borderWidth: 1, borderColor: COLORS.error, borderRadius: RADIUS.full, paddingVertical: SPACING.md, alignItems: 'center' },
+  confirmNoText: { color: COLORS.error, fontSize: 15, fontWeight: '700' },
+  confirmCancel: { marginTop: SPACING.sm, paddingVertical: SPACING.md, alignItems: 'center' },
+  confirmCancelText: { color: COLORS.textMuted, fontSize: 14, fontWeight: '600' },
+  carouselRemove: {
+    position: 'absolute',
+    top: SPACING.sm,
+    left: SPACING.sm,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  carouselRemoveText: { color: '#fff', fontSize: 14, fontWeight: '700' },
   editBtn: { fontSize: 17 },
   editKind: {
     color: COLORS.textMuted,
@@ -2109,6 +3178,147 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   textArea: { minHeight: 100, textAlignVertical: 'top', paddingTop: SPACING.sm },
+  dateTimeRow: { flexDirection: 'row', gap: SPACING.sm },
+  dateTimeCol: { flex: 1 },
+  tagWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, marginBottom: SPACING.sm },
+  tagChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: COLORS.surfaceElevated,
+    borderRadius: RADIUS.sm,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+  },
+  tagChipText: { color: '#4FC3F7', fontSize: 13 },
+  tagChipRemove: { color: COLORS.textMuted, fontSize: 13, fontWeight: '700' },
+  tagEmpty: { color: COLORS.textMuted, fontSize: 12 },
+  tagAddRow: { flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.sm },
+  tagInput: {
+    flex: 1,
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    color: COLORS.text,
+    fontSize: 14,
+  },
+  tagAddBtn: {
+    backgroundColor: COLORS.primary,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.md,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  tagAddBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  tagWarn: { color: COLORS.warning, fontSize: 12, marginBottom: SPACING.sm },
+  templateOpenBtn: {
+    backgroundColor: COLORS.surfaceElevated,
+    borderWidth: 1,
+    borderColor: COLORS.secondary + '55',
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.sm,
+    alignItems: 'center',
+    marginBottom: SPACING.md,
+  },
+  templateOpenBtnText: { color: COLORS.secondary, fontSize: 14, fontWeight: '700' },
+  templateSaveBtn: {
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.md,
+    alignItems: 'center',
+    marginTop: SPACING.xs,
+    borderWidth: 1.5,
+    borderColor: COLORS.secondary,
+  },
+  templateSaveText: { color: COLORS.secondary, fontSize: 15, fontWeight: '800' },
+  templateCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+    marginBottom: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  templateName: { color: COLORS.text, fontSize: 15, fontWeight: '800', marginBottom: 2 },
+  templateCaption: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 18 },
+  templateTags: { color: '#4FC3F7', fontSize: 12, marginTop: 2 },
+  templateActions: { alignItems: 'flex-end', gap: SPACING.sm },
+  templateUseText: { color: COLORS.primary, fontSize: 14, fontWeight: '800' },
+  createMenu: {
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+    marginBottom: SPACING.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  createMenuTitle: {
+    color: COLORS.text,
+    fontSize: 15,
+    fontWeight: '800',
+    marginBottom: SPACING.sm,
+  },
+  createMenuRow: { flexDirection: 'row', gap: SPACING.sm },
+  createMenuBtn: {
+    flex: 1,
+    backgroundColor: COLORS.surfaceElevated,
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.md,
+    alignItems: 'center',
+    gap: 4,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  createMenuEmoji: { fontSize: 26 },
+  createMenuLabel: { color: COLORS.text, fontSize: 13, fontWeight: '700' },
+  orDivider: {
+    color: COLORS.textMuted,
+    fontSize: 12,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginTop: SPACING.lg,
+    marginBottom: SPACING.sm,
+  },
+  scheduleSaveBtn: {
+    backgroundColor: COLORS.secondary,
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.md,
+    alignItems: 'center',
+    marginTop: SPACING.md,
+  },
+  calDotRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 2,
+    marginTop: 2,
+  },
+  calStatusDot: {
+    minWidth: 14,
+    height: 14,
+    borderRadius: 7,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+  },
+  calStatusDotText: { color: '#fff', fontSize: 9, fontWeight: '800' },
+  calLegend: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: SPACING.md,
+    marginTop: SPACING.md,
+    marginBottom: SPACING.sm,
+  },
+  calLegendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  calLegendDot: { width: 10, height: 10, borderRadius: 5 },
+  calLegendText: { color: COLORS.textMuted, fontSize: 11, fontWeight: '600' },
   typeRow: { flexDirection: 'row', gap: SPACING.sm },
   typeBtn: {
     flex: 1,
@@ -2197,6 +3407,12 @@ const styles = StyleSheet.create({
     marginTop: SPACING.xs,
   },
   igWarnText: { color: COLORS.warning, fontSize: 13, fontWeight: '600' },
+  modalSaveBtn: {
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.md,
+    alignItems: 'center' as const,
+  },
+  modalSaveBtnText: { color: '#fff', fontSize: 15, fontWeight: '800' as const },
   publishNowBtn: {
     backgroundColor: COLORS.primary,
     borderRadius: RADIUS.md,

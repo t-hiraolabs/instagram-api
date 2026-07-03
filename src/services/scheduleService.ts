@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient';
+import { Plan, AI_LIMITS, asPlan } from '../utils/plans';
 
 export type RepeatOption = 'none' | 'daily' | 'weekly' | 'monthly' | 'weekdays';
 
@@ -25,15 +26,23 @@ export interface CreateScheduledPostInput {
   repeat?: RepeatOption;
   instagram_user_id?: string;
   access_token?: string;
-  status?: 'pending' | 'draft';
+  status?: 'pending' | 'draft' | 'published';
+  user_tags?: string[];
+  product_tags?: string[];
+  location_id?: string;
 }
 
-export async function getScheduledPosts(): Promise<ScheduledPost[]> {
-  const { data, error } = await supabase
+export async function getScheduledPosts(instagramUserId?: string): Promise<ScheduledPost[]> {
+  let query = supabase
     .from('scheduled_posts')
     .select('*')
     .order('scheduled_at', { ascending: true });
 
+  if (instagramUserId) {
+    query = query.eq('instagram_user_id', instagramUserId);
+  }
+
+  const { data, error } = await query;
   if (error) throw error;
   return data ?? [];
 }
@@ -81,8 +90,8 @@ export async function updateScheduledPost(
   if (error) throw error;
 }
 
-/** ログイン中ユーザーのプラン（free / pro）を取得 */
-export async function getMyPlan(): Promise<'free' | 'pro'> {
+/** ログイン中ユーザーのプラン（free / pro / business）を取得 */
+export async function getMyPlan(): Promise<Plan> {
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -92,19 +101,17 @@ export async function getMyPlan(): Promise<'free' | 'pro'> {
     .select('plan')
     .eq('id', user.id)
     .maybeSingle();
-  return data?.plan === 'pro' ? 'pro' : 'free';
+  return asPlan(data?.plan);
 }
 
 export interface AiUsage {
-  plan: 'free' | 'pro';
+  plan: Plan;
   used: number;
   limit: number;
   remaining: number;
 }
 
-const AI_LIMITS = { free: 10, pro: 300 } as const;
-
-/** 今月のAI生成の使用状況（残り回数など）を取得 */
+/** AI生成の使用状況（残り回数など）を取得。無料は1アカウント累計、有料は毎月リセット */
 export async function getAiUsage(): Promise<AiUsage> {
   const {
     data: { user },
@@ -117,12 +124,13 @@ export async function getAiUsage(): Promise<AiUsage> {
     .eq('id', user.id)
     .maybeSingle();
 
-  const plan = data?.plan === 'pro' ? 'pro' : 'free';
+  const plan = asPlan(data?.plan);
   const limit = AI_LIMITS[plan];
 
-  // 月が変わっていたら使用回数は0扱い（実際のリセットは次回のAI呼び出し時）
+  // 有料プランは月が変わっていたら0扱い（実際のリセットは次回のAI呼び出し時）。
+  // 無料プランは月でリセットせず、1アカウントあたり累計の上限とする。
   let used = data?.ai_used ?? 0;
-  if (data?.ai_period_start) {
+  if (plan !== 'free' && data?.ai_period_start) {
     const start = new Date(`${data.ai_period_start}T00:00:00Z`);
     const now = new Date();
     const sameMonth =

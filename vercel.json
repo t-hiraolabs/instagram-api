@@ -1,5 +1,9 @@
 {
-  "buildCommand": "npx expo export --platform web",
+  "buildCommand": "sh scripts/build.sh",
   "outputDirectory": "dist",
-  "installCommand": "npm install"
+  "installCommand": "npm install",
+  "cleanUrls": true,
+  "rewrites": [
+    { "source": "/privacy", "destination": "/privacy.html" }
+  ]
 }

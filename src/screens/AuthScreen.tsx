@@ -20,8 +20,30 @@ export default function AuthScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const handleGoogleLogin = async () => {
+    setError(null);
+    setMessage(null);
+    setGoogleLoading(true);
+    try {
+      const redirectTo =
+        Platform.OS === 'web' && typeof window !== 'undefined'
+          ? window.location.origin
+          : undefined;
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: redirectTo ? { redirectTo } : undefined,
+      });
+      if (error) throw error;
+      // Web ではGoogleの認証ページへリダイレクトされる
+    } catch (e: any) {
+      setError(translateError(e?.message ?? 'Googleログインに失敗しました'));
+      setGoogleLoading(false);
+    }
+  };
 
   const handleSubmit = async () => {
     setError(null);
@@ -69,7 +91,8 @@ export default function AuthScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-        <Text style={styles.logo}>InstaAI</Text>
+        <Text style={styles.logo}>AImark</Text>
+        <Text style={[styles.subtitle, { fontSize: 13, marginTop: -6, marginBottom: 4, opacity: 0.7 }]}>アイマーク</Text>
         <Text style={styles.subtitle}>
           {mode === 'login' ? 'ログインして始めましょう' : 'アカウントを作成しましょう'}
         </Text>
@@ -112,6 +135,27 @@ export default function AuthScreen() {
               <Text style={styles.submitText}>
                 {mode === 'login' ? 'ログイン' : '新規登録'}
               </Text>
+            )}
+          </TouchableOpacity>
+
+          <View style={styles.divider}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerText}>または</Text>
+            <View style={styles.dividerLine} />
+          </View>
+
+          <TouchableOpacity
+            style={[styles.googleBtn, googleLoading && styles.submitBtnDisabled]}
+            onPress={handleGoogleLogin}
+            disabled={googleLoading}
+          >
+            {googleLoading ? (
+              <ActivityIndicator color={COLORS.text} />
+            ) : (
+              <>
+                <Text style={styles.googleIcon}>G</Text>
+                <Text style={styles.googleText}>Googleで続ける</Text>
+              </>
             )}
           </TouchableOpacity>
         </View>
@@ -211,6 +255,33 @@ const styles = StyleSheet.create({
   },
   submitBtnDisabled: { opacity: 0.6 },
   submitText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+  divider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: SPACING.lg,
+    marginBottom: SPACING.md,
+  },
+  dividerLine: { flex: 1, height: 1, backgroundColor: COLORS.border },
+  dividerText: {
+    color: COLORS.textMuted,
+    fontSize: 12,
+    marginHorizontal: SPACING.md,
+  },
+  googleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.sm,
+    backgroundColor: '#fff',
+    borderRadius: RADIUS.full,
+    paddingVertical: SPACING.md,
+  },
+  googleIcon: {
+    color: '#4285F4',
+    fontWeight: '900',
+    fontSize: 18,
+  },
+  googleText: { color: '#1f1f1f', fontWeight: '700', fontSize: 15 },
   switchBtn: { marginTop: SPACING.lg, alignItems: 'center' },
   switchText: { color: COLORS.textSecondary, fontSize: 13 },
 });

@@ -27,8 +27,9 @@ function extractError(err: unknown): string {
 }
 
 function getBrandContext(): string {
+  const { brandSettings, brandSettings2, activeAccountSlot } = useAppStore.getState();
   const { brandName, industry, atmosphere, targetAudience, tone } =
-    useAppStore.getState().brandSettings;
+    activeAccountSlot === 2 ? brandSettings2 : brandSettings;
   const parts: string[] = [];
   if (brandName) parts.push(`ブランド名: ${brandName}`);
   if (industry) parts.push(`業種: ${industry}`);
@@ -36,6 +37,31 @@ function getBrandContext(): string {
   if (targetAudience) parts.push(`ターゲット層: ${targetAudience}`);
   if (tone) parts.push(`希望トーン: ${tone}`);
   return parts.length > 0 ? `\n\n【ブランド情報】\n${parts.join('\n')}` : '';
+}
+
+// ユーザーがAIに覚えさせた説明（事業・サービス内容）
+function getMemoryContext(): string {
+  const mem = useAppStore.getState().assistantMemory?.trim();
+  return mem ? `\n\n【覚えておくこと】\n${mem}` : '';
+}
+
+export interface TopPost {
+  caption: string;
+  likes: number;
+  comments: number;
+}
+
+/** 過去の人気投稿をプロンプトに差し込む文脈ブロックを作る（空なら空文字） */
+function topPostsContext(topPosts?: TopPost[]): string {
+  if (!topPosts || topPosts.length === 0) return '';
+  const ranked = topPosts
+    .slice(0, 5)
+    .map(
+      (p, i) =>
+        `${i + 1}位（❤️${p.likes} / 💬${p.comments}）${(p.caption || '（キャプションなし）').slice(0, 200)}`
+    )
+    .join('\n');
+  return `\n\n【このアカウントで過去に反応が良かった投稿】\n${ranked}\n\n上記の傾向（よく反応されるテーマ・トーン・文章の長さ・絵文字や改行・ハッシュタグの使い方）を分析し、その成功パターンを今回の生成に反映してください。`;
 }
 
 interface GeneratePostInput {
@@ -46,6 +72,7 @@ interface GeneratePostInput {
   language: 'ja' | 'en';
   industry?: string;
   instruction?: string;
+  topPosts?: TopPost[];
 }
 
 interface GeneratedPost {
@@ -59,6 +86,7 @@ interface GenerateStoryInput {
   type: 'poll' | 'countdown' | 'quiz' | 'announcement' | 'promotion';
   brandName?: string;
   details: string;
+  topPosts?: TopPost[];
 }
 
 interface GeneratedStory {
@@ -97,7 +125,7 @@ export async function generatePost(input: GeneratePostInput): Promise<GeneratedP
 日本のInstagramユーザー文化（ハッシュタグ検索が活発・グローバル平均の3倍、ビジュアル重視、「映え」文化）を理解した最適な文章を作ります。
 必ずJSONフォーマットだけで返答してください。余分なテキストは不要です。`;
 
-  const prompt = `以下の条件でInstagramのフィード投稿を生成してください。${brandCtx}
+  const prompt = `以下の条件でInstagramのフィード投稿を生成してください。${brandCtx}${topPostsContext(input.topPosts)}
 
 テーマ: ${input.theme}
 トーン: ${input.tone}
@@ -120,6 +148,56 @@ ${input.instruction ? `追加の指示（最優先で従う）: ${input.instruct
   return JSON.parse(clean) as GeneratedPost;
 }
 
+/** 過去の人気投稿（いいね数）を分析し、その傾向をふまえてキャプションを生成（ビジネス限定） */
+export async function generateFromTopPosts(input: {
+  theme: string;
+  topPosts: { caption: string; likes: number; comments: number }[];
+  tone: string;
+  industry?: string;
+  instruction?: string;
+}): Promise<GeneratedPost> {
+  const brandCtx = getBrandContext();
+  const systemPrompt = `あなたは日本のInstagramマーケティングの専門家です。
+このアカウントの「過去に反応が良かった投稿（いいね・コメント数つき）」を分析し、
+なぜ伸びたのか（テーマ・語り口・長さ・絵文字・ハッシュタグの使い方など）を読み取った上で、
+その成功パターンを活かした新しいフィード投稿文を日本語で生成します。
+必ずJSONフォーマットだけで返答してください。余分なテキストは不要です。`;
+
+  const ranked = input.topPosts
+    .slice(0, 5)
+    .map(
+      (p, i) =>
+        `${i + 1}位（❤️${p.likes} / 💬${p.comments}）\n${(p.caption || '（キャプションなし）').slice(0, 280)}`
+    )
+    .join('\n\n---\n\n');
+
+  const prompt = `以下は、このアカウントで過去に反応が良かった投稿です。${brandCtx}
+
+【反応が良かった投稿トップ5】
+${ranked}
+
+これらの傾向（よく反応されるテーマ・トーン・文章の長さ・絵文字や改行の使い方・ハッシュタグの傾向）を分析し、
+その成功パターンを活かして新しいフィード投稿を1つ作ってください。
+
+新しい投稿のテーマ: ${input.theme || '上位投稿の傾向に最も近い、反応が取りやすいテーマで自由に'}
+トーン: ${input.tone}
+${input.industry ? `業種: ${input.industry}` : ''}
+${input.instruction ? `追加の指示（最優先で従う）: ${input.instruction}` : ''}
+
+ハッシュタグは15〜20個、日本語タグと英語タグをバランスよく。
+
+以下のJSONフォーマットで返してください:
+{
+  "caption": "投稿文（絵文字も含めて、改行あり、200〜400文字）",
+  "hashtags": ["#ハッシュタグ1", "#ハッシュタグ2", ...],
+  "suggestions": ["なぜこの構成にしたか/過去の人気投稿から学んだ改善提案1", "提案2", "提案3"]
+}`;
+
+  const raw = await callClaude(prompt, systemPrompt);
+  const clean = raw.replace(/```json|```/g, '').trim();
+  return JSON.parse(clean) as GeneratedPost;
+}
+
 export async function generateStory(input: GenerateStoryInput): Promise<GeneratedStory> {
   const brandCtx = getBrandContext();
   const systemPrompt = `あなたはInstagramストーリーのプロデザイナー兼コピーライターです。
@@ -134,7 +212,7 @@ export async function generateStory(input: GenerateStoryInput): Promise<Generate
     promotion: 'プロモーション',
   };
 
-  const prompt = `以下の条件でInstagramストーリーのコンテンツを生成してください。${brandCtx}
+  const prompt = `以下の条件でInstagramストーリーのコンテンツを生成してください。${brandCtx}${topPostsContext(input.topPosts)}
 
 タイプ: ${typeMap[input.type]}
 テーマ: ${input.theme}
@@ -162,13 +240,14 @@ export async function generateReelCaptions(input: {
   count: number;
   industry?: string;
   toneHint?: string;
+  topPosts?: TopPost[];
 }): Promise<string[]> {
   const brandCtx = getBrandContext();
   const systemPrompt = `あなたはInstagramリールの構成作家です。
 日本の個人事業主・中小企業向けに、写真スライドにのせる短いキャプションを作ります。
 必ずJSONフォーマットだけで返答してください。`;
 
-  const prompt = `テーマ「${input.theme}」のInstagramリール用に、スライド${input.count}枚分の短いキャプションを作ってください。${brandCtx}
+  const prompt = `テーマ「${input.theme}」のInstagramリール用に、スライド${input.count}枚分の短いキャプションを作ってください。${brandCtx}${topPostsContext(input.topPosts)}
 ${input.industry ? `業種: ${input.industry}` : ''}
 ${input.toneHint ? `トーン: ${input.toneHint}` : ''}
 
@@ -227,6 +306,7 @@ export async function generateFromImage(input: {
   tone: string;
   industry?: string;
   instruction?: string;
+  topPosts?: TopPost[];
 }): Promise<GeneratedPost> {
   const brandCtx = getBrandContext();
   const labels = { feed: 'フィード投稿', story: 'ストーリー', reel: 'リール' };
@@ -260,7 +340,7 @@ export async function generateFromImage(input: {
               },
               {
                 type: 'text',
-                text: `この画像からInstagram${labels[input.contentType]}のコンテンツを生成してください。${brandCtx}
+                text: `この画像からInstagram${labels[input.contentType]}のコンテンツを生成してください。${brandCtx}${topPostsContext(input.topPosts)}
 トーン: ${input.tone}
 ${input.industry ? `業種: ${input.industry}` : ''}
 ${input.instruction ? `追加の指示（最優先で従う）: ${input.instruction}` : ''}
@@ -293,6 +373,7 @@ export async function generateFromImages(input: {
   tone: string;
   industry?: string;
   instruction?: string;
+  topPosts?: TopPost[];
 }): Promise<GeneratedPost> {
   const brandCtx = getBrandContext();
   const systemPrompt = `あなたは日本のInstagramマーケティングの専門家です。
@@ -305,7 +386,7 @@ export async function generateFromImages(input: {
   }));
   content.push({
     type: 'text',
-    text: `これら${input.images.length}枚の写真（カルーセル投稿）に合うInstagramフィードのキャプションを1つ作ってください。${brandCtx}
+    text: `これら${input.images.length}枚の写真（カルーセル投稿）に合うInstagramフィードのキャプションを1つ作ってください。${brandCtx}${topPostsContext(input.topPosts)}
 トーン: ${input.tone}
 ${input.industry ? `業種: ${input.industry}` : ''}
 ${input.instruction ? `追加の指示（最優先で従う）: ${input.instruction}` : ''}
@@ -421,3 +502,219 @@ export const INDUSTRIES = [
   { key: 'ペット・動物関連', label: 'ペット', emoji: '🐾' },
   { key: '音楽・アート・クリエイター', label: '音楽・アート', emoji: '🎵' },
 ];
+
+export interface SuggestedBrandSettings {
+  brandName: string;
+  industry: string;
+  atmosphere: string;
+  targetAudience: string;
+  tone: string;
+}
+
+/**
+ * Instagram投稿キャプションをAIで分析してブランド設定を自動生成する
+ */
+export async function analyzeBrandFromPosts(
+  captions: string[],
+  username: string
+): Promise<SuggestedBrandSettings> {
+  const headers = await getAuthHeaders();
+  const sample = captions.slice(0, 10).join('\n---\n');
+  const prompt = `以下は@${username}のInstagram投稿のキャプションです。
+これらを分析して、このアカウントのブランド情報をJSON形式で返してください。
+
+【投稿サンプル】
+${sample}
+
+以下のJSONのみを返してください（説明文不要）:
+{
+  "brandName": "推測されるブランド名または屋号（不明なら空文字）",
+  "industry": "業種・ジャンル（例: 美容・ネイル・まつ毛、飲食・カフェ・スイーツ など）",
+  "atmosphere": "お店・アカウントの雰囲気やこだわり（50文字以内）",
+  "targetAudience": "ターゲット層（例: 30代女性、子育て中のママ など）",
+  "tone": "投稿のトーン（「明るい・ポジティブ」「プロフェッショナル」「カジュアル」「感情的・共感」「ユーモラス」のいずれか）"
+}`;
+
+  const res = await axios.post(
+    CLAUDE_API_URL,
+    // skipCount: ブランド分析は通常のAI生成回数を消費しない（裏で別枠の上限あり）
+    { model: MODEL, messages: [{ role: 'user', content: prompt }], max_tokens: 400, skipCount: true },
+    { headers }
+  );
+  const text: string = res.data?.content?.[0]?.text ?? res.data?.text ?? '';
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error('AI応答のパースに失敗しました');
+  return JSON.parse(jsonMatch[0]) as SuggestedBrandSettings;
+}
+
+export interface ChatTurn { role: 'user' | 'assistant'; content: string; }
+
+// クライアント表示用（サーバーの CHAT_TOKEN_LIMITS と揃える。月間トークン数）
+const CHAT_LIMITS: Record<string, number> = { free: 100000, pro: 800000, business: 2000000 };
+
+/** チャット利用量を % で返す（月ごとにリセット）。Claude風の残量表示に使う */
+export async function getChatUsagePercent(): Promise<{ usedPct: number; remainingPct: number }> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { usedPct: 0, remainingPct: 100 };
+  const { data } = await supabase
+    .from('profiles')
+    .select('plan, chat_used, chat_period_start')
+    .eq('id', user.id)
+    .maybeSingle();
+  const plan = data?.plan === 'pro' || data?.plan === 'business' ? data.plan : 'free';
+  const limit = CHAT_LIMITS[plan];
+  const start = data?.chat_period_start ?? new Date().toISOString().slice(0, 10);
+  const sameMonth = (() => {
+    const t = new Date(); const p = new Date(`${start}T00:00:00Z`);
+    return t.getUTCFullYear() === p.getUTCFullYear() && t.getUTCMonth() === p.getUTCMonth();
+  })();
+  const used = sameMonth ? (data?.chat_used ?? 0) : 0;
+  const usedPct = Math.min(100, Math.round((used / limit) * 100));
+  return { usedPct, remainingPct: 100 - usedPct };
+}
+
+/**
+ * アシスタントとの会話（画像の相談・分析など）。回数消費なし（chat:true）。
+ * 画像を生成したいときのために、会話から画像プロンプトを作る補助にも使える。
+ */
+export async function chatWithAssistant(
+  history: ChatTurn[],
+  attachment?: { base64: string; mime: string }
+): Promise<string> {
+  const headers = await getAuthHeaders();
+  const system =
+    'あなたはInstagram運用を支援する日本語アシスタントです。' +
+    IG_CONTEXT +
+    'ユーザーと会話しながら、投稿のアイデア出し、簡単な分析やアドバイス、そして「どんな画像を作りたいか」を一緒に具体化します。' +
+    '画像生成のプロンプトを聞かれたら、被写体・構図・雰囲気・色・スタイルを含む具体的な指示を1〜2文で提案してください。' +
+    '【重要】ユーザーの事業・サービス情報が下記【ブランド情報】として与えられている場合は、それを前提として扱い、' +
+    '「どんなサービス／アプリですか？」などと毎回聞き返さないでください。情報が本当に不足している時だけ、要点を1つだけ簡潔に確認します。' +
+    '回答は簡潔に、絵文字は控えめに。' +
+    getBrandContext() + getMemoryContext();
+  const msgs: Array<{ role: string; content: unknown }> = history.map((h) => ({ role: h.role, content: h.content }));
+  if (msgs.length === 0 || msgs[msgs.length - 1].role !== 'user') {
+    msgs.push({ role: 'user', content: '続けてください。' });
+  }
+  // 画像添付があれば、最後のユーザーメッセージに画像ブロックを付ける（Claude Vision）
+  if (attachment?.base64) {
+    const last = msgs[msgs.length - 1];
+    const textPart = typeof last.content === 'string' && last.content.trim() ? last.content : 'この画像について教えてください。';
+    const mt = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(attachment.mime) ? attachment.mime : 'image/jpeg';
+    last.content = [
+      { type: 'image', source: { type: 'base64', media_type: mt, data: attachment.base64 } },
+      { type: 'text', text: textPart },
+    ];
+  }
+  try {
+    const res = await axios.post(
+      CLAUDE_API_URL,
+      {
+        model: MODEL,
+        system,
+        max_tokens: 700,
+        messages: msgs,
+        chat: true,
+      },
+      { headers }
+    );
+    return res.data?.content?.[0]?.text ?? res.data?.text ?? '';
+  } catch (err) {
+    throw new Error(detailError(err));
+  }
+}
+
+// Instagram前提の共通コンテキスト
+const IG_CONTEXT =
+  'このアプリはInstagram運用支援ツールです。ユーザーの言う「投稿」「フィード」はInstagramのフィード投稿、' +
+  '「ストーリー」はInstagramのストーリー投稿（縦長9:16）、「リール」はInstagram Reelsを指します。' +
+  'したがって「ストーリーを作って」は物語ではなく、Instagramストーリー用の画像を意味します。';
+
+export interface ImagePlan { ready: boolean; question?: string; prompts?: string[]; }
+
+/**
+ * 会話から画像生成の準備をする。情報が足りていれば count 枚ぶんのプロンプトを返し、
+ * 足りなければ ready:false と1つの確認質問を返す。
+ */
+export async function planImageGeneration(history: ChatTurn[], count: number): Promise<ImagePlan> {
+  const headers = await getAuthHeaders();
+  const msgs = history.map((h) => ({ role: h.role, content: h.content }));
+  if (msgs.length === 0 || msgs[msgs.length - 1].role !== 'user') {
+    msgs.push({ role: 'user', content: `これまでの会話をもとに、画像${count}枚を生成したいです。` });
+  }
+  const system =
+    IG_CONTEXT +
+    `\nこれまでの会話をもとに、画像生成AIに渡すプロンプトを${count}個作れるか判断してください。` +
+    '被写体・目的・雰囲気などが曖昧で、良い画像が作れないと判断したら、生成せずに質問してください。' +
+    (count > 1
+      ? '複数枚の場合は、各画像が場面や切り口の異なる一連の流れ（例：ストーリーの複数ページ）になるようにします。単なる複製にしないでください。'
+      : '') +
+    '\n出力は次のJSONのみ（前置き・説明・コードフェンス禁止）:' +
+    '\n- 情報が十分: {"ready": true, "prompts": ["プロンプト1", ...]}（要素数' + count + '、各1〜2文・被写体/構図/雰囲気/色/スタイルを含む）' +
+    '\n- 情報が不足: {"ready": false, "question": "確認したいことを1つだけ簡潔に"}' +
+    getBrandContext() + getMemoryContext();
+  try {
+    const res = await axios.post(
+      CLAUDE_API_URL,
+      { model: MODEL, system, max_tokens: 900, messages: msgs, chat: true },
+      { headers }
+    );
+    const text: string = res.data?.content?.[0]?.text ?? res.data?.text ?? '';
+    const m = text.match(/\{[\s\S]*\}/);
+    if (m) {
+      try {
+        const obj = JSON.parse(m[0]);
+        if (obj.ready === false && obj.question) return { ready: false, question: String(obj.question) };
+        if (Array.isArray(obj.prompts) && obj.prompts.length > 0) {
+          let prompts = obj.prompts.map((s: unknown) => String(s));
+          while (prompts.length < count) prompts.push(prompts[prompts.length - 1]);
+          return { ready: true, prompts: prompts.slice(0, count) };
+        }
+      } catch { /* fallthrough */ }
+    }
+    // パースできない場合は本文を1プロンプトとして扱う
+    return { ready: true, prompts: Array.from({ length: count }, () => text.trim()) };
+  } catch (err) {
+    throw new Error(detailError(err));
+  }
+}
+
+/** 会話から、画像生成用のプロンプト（1〜2文）を作る */
+export async function buildImagePrompt(history: ChatTurn[]): Promise<string> {
+  const headers = await getAuthHeaders();
+  // 会話は user メッセージで終わる必要がある（末尾がassistantなら指示のuserを足す）
+  const msgs = history.map((h) => ({ role: h.role, content: h.content }));
+  if (msgs.length === 0 || msgs[msgs.length - 1].role !== 'user') {
+    msgs.push({ role: 'user', content: 'これまでの会話をもとに、画像生成用のプロンプトを1つだけ作ってください。' });
+  }
+  try {
+    const res = await axios.post(
+      CLAUDE_API_URL,
+      {
+        model: MODEL,
+        system:
+          'これまでの会話をもとに、画像生成AIに渡す画像プロンプトを1つだけ作ってください。' +
+          '被写体・構図・雰囲気・色・スタイルを含め、日本語で1〜2文。前置きや説明は書かず、プロンプト本文のみを返してください。',
+        max_tokens: 300,
+        messages: msgs,
+        chat: true,
+      },
+      { headers }
+    );
+    return (res.data?.content?.[0]?.text ?? res.data?.text ?? '').trim();
+  } catch (err) {
+    throw new Error(detailError(err));
+  }
+}
+
+// サーバー/Anthropicのエラー本文をできるだけ具体的に取り出す
+function detailError(err: unknown): string {
+  if (axios.isAxiosError(err)) {
+    const d = err.response?.data as { error?: unknown } | undefined;
+    const e = d?.error;
+    if (e && typeof e === 'object' && 'message' in e) return String((e as { message: unknown }).message);
+    if (typeof e === 'string') return e;
+    if (d) return JSON.stringify(d);
+    return err.message;
+  }
+  return err instanceof Error ? err.message : 'AIの呼び出しに失敗しました';
+}

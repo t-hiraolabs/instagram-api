@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { generateStory } from '../services/aiService';
+import { getTopPostsForGeneration } from '../services/insightsService';
 import { ensureLoggedIn } from '../utils/requireLogin';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
 
@@ -51,11 +52,13 @@ export default function StoryScreen() {
     if (!(await ensureLoggedIn('ストーリー生成を使うにはログインが必要です'))) return;
     setLoading(true);
     try {
+      const topPosts = await getTopPostsForGeneration();
       const generated = await generateStory({
         theme,
         type: storyType as any,
         brandName,
         details,
+        topPosts,
       });
       setResult(generated);
     } catch (e) {

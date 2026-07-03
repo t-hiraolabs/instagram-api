@@ -17,6 +17,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
 import { generatePost, generateFromImage, getSeasonalThemes, INDUSTRIES } from '../services/aiService';
 import { getAiUsage, AiUsage } from '../services/scheduleService';
+import { getTopPostsForGeneration } from '../services/insightsService';
 import { ensureLoggedIn } from '../utils/requireLogin';
 import { useAppStore } from '../store/appStore';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
@@ -100,6 +101,7 @@ export default function GenerateScreen() {
     setResult(null);
     try {
       let generated: GenerationResult;
+      const topPosts = await getTopPostsForGeneration();
 
       if (mode === 'photo') {
         if (!selectedImage?.base64) {
@@ -113,6 +115,7 @@ export default function GenerateScreen() {
           contentType: 'feed',
           tone,
           industry: selectedIndustry,
+          topPosts,
         });
       } else {
         const selectedTheme = customTheme || theme;
@@ -128,6 +131,7 @@ export default function GenerateScreen() {
           includeHashtags: true,
           language: 'ja',
           industry: selectedIndustry,
+          topPosts,
         });
       }
 
@@ -152,6 +156,51 @@ export default function GenerateScreen() {
     if (!result) return;
     Clipboard.setString(result.caption + '\n\n' + result.hashtags.join(' '));
     alertMsg('コピーしました ✅');
+  };
+
+  // ハッシュタグを1枠ずつ管理する（チップ式）
+  const [newTag, setNewTag] = useState('');
+  const MAX_TAGS = 30;
+
+  // 生成結果と下書きの両方のハッシュタグを更新（編集が予約投稿にも引き継がれるように）
+  const updateHashtags = (tags: string[]) => {
+    setResult((prev) => (prev ? { ...prev, hashtags: tags } : prev));
+    setDraft({ hashtags: tags });
+  };
+
+  // 入力欄の文字列を正規化（スペース・カンマ区切りで複数可、#を1つに整える）
+  const addHashtag = () => {
+    if (!result) return;
+    const parsed = newTag
+      .split(/[\s,、　]+/)
+      .map((t) => t.replace(/#/g, '').trim())
+      .filter(Boolean)
+      .map((t) => `#${t}`);
+    if (parsed.length === 0) {
+      setNewTag('');
+      return;
+    }
+    const seen = new Set(result.hashtags.map((h) => h.toLowerCase()));
+    const merged = [...result.hashtags];
+    let skipped = false;
+    for (const t of parsed) {
+      if (merged.length >= MAX_TAGS) {
+        skipped = true;
+        break;
+      }
+      if (!seen.has(t.toLowerCase())) {
+        merged.push(t);
+        seen.add(t.toLowerCase());
+      }
+    }
+    updateHashtags(merged);
+    setNewTag('');
+    if (skipped) alertMsg(`ハッシュタグは${MAX_TAGS}個までです`);
+  };
+
+  const removeHashtag = (index: number) => {
+    if (!result) return;
+    updateHashtags(result.hashtags.filter((_, i) => i !== index));
   };
 
   const handleIndustrySelect = (key: string) => {
@@ -282,12 +331,20 @@ export default function GenerateScreen() {
       {usage && (
         <View style={styles.usageBox}>
           <Text style={styles.usageText}>
-            今月のAI生成：あと <Text style={styles.usageStrong}>{usage.remaining}</Text> 回
+            {usage.plan === 'free' ? 'AI生成（無料・累計）' : '今月のAI生成'}：あと{' '}
+            <Text style={styles.usageStrong}>{usage.remaining}</Text> 回
             （{usage.used}/{usage.limit}）
           </Text>
           {usage.plan === 'free' && usage.remaining <= 3 && (
             <Text style={styles.usageWarn}>
-              残りわずかです。Proなら月{300}回まで使えます。
+              無料は1アカウント{usage.limit}回までです。Proなら月50回、ビジネスなら月300回まで使えます。
+            </Text>
+          )}
+          {usage.plan === 'pro' && usage.remaining <= 10 && (
+            <Text style={styles.usageWarn}>
+              {usage.remaining <= 0
+                ? '今月のAI生成（50回）を使い切りました。ビジネスプランなら月300回まで使えます。'
+                : `Proは月${usage.limit}回までです。たくさん使うならビジネス（月300回）がおすすめです。`}
             </Text>
           )}
         </View>
@@ -323,8 +380,43 @@ export default function GenerateScreen() {
           <Text style={styles.resultLabel}>キャプション</Text>
           <Text style={styles.caption}>{result.caption}</Text>
 
-          <Text style={styles.resultLabel}>ハッシュタグ（{result.hashtags.length}個）</Text>
-          <Text style={styles.hashtags}>{result.hashtags.join(' ')}</Text>
+          <Text style={styles.resultLabel}>
+            ハッシュタグ（{result.hashtags.length}/{MAX_TAGS}）
+          </Text>
+          <View style={styles.tagWrap}>
+            {result.hashtags.map((tag, i) => (
+              <View key={`${tag}-${i}`} style={styles.tagChip}>
+                <Text style={styles.tagChipText}>{tag}</Text>
+                <TouchableOpacity
+                  onPress={() => removeHashtag(i)}
+                  hitSlop={{ top: 8, bottom: 8, left: 4, right: 8 }}
+                >
+                  <Text style={styles.tagChipRemove}>✕</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+            {result.hashtags.length === 0 && (
+              <Text style={styles.tagEmpty}>ハッシュタグはありません</Text>
+            )}
+          </View>
+          <View style={styles.tagAddRow}>
+            <TextInput
+              style={styles.tagInput}
+              value={newTag}
+              onChangeText={setNewTag}
+              onSubmitEditing={addHashtag}
+              placeholder="#タグを追加（スペースで複数可）"
+              placeholderTextColor={COLORS.textMuted}
+              autoCapitalize="none"
+              returnKeyType="done"
+            />
+            <TouchableOpacity style={styles.tagAddBtn} onPress={addHashtag} activeOpacity={0.85}>
+              <Text style={styles.tagAddBtnText}>追加</Text>
+            </TouchableOpacity>
+          </View>
+          {result.hashtags.length >= MAX_TAGS && (
+            <Text style={styles.tagWarn}>Instagramのハッシュタグは1投稿{MAX_TAGS}個までです</Text>
+          )}
 
           {result.suggestions.length > 0 && (
             <>
@@ -546,6 +638,40 @@ const styles = StyleSheet.create({
   },
   caption: { color: COLORS.text, fontSize: 14, lineHeight: 22 },
   hashtags: { color: '#4FC3F7', fontSize: 12, lineHeight: 20 },
+  tagWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, marginBottom: SPACING.sm },
+  tagChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: COLORS.surfaceElevated,
+    borderRadius: RADIUS.sm,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+  },
+  tagChipText: { color: '#4FC3F7', fontSize: 13 },
+  tagChipRemove: { color: COLORS.textMuted, fontSize: 13, fontWeight: '700' },
+  tagEmpty: { color: COLORS.textMuted, fontSize: 12 },
+  tagAddRow: { flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.sm },
+  tagInput: {
+    flex: 1,
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    color: COLORS.text,
+    fontSize: 14,
+  },
+  tagAddBtn: {
+    backgroundColor: COLORS.primary,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.md,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  tagAddBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  tagWarn: { color: COLORS.warning, fontSize: 12, marginBottom: SPACING.sm },
   suggestion: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 22 },
   scheduleBtn: {
     backgroundColor: COLORS.primary,

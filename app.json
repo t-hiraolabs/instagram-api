@@ -1,0 +1,19 @@
+{
+  "expo": {
+    "name": "AImark",
+    "slug": "aimark-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "platforms": ["ios", "android", "web"],
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "favicon": "./assets/icon.png",
+      "name": "AImark アイマーク",
+      "shortName": "AImark",
+      "description": "AIで Instagram マーケティングを自動化"
+    },
+    "assetBundlePatterns": ["**/*"]
+  }
+}

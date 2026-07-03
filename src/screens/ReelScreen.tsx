@@ -17,6 +17,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
 import { createReel } from '../utils/createReel';
 import { generateReelCaptions } from '../services/aiService';
+import { getTopPostsForGeneration } from '../services/insightsService';
 import { ensureLoggedIn } from '../utils/requireLogin';
 import { useAppStore } from '../store/appStore';
 import { getAccountTheme } from '../utils/accountThemes';
@@ -118,11 +119,13 @@ export default function ReelScreen({ onBack }: { onBack?: () => void } = {}) {
     if (!(await ensureLoggedIn('AIで文字を作るにはログインが必要です'))) return;
     setAiLoading(true);
     try {
+      const topPosts = await getTopPostsForGeneration();
       const captions = await generateReelCaptions({
         theme: theme.trim(),
         count: slides.length,
         industry: brandSettings.industry,
         toneHint: getAccountTheme(brandSettings.accountType).toneHint,
+        topPosts,
       });
       setSlides((prev) => prev.map((s, i) => ({ ...s, text: captions[i] ?? s.text })));
       setPreviewUrl('');

@@ -18,7 +18,17 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
 
   try {
-    const { caption, hashtags, image_url, image_urls, video_url, type, instagram_user_id, access_token } = await req.json();
+    const { caption, hashtags, image_url, image_urls, video_url, type, instagram_user_id, access_token,
+      user_tags, product_tags, location_id } = await req.json();
+
+    // タグ（中央固定）を Graph API 用の文字列に変換
+    const userTagsStr = Array.isArray(user_tags) && user_tags.length > 0
+      ? JSON.stringify(user_tags.map((u: string) => ({ username: u, x: 0.5, y: 0.5 })))
+      : undefined;
+    const productTagsStr = Array.isArray(product_tags) && product_tags.length > 0
+      ? JSON.stringify(product_tags.map((id: string) => ({ product_id: id, x: 0.5, y: 0.5 })))
+      : undefined;
+    const locationId = location_id ? String(location_id) : undefined;
 
     if (!instagram_user_id || !access_token) {
       return json({ error: 'Instagram未連携（ユーザーID/トークンがありません）' }, 400);
@@ -44,11 +54,19 @@ Deno.serve(async (req) => {
     if (isCarousel) {
       // 各画像の子コンテナを作成
       const childIds: string[] = [];
-      for (const url of carousel) {
+      for (let ci = 0; ci < carousel.length; ci++) {
+        const url = carousel[ci];
+        // タグは先頭の写真にだけ付与（中央固定）
         const cr = await fetch(`${INSTAGRAM_API}/${instagram_user_id}/media`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ image_url: url, is_carousel_item: true, access_token }),
+          body: JSON.stringify({
+            image_url: url,
+            is_carousel_item: true,
+            ...(ci === 0 && userTagsStr ? { user_tags: userTagsStr } : {}),
+            ...(ci === 0 && productTagsStr ? { product_tags: productTagsStr } : {}),
+            access_token,
+          }),
         });
         const cj = await cr.json();
         if (!cj.id) return json({ error: 'カルーセル子コンテナ作成失敗', detail: cj }, 400);
@@ -61,6 +79,7 @@ Deno.serve(async (req) => {
           media_type: 'CAROUSEL',
           children: childIds.join(','),
           caption: fullCaption,
+          ...(locationId ? { location_id: locationId } : {}),
           access_token,
         }),
       });
@@ -74,6 +93,10 @@ Deno.serve(async (req) => {
             image_url,
             caption: fullCaption,
             ...(type === 'story' ? { media_type: 'STORIES' } : {}),
+            // タグ・場所（フィードの単一画像のみ）
+            ...(type !== 'story' && userTagsStr ? { user_tags: userTagsStr } : {}),
+            ...(type !== 'story' && productTagsStr ? { product_tags: productTagsStr } : {}),
+            ...(type !== 'story' && locationId ? { location_id: locationId } : {}),
             access_token,
           };
       const containerRes = await fetch(`${INSTAGRAM_API}/${instagram_user_id}/media`, {

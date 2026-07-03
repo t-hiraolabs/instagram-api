@@ -6,6 +6,24 @@ const supabase = createClient(
 );
 
 const INSTAGRAM_API = 'https://graph.instagram.com';
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
+const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
+async function sendPushToUser(userId: string | undefined, payload: { title: string; body: string }) {
+  if (!userId) return;
+  try {
+    await fetch(`${SUPABASE_URL}/functions/v1/send-push`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SERVICE_ROLE_KEY}`,
+      },
+      body: JSON.stringify({ user_id: userId, ...payload }),
+    });
+  } catch {
+    // 通知失敗は無視（投稿自体には影響させない）
+  }
+}
 
 async function publishPost(post: {
   id: string;
@@ -15,10 +33,21 @@ async function publishPost(post: {
   type: string;
   instagram_user_id: string;
   access_token: string;
+  user_tags?: string[] | null;
+  product_tags?: string[] | null;
+  location_id?: string | null;
 }) {
   const fullCaption = [post.caption, (post.hashtags ?? []).join(' ')]
     .filter(Boolean)
     .join('\n\n');
+
+  const userTagsStr = Array.isArray(post.user_tags) && post.user_tags.length > 0
+    ? JSON.stringify(post.user_tags.map((u) => ({ username: u, x: 0.5, y: 0.5 })))
+    : undefined;
+  const productTagsStr = Array.isArray(post.product_tags) && post.product_tags.length > 0
+    ? JSON.stringify(post.product_tags.map((id) => ({ product_id: id, x: 0.5, y: 0.5 })))
+    : undefined;
+  const locationId = post.location_id ? String(post.location_id) : undefined;
 
   const isReel = post.type === 'reel';
   // ストーリーで image_url が動画URL → 動画ストーリー
@@ -31,11 +60,18 @@ async function publishPost(post: {
   let container: { id?: string };
   if (isCarousel) {
     const childIds: string[] = [];
-    for (const url of urls) {
+    for (let ci = 0; ci < urls.length; ci++) {
+      const url = urls[ci];
       const cr = await fetch(`${INSTAGRAM_API}/${post.instagram_user_id}/media`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image_url: url, is_carousel_item: true, access_token: post.access_token }),
+        body: JSON.stringify({
+          image_url: url,
+          is_carousel_item: true,
+          ...(ci === 0 && userTagsStr ? { user_tags: userTagsStr } : {}),
+          ...(ci === 0 && productTagsStr ? { product_tags: productTagsStr } : {}),
+          access_token: post.access_token,
+        }),
       });
       const cj = await cr.json();
       if (!cj.id) throw new Error(`カルーセル子コンテナ作成失敗: ${JSON.stringify(cj)}`);
@@ -48,6 +84,7 @@ async function publishPost(post: {
         media_type: 'CAROUSEL',
         children: childIds.join(','),
         caption: fullCaption,
+        ...(locationId ? { location_id: locationId } : {}),
         access_token: post.access_token,
       }),
     });
@@ -67,6 +104,9 @@ async function publishPost(post: {
           image_url: post.image_url,
           caption: fullCaption,
           ...(post.type === 'story' ? { media_type: 'STORIES' } : {}),
+          ...(post.type !== 'story' && userTagsStr ? { user_tags: userTagsStr } : {}),
+          ...(post.type !== 'story' && productTagsStr ? { product_tags: productTagsStr } : {}),
+          ...(post.type !== 'story' && locationId ? { location_id: locationId } : {}),
           access_token: post.access_token,
         };
     const containerRes = await fetch(`${INSTAGRAM_API}/${post.instagram_user_id}/media`, {
@@ -189,8 +229,16 @@ async function processDuePosts() {
       try {
         await publishPost(post);
         await supabase.from('scheduled_posts').update({ status: 'published' }).eq('id', post.id);
+        await sendPushToUser(post.user_id, {
+          title: '投稿が完了しました ✅',
+          body: post.caption ? post.caption.slice(0, 60) + (post.caption.length > 60 ? '…' : '') : 'Instagramへの投稿が完了しました',
+        });
       } catch (_err) {
         await supabase.from('scheduled_posts').update({ status: 'failed' }).eq('id', post.id);
+        await sendPushToUser(post.user_id, {
+          title: '投稿に失敗しました ⚠️',
+          body: '予約投稿の処理中にエラーが発生しました。投稿タブから確認してください。',
+        });
       }
     }
   }
