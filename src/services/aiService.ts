@@ -549,10 +549,10 @@ ${sample}
 
 export interface ChatTurn { role: 'user' | 'assistant'; content: string; }
 
-// クライアント表示用（サーバーの CHAT_TOKEN_LIMITS と揃える。1日あたりトークン数）
-const CHAT_LIMITS: Record<string, number> = { free: 15000, pro: 120000, business: 300000 };
+// クライアント表示用（サーバーの CHAT_TOKEN_LIMITS と揃える。月間トークン数）
+const CHAT_LIMITS: Record<string, number> = { free: 100000, pro: 800000, business: 2000000 };
 
-/** チャット利用量を % で返す（1日ごとにリセット）。Claude風の残量表示に使う */
+/** チャット利用量を % で返す（月ごとにリセット）。Claude風の残量表示に使う */
 export async function getChatUsagePercent(): Promise<{ usedPct: number; remainingPct: number }> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { usedPct: 0, remainingPct: 100 };
@@ -563,9 +563,12 @@ export async function getChatUsagePercent(): Promise<{ usedPct: number; remainin
     .maybeSingle();
   const plan = data?.plan === 'pro' || data?.plan === 'business' ? data.plan : 'free';
   const limit = CHAT_LIMITS[plan];
-  const today = new Date().toISOString().slice(0, 10);
-  const start = data?.chat_period_start ?? today;
-  const used = start === today ? (data?.chat_used ?? 0) : 0; // 日付が変われば0
+  const start = data?.chat_period_start ?? new Date().toISOString().slice(0, 10);
+  const sameMonth = (() => {
+    const t = new Date(); const p = new Date(`${start}T00:00:00Z`);
+    return t.getUTCFullYear() === p.getUTCFullYear() && t.getUTCMonth() === p.getUTCMonth();
+  })();
+  const used = sameMonth ? (data?.chat_used ?? 0) : 0;
   const usedPct = Math.min(100, Math.round((used / limit) * 100));
   return { usedPct, remainingPct: 100 - usedPct };
 }

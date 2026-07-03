@@ -13,8 +13,8 @@ const LIMITS: Record<string, number> = { free: 5, pro: 50, business: 300 };
 // フリーは累計、Pro/ビジネスは月間でリセット。
 const BRAND_LIMITS: Record<string, number> = { free: 3, pro: 10, business: 10 };
 
-// チャット会話の「1日あたり」上限（トークン数：入力+出力の合計）。表示は「% 使用」で見せる。
-const CHAT_TOKEN_LIMITS: Record<string, number> = { free: 15000, pro: 120000, business: 300000 };
+// チャット会話の「月間」上限（トークン数：入力+出力の合計）。表示は「% 使用」で見せる。
+const CHAT_TOKEN_LIMITS: Record<string, number> = { free: 100000, pro: 800000, business: 2000000 };
 
 // 同じ月か判定
 function isSameMonth(periodStartStr: string): boolean {
@@ -86,12 +86,12 @@ Deno.serve(async (req) => {
   const plan = profile.plan === 'pro' || profile.plan === 'business' ? profile.plan : 'free';
   const limit = LIMITS[plan];
 
-  // === チャット会話：1日あたりのトークン上限（%で管理）===
+  // === チャット会話：月間トークン上限（%で管理）===
   if (isChat) {
     const chatLimit = CHAT_TOKEN_LIMITS[plan];
     const todayStr = new Date().toISOString().slice(0, 10);
     const cStart = profile.chat_period_start ?? todayStr;
-    const cResets = cStart !== todayStr; // 日付が変わったらリセット
+    const cResets = !isSameMonth(cStart); // 月が変わったらリセット
     const cUsed = cResets ? 0 : (profile.chat_used ?? 0); // chat_used はトークン累計
     const cPeriodStart = cResets ? todayStr : cStart;
     if (cUsed >= chatLimit) {
