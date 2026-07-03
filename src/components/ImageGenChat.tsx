@@ -40,6 +40,8 @@ interface Props {
 export interface ImageGenChatHandle {
   /** 外部（ホーム画面のおすすめチップなど）からメッセージを送信する */
   sendMessage: (text: string) => void;
+  /** 外部（ホーム画面のロゴタップなど）から会話履歴メニューを開く */
+  openMenu: () => void;
 }
 
 type Msg =
@@ -226,6 +228,7 @@ function ImageGenChat(
 
   useImperativeHandle(ref, () => ({
     sendMessage: (text: string) => { send(text); },
+    openMenu: () => setListVisible(true),
   }));
 
   const answerOption = async (opt: string) => {
@@ -311,12 +314,12 @@ function ImageGenChat(
       <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.header}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md }}>
-            <TouchableOpacity onPress={() => setListVisible(true)}><Text style={styles.menuBtn}>☰</Text></TouchableOpacity>
-            {embedded && onBack ? (
-              <TouchableOpacity onPress={onBack}><Text style={styles.cancel}>‹ ホーム</Text></TouchableOpacity>
-            ) : !embedded ? (
-              <TouchableOpacity onPress={onClose}><Text style={styles.cancel}>閉じる</Text></TouchableOpacity>
-            ) : null}
+            {!embedded && (
+              <>
+                <TouchableOpacity onPress={() => setListVisible(true)}><Text style={styles.menuBtn}>☰</Text></TouchableOpacity>
+                <TouchableOpacity onPress={onClose}><Text style={styles.cancel}>閉じる</Text></TouchableOpacity>
+              </>
+            )}
           </View>
           <View style={{ alignItems: 'flex-end' }}>
             <Text style={styles.remain}>{chatRemainPct == null ? '' : `会話 残り${chatRemainPct}%`}</Text>

@@ -125,10 +125,10 @@ export default function HomeScreen() {
     <View style={[styles.container, { paddingTop: insets.top + SPACING.sm }]}>
       {/* Header */}
       <View style={styles.header}>
-        <View style={styles.headerLeft}>
+        <TouchableOpacity style={styles.headerLeft} onPress={() => chatRef.current?.openMenu()} activeOpacity={0.7}>
           <Image source={require('../../assets/icon.png')} style={styles.logoIcon} resizeMode="contain" />
           <Text style={styles.title}>AImark</Text>
-        </View>
+        </TouchableOpacity>
         <View style={styles.quickActions}>
           {QUICK_ACTIONS.map((a) => (
             <TouchableOpacity key={a.label} style={styles.quickBtn} onPress={() => navigation.navigate(a.tab)} activeOpacity={0.8}>
