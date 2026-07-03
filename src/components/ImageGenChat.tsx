@@ -99,7 +99,8 @@ function ImageGenChat(
       refreshUsage();
       const prefill = chatPrefillText;
       const autoSend = chatAutoSend;
-      const forceNew = chatForceNew;
+      // 埋め込み表示（ホーム画面）は起動のたびに必ず新規チャットで始める
+      const forceNew = chatForceNew || embedded;
       setChatPrefillText(null);
       setChatAutoSend(false);
       setChatForceNew(false);
