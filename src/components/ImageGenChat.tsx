@@ -21,7 +21,6 @@ import {
   loadMessages, saveMessage, Conversation,
 } from '../services/chatHistoryService';
 import { uploadBlob } from '../services/storage';
-import { saveAssistantMemory } from '../services/memoryService';
 import { useAppStore } from '../store/appStore';
 import * as ImagePicker from 'expo-image-picker';
 
@@ -67,11 +66,33 @@ function ImageGenChat(
   const [convId, setConvId] = useState<string | null>(null);
   const [listVisible, setListVisible] = useState(false);
   useEffect(() => { onMenuVisibleChange?.(listVisible); }, [listVisible]);
-  const assistantMemory = useAppStore((s) => s.assistantMemory);
-  const setAssistantMemoryStore = useAppStore((s) => s.setAssistantMemory);
-  const [memoryDraft, setMemoryDraft] = useState('');
-  useEffect(() => { setMemoryDraft(assistantMemory); }, [assistantMemory, listVisible]);
   const [pendingImage, setPendingImage] = useState<{ base64: string; mime: string; uri: string } | null>(null);
+
+  // 会話を切り替える前に、メッセージが1件も無い会話は保存せず消す
+  const convIdRef = useRef<string | null>(null);
+  const messagesRef = useRef<Msg[]>([]);
+  useEffect(() => { convIdRef.current = convId; }, [convId]);
+  useEffect(() => { messagesRef.current = messages; }, [messages]);
+  const cleanupIfEmpty = async (id: string | null) => {
+    if (id && messagesRef.current.length === 0) {
+      await deleteConversation(id).catch(() => {});
+      setConversations((cs) => cs.filter((c) => c.id !== id));
+    }
+  };
+
+  // 過去に空のまま保存された会話（このアプリでは今後作られなくなる）を掃除する
+  const purgeEmptyConversations = async (convs: Conversation[]): Promise<Conversation[]> => {
+    const kept: Conversation[] = [];
+    for (const c of convs) {
+      const rows = await loadMessages(c.id).catch(() => null);
+      if (rows && rows.length === 0) {
+        await deleteConversation(c.id).catch(() => {});
+      } else {
+        kept.push(c);
+      }
+    }
+    return kept;
+  };
 
   const attachPhoto = async () => {
     const res = await ImagePicker.launchImageLibraryAsync({
@@ -100,7 +121,12 @@ function ImageGenChat(
   const [pendingAutoSend, setPendingAutoSend] = useState<string | null>(null);
 
   useEffect(() => {
-    if (visible) {
+    // モーダルを閉じるとき（visibleがfalseになったとき）、空の会話が残っていれば消す
+    if (!visible) {
+      cleanupIfEmpty(convIdRef.current);
+      return;
+    }
+    {
       refreshUsage();
       const prefill = chatPrefillText;
       const autoSend = chatAutoSend;
@@ -110,20 +136,19 @@ function ImageGenChat(
       setChatAutoSend(false);
       setChatForceNew(false);
       (async () => {
-        const convs = await listConversations();
+        const rawConvs = await listConversations();
+        const convs = await purgeEmptyConversations(rawConvs);
         setConversations(convs);
-        // 新規会話を強制する場合はそのまま作成。それ以外は直近の会話を開く（無ければ新規作成）
-        const id = forceNew ? await createConversation() : convs[0]?.id ?? (await createConversation());
-        if (id) {
-          setConvId(id);
-          const refreshed = await listConversations();
-          setConversations(refreshed);
-          if (forceNew) {
-            setMessages([]);
-            setListVisible(false);
-          } else {
-            await openConversation(id);
-          }
+        if (forceNew) {
+          // メッセージを送るまで会話は作らない（空の会話を保存しないため）
+          setConvId(null);
+          setMessages([]);
+          setListVisible(false);
+        } else if (convs[0]) {
+          await openConversation(convs[0].id);
+        } else {
+          setConvId(null);
+          setMessages([]);
         }
         // ホームのミニチャットから送信済みの場合は、convIdの準備が整ってから自動送信する
         if (prefill && autoSend) {
@@ -136,14 +161,15 @@ function ImageGenChat(
   }, [visible]);
 
   useEffect(() => {
-    if (pendingAutoSend && convId) {
+    if (pendingAutoSend) {
       const text = pendingAutoSend;
       setPendingAutoSend(null);
       send(text);
     }
-  }, [pendingAutoSend, convId]);
+  }, [pendingAutoSend]);
 
   const openConversation = async (id: string) => {
+    if (convIdRef.current !== id) await cleanupIfEmpty(convIdRef.current);
     setConvId(id);
     setListVisible(false);
     const rows = await loadMessages(id);
@@ -156,12 +182,11 @@ function ImageGenChat(
   };
 
   const newConversation = async () => {
-    const id = await createConversation();
-    if (!id) return;
-    setConvId(id);
+    // メッセージを送るまで会話は作らない（空の会話を保存しないため）
+    await cleanupIfEmpty(convIdRef.current);
+    setConvId(null);
     setMessages([]);
     setListVisible(false);
-    setConversations(await listConversations());
   };
 
   const removeConversation = async (id: string) => {
@@ -169,8 +194,8 @@ function ImageGenChat(
     const convs = await listConversations();
     setConversations(convs);
     if (id === convId) {
-      const nextId = convs[0]?.id ?? (await createConversation());
-      if (nextId) await openConversation(nextId);
+      if (convs[0]) await openConversation(convs[0].id);
+      else { setConvId(null); setMessages([]); }
     }
   };
 
@@ -436,38 +461,10 @@ function ImageGenChat(
             <View style={styles.listPanel}>
               <View style={styles.listHeader}>
                 <Text style={styles.listTitle}>会話</Text>
-                <TouchableOpacity onPress={() => setListVisible(false)}><Text style={styles.listClose}>✕</Text></TouchableOpacity>
               </View>
               {chatRemainPct != null && (
                 <Text style={styles.usageText}>会話の利用量　残り{chatRemainPct}%</Text>
               )}
-              {/* AIに覚えさせる説明（常に参照される） */}
-              <View style={styles.memoryBox}>
-                <Text style={styles.memoryLabel}>🧠 AIに覚えさせる説明</Text>
-                <TextInput
-                  style={styles.memoryInput}
-                  value={memoryDraft}
-                  onChangeText={setMemoryDraft}
-                  placeholder="例: AImarkはAIでInstagram運用を自動化する個人事業主向けアプリ。投稿作成・予約・分析ができる。"
-                  placeholderTextColor={COLORS.textMuted}
-                  multiline
-                />
-                <TouchableOpacity
-                  style={styles.memorySave}
-                  onPress={async () => {
-                    try {
-                      await saveAssistantMemory(memoryDraft);
-                      setAssistantMemoryStore(memoryDraft);
-                      if (Platform.OS === 'web') window.alert('保存しました');
-                    } catch (e) {
-                      const msg = e instanceof Error ? e.message : '保存に失敗しました';
-                      if (Platform.OS === 'web') window.alert('保存に失敗しました\n' + msg);
-                    }
-                  }}
-                >
-                  <Text style={styles.memorySaveText}>保存</Text>
-                </TouchableOpacity>
-              </View>
 
               <TouchableOpacity style={styles.newBtn} onPress={newConversation}>
                 <Text style={styles.newBtnText}>＋ 新しい会話</Text>
@@ -525,12 +522,6 @@ const styles = StyleSheet.create({
   listHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: SPACING.md, paddingBottom: SPACING.sm },
   listTitle: { color: COLORS.text, fontSize: 16, fontWeight: '800' },
   usageText: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600', paddingHorizontal: SPACING.md, marginBottom: SPACING.sm },
-  listClose: { color: COLORS.textMuted, fontSize: 16 },
-  memoryBox: { marginHorizontal: SPACING.md, marginTop: SPACING.sm, padding: SPACING.sm, backgroundColor: COLORS.surface, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.border },
-  memoryLabel: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '700', marginBottom: 6 },
-  memoryInput: { color: COLORS.text, fontSize: 13, minHeight: 70, textAlignVertical: 'top', backgroundColor: COLORS.background, borderRadius: RADIUS.sm, padding: SPACING.sm },
-  memorySave: { alignSelf: 'flex-end', marginTop: 6, backgroundColor: COLORS.primary, borderRadius: RADIUS.full, paddingHorizontal: SPACING.md, paddingVertical: 5 },
-  memorySaveText: { color: '#fff', fontSize: 12, fontWeight: '700' },
   newBtn: { margin: SPACING.md, backgroundColor: COLORS.primary, borderRadius: RADIUS.full, paddingVertical: SPACING.sm, alignItems: 'center' },
   newBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
   convRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACING.md, paddingVertical: SPACING.md, borderTopWidth: 1, borderTopColor: COLORS.border, gap: SPACING.sm },
