@@ -28,6 +28,9 @@ export interface InsightsResult {
     followers_count: number;
     follows_count: number | null;
     profile_picture_url: string | null;
+    name: string | null;
+    biography: string | null;
+    website: string | null;
   };
   summary: {
     analyzed_count: number;
@@ -157,6 +160,8 @@ export async function getAutoAnalysisFacts(): Promise<AnalysisFacts> {
     `アカウント: @${p.username ?? '不明'}（${p.account_type ?? '種別不明'}）` +
       ` / フォロワー${p.followers_count}人・フォロー${p.follows_count ?? '不明'}人・投稿数${p.media_count ?? '不明'}件`
   );
+  if (p.biography) lines.push(`自己紹介文: ${p.biography}`);
+  if (p.website) lines.push(`プロフィールのリンク: ${p.website}`);
   lines.push(`分析対象: 直近${media.length}投稿`);
   lines.push(`平均いいね: ${insights.summary.avg_likes} / 平均コメント: ${insights.summary.avg_comments}`);
   if (insights.summary.engagement_rate != null) {

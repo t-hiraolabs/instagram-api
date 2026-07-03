@@ -55,7 +55,7 @@ Deno.serve(async (req) => {
 
     // プロフィール（フォロワー数・投稿総数など）
     const profileRes = await fetch(
-      `${INSTAGRAM_API}/me?fields=username,account_type,media_count,followers_count,follows_count,profile_picture_url&access_token=${encodeURIComponent(
+      `${INSTAGRAM_API}/me?fields=username,account_type,media_count,followers_count,follows_count,profile_picture_url,biography,name,website&access_token=${encodeURIComponent(
         access_token,
       )}`,
     );
@@ -101,6 +101,9 @@ Deno.serve(async (req) => {
         followers_count: followers,
         follows_count: profile?.follows_count ?? null,
         profile_picture_url: profile?.profile_picture_url ?? null,
+        name: profile?.name ?? null,
+        biography: profile?.biography ?? null,
+        website: profile?.website ?? null,
       },
       summary: {
         analyzed_count: count,
