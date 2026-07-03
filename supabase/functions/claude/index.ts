@@ -6,6 +6,13 @@ const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 // Supabaseが自動で用意するサービスロールキー（profilesの更新に使う＝RLSを越えて書き込める）
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
+// 用途ごとにモデルを使い分けてAIコストを抑える。
+// チャット相談・裏方の分析（頻度が高い/1回の重要度が低い）はHaiku、
+// 実際に投稿として使うキャプション・ストーリー等の生成はSonnetにする。
+// ※クライアントが送ってきたmodelは信用せず、常にサーバー側で決定する。
+const MODEL_SONNET = 'claude-sonnet-4-6';
+const MODEL_HAIKU = 'claude-haiku-4-6';
+
 // プランごとの月間AI回数の上限
 const LIMITS: Record<string, number> = { free: 5, pro: 50, business: 300 };
 
@@ -65,6 +72,9 @@ Deno.serve(async (req) => {
   const skipCount = body.skipCount === true;
   const isChat = body.chat === true; // アシスタント会話（月間上限を%で管理）
   delete body.skipCount; // Anthropicへは渡さない
+  // モデルはクライアントの指定を無視し、用途で強制的に決める（コスト管理のため）。
+  // チャット・ブランド分析(裏方)はHaiku、実際の投稿生成(回数制限あり)はSonnet。
+  body.model = (isChat || skipCount) ? MODEL_HAIKU : MODEL_SONNET;
   delete body.chat;
 
   // --- プラン・使用回数を確認（service roleでprofilesを読み書き）---

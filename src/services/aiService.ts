@@ -582,15 +582,23 @@ export async function chatWithAssistant(
   attachment?: { base64: string; mime: string }
 ): Promise<string> {
   const headers = await getAuthHeaders();
-  const system =
-    'あなたはInstagram運用を支援する日本語アシスタントです。' +
+  // 固定の指示文はキャッシュして毎回のトークン課金を抑える（cache_control）。
+  // ブランド情報・記憶は都度変わりうるので別ブロックにして非キャッシュのまま送る。
+  const staticInstructions =
+    'あなたはInstagram専門のマーケティングコンサルタントです。雑談には応じず、Instagram運用の相談に集中してください。' +
     IG_CONTEXT +
+    '今日の投稿提案、週間の投稿計画、売上・フォロワーを伸ばす相談、リールのアイデア、プロフィール改善、投稿改善などに答えます。' +
     'ユーザーと会話しながら、投稿のアイデア出し、簡単な分析やアドバイス、そして「どんな画像を作りたいか」を一緒に具体化します。' +
     '画像生成のプロンプトを聞かれたら、被写体・構図・雰囲気・色・スタイルを含む具体的な指示を1〜2文で提案してください。' +
+    '1つの相談は3〜10往復程度で結論が出るよう簡潔に進め、回答は簡潔に、絵文字は控えめに。';
+  const dynamicContext =
     '【重要】ユーザーの事業・サービス情報が下記【ブランド情報】として与えられている場合は、それを前提として扱い、' +
     '「どんなサービス／アプリですか？」などと毎回聞き返さないでください。情報が本当に不足している時だけ、要点を1つだけ簡潔に確認します。' +
-    '回答は簡潔に、絵文字は控えめに。' +
     getBrandContext() + getMemoryContext();
+  const system = [
+    { type: 'text', text: staticInstructions, cache_control: { type: 'ephemeral' } },
+    { type: 'text', text: dynamicContext },
+  ];
   const msgs: Array<{ role: string; content: unknown }> = history.map((h) => ({ role: h.role, content: h.content }));
   if (msgs.length === 0 || msgs[msgs.length - 1].role !== 'user') {
     msgs.push({ role: 'user', content: '続けてください。' });
@@ -641,18 +649,25 @@ export async function planImageGeneration(history: ChatTurn[], count: number): P
   if (msgs.length === 0 || msgs[msgs.length - 1].role !== 'user') {
     msgs.push({ role: 'user', content: `これまでの会話をもとに、画像${count}枚を生成したいです。` });
   }
-  const system =
+  // count非依存の固定部分はキャッシュし、count・ブランド情報など可変部分は毎回そのまま送る。
+  const staticInstructions =
     IG_CONTEXT +
-    `\nこれまでの会話をもとに、画像生成AIに渡すプロンプトを${count}個作れるか判断してください。` +
+    '\nこれまでの会話をもとに、画像生成AIに渡すプロンプトを作れるか判断してください。' +
     '被写体・目的・雰囲気などが曖昧で、良い画像が作れないと判断したら、生成せずに質問してください。' +
+    '質問する場合は自由記述ではなく選択肢形式にしてください。';
+  const dynamicInstructions =
+    `\nプロンプトを${count}個作ってください。` +
     (count > 1
       ? '複数枚の場合は、各画像が場面や切り口の異なる一連の流れ（例：ストーリーの複数ページ）になるようにします。単なる複製にしないでください。'
       : '') +
-    '質問する場合は自由記述ではなく選択肢形式にしてください。' +
     '\n出力は次のJSONのみ（前置き・説明・コードフェンス禁止）:' +
     '\n- 情報が十分: {"ready": true, "prompts": ["プロンプト1", ...]}（要素数' + count + '、各1〜2文・被写体/構図/雰囲気/色/スタイルを含む）' +
     '\n- 情報が不足: {"ready": false, "question": "確認したいことを1つだけ簡潔に", "options": ["選択肢1", "選択肢2", "選択肢3"]}（optionsは2〜4個、短い言葉で）' +
     getBrandContext() + getMemoryContext();
+  const system = [
+    { type: 'text', text: staticInstructions, cache_control: { type: 'ephemeral' } },
+    { type: 'text', text: dynamicInstructions },
+  ];
   try {
     const res = await axios.post(
       CLAUDE_API_URL,
