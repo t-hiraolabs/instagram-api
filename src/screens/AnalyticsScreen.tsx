@@ -110,6 +110,39 @@ export default function AnalyticsScreen() {
     ? [...data.media].sort((a, b) => (b.like_count ?? 0) - (a.like_count ?? 0))
     : [];
 
+  // 投稿タイプ別の平均反応（過去投稿の傾向分析）
+  const typeStats = (() => {
+    if (!data) return [];
+    const buckets: Record<string, { total: number; count: number }> = {};
+    for (const m of data.media) {
+      const label = mediaTypeLabel(m.media_type);
+      if (!buckets[label]) buckets[label] = { total: 0, count: 0 };
+      buckets[label].total += (m.like_count ?? 0) + (m.comments_count ?? 0);
+      buckets[label].count += 1;
+    }
+    return Object.entries(buckets)
+      .map(([label, v]) => ({ label, avg: Math.round((v.total / v.count) * 10) / 10, count: v.count }))
+      .sort((a, b) => b.avg - a.avg);
+  })();
+
+  // 曜日別の平均反応
+  const dowStats = (() => {
+    if (!data) return [];
+    const dowLabel = ['日', '月', '火', '水', '木', '金', '土'];
+    const buckets: Record<number, { total: number; count: number }> = {};
+    for (const m of data.media) {
+      if (!m.timestamp) continue;
+      const d = new Date(m.timestamp).getDay();
+      if (!buckets[d]) buckets[d] = { total: 0, count: 0 };
+      buckets[d].total += (m.like_count ?? 0) + (m.comments_count ?? 0);
+      buckets[d].count += 1;
+    }
+    return Object.entries(buckets)
+      .map(([d, v]) => ({ label: `${dowLabel[Number(d)]}曜`, avg: Math.round((v.total / v.count) * 10) / 10, count: v.count }))
+      .sort((a, b) => b.avg - a.avg);
+  })();
+  const maxAvg = Math.max(1, ...typeStats.map((t) => t.avg), ...dowStats.map((d) => d.avg));
+
   return (
     <ScrollView
       style={[styles.container, { paddingTop: insets.top }]}
@@ -187,6 +220,46 @@ export default function AnalyticsScreen() {
                   : '💡 投稿時間やハッシュタグを見直してみましょう'}
               </Text>
             </View>
+          )}
+
+          {/* 過去投稿の傾向分析: 投稿タイプ別・曜日別 */}
+          {(typeStats.length > 1 || dowStats.length > 1) && (
+            <>
+              <Text style={styles.sectionTitle}>📈 過去投稿の傾向</Text>
+              <View style={styles.breakdownCard}>
+                {typeStats.length > 1 && (
+                  <>
+                    <Text style={styles.breakdownLabel}>投稿タイプ別の平均反応</Text>
+                    {typeStats.map((t) => (
+                      <View key={t.label} style={styles.breakdownRow}>
+                        <Text style={styles.breakdownRowLabel} numberOfLines={1}>{t.label}（{t.count}件）</Text>
+                        <View style={styles.breakdownBarTrack}>
+                          <View style={[styles.breakdownBarFill, { width: `${Math.max(4, (t.avg / maxAvg) * 100)}%` }]} />
+                        </View>
+                        <Text style={styles.breakdownRowValue}>{t.avg}</Text>
+                      </View>
+                    ))}
+                  </>
+                )}
+                {dowStats.length > 1 && (
+                  <>
+                    <Text style={[styles.breakdownLabel, { marginTop: SPACING.md }]}>曜日別の平均反応</Text>
+                    {dowStats.map((d) => (
+                      <View key={d.label} style={styles.breakdownRow}>
+                        <Text style={styles.breakdownRowLabel} numberOfLines={1}>{d.label}（{d.count}件）</Text>
+                        <View style={styles.breakdownBarTrack}>
+                          <View style={[styles.breakdownBarFill, { width: `${Math.max(4, (d.avg / maxAvg) * 100)}%` }]} />
+                        </View>
+                        <Text style={styles.breakdownRowValue}>{d.avg}</Text>
+                      </View>
+                    ))}
+                  </>
+                )}
+              </View>
+              <Text style={styles.footnote}>
+                チャットで「競合分析して」と聞くと、あなたの実績を基準に競合アカウントとの比較アドバイスももらえます。
+              </Text>
+            </>
           )}
 
           {/* 人気投稿ランキング */}
@@ -288,6 +361,20 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.sm,
     paddingHorizontal: SPACING.md,
   },
+  breakdownCard: {
+    marginHorizontal: SPACING.md,
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.md,
+    padding: SPACING.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  breakdownLabel: { fontSize: 12, color: COLORS.textSecondary, fontWeight: '700', marginBottom: SPACING.sm },
+  breakdownRow: { flexDirection: 'row', alignItems: 'center', marginBottom: SPACING.sm, gap: SPACING.sm },
+  breakdownRowLabel: { width: 76, fontSize: 12, color: COLORS.text, fontWeight: '600' },
+  breakdownBarTrack: { flex: 1, height: 8, borderRadius: 4, backgroundColor: COLORS.surfaceElevated, overflow: 'hidden' },
+  breakdownBarFill: { height: 8, borderRadius: 4, backgroundColor: COLORS.primary },
+  breakdownRowValue: { width: 34, textAlign: 'right', fontSize: 12, color: COLORS.textSecondary, fontWeight: '700' },
   postRow: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -114,7 +114,7 @@ export async function getAutoAnalysisFacts(): Promise<AnalysisFacts> {
 
   let insights: InsightsResult;
   try {
-    insights = await getInsightsSummary(activeCreds.accessToken, 24);
+    insights = await getInsightsSummary(activeCreds.accessToken, 50);
   } catch (e) {
     return { ok: false, reason: e instanceof Error ? e.message : '分析データの取得に失敗しました。' };
   }
@@ -154,6 +154,33 @@ export async function getAutoAnalysisFacts(): Promise<AnalysisFacts> {
   const top = [...media].sort((a, b) => engagement(b) - engagement(a))[0];
   const bottom = [...media].sort((a, b) => engagement(a) - engagement(b))[0];
 
+  // 投稿タイプ別（写真・動画・複数枚）の平均反応
+  const typeLabel = (t?: string) => (t === 'VIDEO' ? '動画' : t === 'CAROUSEL_ALBUM' ? '複数枚投稿' : '写真');
+  const typeBuckets: Record<string, { total: number; count: number }> = {};
+  for (const m of media) {
+    const label = typeLabel(m.media_type);
+    if (!typeBuckets[label]) typeBuckets[label] = { total: 0, count: 0 };
+    typeBuckets[label].total += engagement(m);
+    typeBuckets[label].count += 1;
+  }
+  const typeAverages = Object.entries(typeBuckets)
+    .map(([label, v]) => ({ label, avg: Math.round((v.total / v.count) * 10) / 10, count: v.count }))
+    .sort((a, b) => b.avg - a.avg);
+
+  // 曜日別の平均反応
+  const dowLabel = ['日', '月', '火', '水', '木', '金', '土'];
+  const dowBuckets: Record<number, { total: number; count: number }> = {};
+  for (const m of media) {
+    const d = new Date(m.timestamp!).getDay();
+    if (!dowBuckets[d]) dowBuckets[d] = { total: 0, count: 0 };
+    dowBuckets[d].total += engagement(m);
+    dowBuckets[d].count += 1;
+  }
+  const dowAverages = Object.entries(dowBuckets)
+    .map(([d, v]) => ({ label: dowLabel[Number(d)], avg: v.total / v.count, count: v.count }))
+    .sort((a, b) => b.avg - a.avg);
+  const bestDow = dowAverages[0];
+
   const lines: string[] = [];
   const p = insights.profile;
   lines.push(
@@ -178,6 +205,14 @@ export async function getAutoAnalysisFacts(): Promise<AnalysisFacts> {
   }
   if (bottom && bottom.id !== top?.id) {
     lines.push(`最も反応が弱かった投稿: 「${(bottom.caption ?? '').slice(0, 60) || '（キャプションなし）'}」（いいね${bottom.like_count ?? 0}・コメント${bottom.comments_count ?? 0}）`);
+  }
+  if (typeAverages.length > 1) {
+    lines.push(
+      `投稿タイプ別の平均反応: ${typeAverages.map((t) => `${t.label}=${t.avg}（${t.count}件）`).join(' / ')}`
+    );
+  }
+  if (bestDow) {
+    lines.push(`最も反応が良い曜日: ${bestDow.label}曜日（平均反応${Math.round(bestDow.avg)}、該当${bestDow.count}件）`);
   }
 
   return { ok: true, text: lines.join('\n') };

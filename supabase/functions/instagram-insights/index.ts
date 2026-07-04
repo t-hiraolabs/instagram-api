@@ -51,7 +51,7 @@ Deno.serve(async (req) => {
     if (!access_token) {
       return json({ error: 'Instagram未連携（トークンがありません）' }, 400);
     }
-    const mediaLimit = Math.min(Math.max(Number(limit) || 12, 1), 25);
+    const mediaLimit = Math.min(Math.max(Number(limit) || 12, 1), 50);
 
     // プロフィール（フォロワー数・投稿総数など）
     const profileRes = await fetch(

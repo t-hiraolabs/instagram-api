@@ -287,7 +287,7 @@ function ImageGenChat(
       // 「分析して」「インサイト見せて」などは、プログラム側で集計した実データをAIに渡して説明させる。
       // 一度取得したら、同じ会話内のフォローアップ質問でも引き続き参照できるようにする。
       let analysisFacts: string | undefined = lastAnalysisFacts ?? undefined;
-      if (/分析|インサイト|振り返り|保存率|いいね率|エンゲージメント|フォロワー|プロフィール|自己紹介|アカウント(の|を)|改善|伸ば|反応(は|が|の).{0,6}(良|悪|どう)/.test(text)) {
+      if (/分析|インサイト|振り返り|保存率|いいね率|エンゲージメント|フォロワー|プロフィール|自己紹介|アカウント(の|を)|改善|伸ば|反応(は|が|の).{0,6}(良|悪|どう)|競合|ライバル|過去(の)?投稿|曜日|時間帯|投稿タイプ/.test(text)) {
         const facts = await getAutoAnalysisFacts();
         if ('text' in facts) {
           analysisFacts = facts.text;
