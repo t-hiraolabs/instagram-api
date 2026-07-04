@@ -63,6 +63,10 @@ interface AppState {
   loginPromptVisible: boolean;
   setLoginPromptVisible: (visible: boolean) => void;
 
+  /** Instagram連携が完了した直後に表示する「アカウント分析→アプリへ」の入口画面 */
+  analysisIntro: { slot: 1 | 2; accessToken: string; username?: string } | null;
+  setAnalysisIntro: (v: { slot: 1 | 2; accessToken: string; username?: string } | null) => void;
+
   /** ホーム等からAI画像生成チャットを開くためのフラグ */
   openImageChat: boolean;
   setOpenImageChat: (v: boolean) => void;
@@ -134,6 +138,9 @@ export const useAppStore = create<AppState>((set) => ({
 
   loginPromptVisible: false,
   setLoginPromptVisible: (visible) => set({ loginPromptVisible: visible }),
+
+  analysisIntro: null,
+  setAnalysisIntro: (v) => set({ analysisIntro: v }),
 
   openImageChat: false,
   setOpenImageChat: (v) => set({ openImageChat: v }),

@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import RootNavigator from './src/navigation/RootNavigator';
 import AccountBadge from './src/components/AccountBadge';
+import IgAnalysisIntro from './src/components/IgAnalysisIntro';
 import { supabase } from './src/services/supabaseClient';
 import { useAppStore, BrandSettings, DEFAULT_BRAND_SETTINGS } from './src/store/appStore';
 import { COLORS, SPACING, RADIUS } from './src/utils/theme';
@@ -182,6 +183,7 @@ function OAuthHandler() {
   const setBrandConfirmModal = useAppStore((s) => s.setBrandConfirmModal);
   const setBrandSettings = useAppStore((s) => s.setBrandSettings);
   const setBrandSettings2 = useAppStore((s) => s.setBrandSettings2);
+  const setAnalysisIntro = useAppStore((s) => s.setAnalysisIntro);
 
   // アプリ起動時に保存済みのInstagram連携情報・ブランド設定・アクティブスロットを読み込む。
   // ブランド設定は「Instagramアカウント(userId)単位」で読み込むので、
@@ -277,14 +279,15 @@ function OAuthHandler() {
         // 連携したアカウントを使用中（アクティブ）に切り替える
         setActiveAccountSlot(slot);
 
-        // このアカウントに既存のブランド設定があれば復元し、なければAIで自動分析する
+        // 連携直後は「アカウント分析→アプリへ」の入口画面を表示する
+        setAnalysisIntro({ slot, accessToken: access_token, username });
+
+        // このアカウントに既存のブランド設定があれば復元し、なければAIで自動分析する（裏側で進める）
         const existing = await loadBrandForAccount(user_id);
         if (existing) {
           if (slot === 2) setBrandSettings2(existing);
           else setBrandSettings(existing);
-          Alert.alert('連携完了 ✅', `@${username} でログインしました\n保存済みのブランド設定を読み込みました`);
         } else {
-          Alert.alert('連携完了 ✅', `@${username} でログインしました\n投稿を分析してブランド設定を自動生成しています...`);
           await runBrandAnalysis(access_token, username, slot, setBrandConfirmModal);
         }
       } catch {
@@ -293,7 +296,7 @@ function OAuthHandler() {
     })();
   }, []);
 
-  return null;
+  return <IgAnalysisIntro />;
 }
 
 function AuthGate() {
