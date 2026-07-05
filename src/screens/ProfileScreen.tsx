@@ -28,6 +28,7 @@ import { getMyPlan } from '../services/scheduleService';
 import { ensureLoggedIn } from '../utils/requireLogin';
 import { createCheckoutUrl } from '../services/billingService';
 import { PLANS, Plan, PLAN_RANK, canAnalytics } from '../utils/plans';
+import { JP_PREFECTURES, JP_PREFECTURES_CITIES } from '../utils/jpLocations';
 import { registerPush, unregisterPush, isPushSupported, isPushEnabled } from '../services/pushService';
 import {
   connectInstagram,
@@ -144,6 +145,10 @@ export default function ProfileScreen() {
 
   // Brand form
   const [draftBrand, setDraftBrand] = useState<BrandSettings>({ ...activeBrandSettings });
+  const [locationPicker, setLocationPicker] = useState<'pref' | 'city' | null>(null);
+  const [locationSearch, setLocationSearch] = useState('');
+  const draftPref = JP_PREFECTURES.find((p) => draftBrand.location.startsWith(p)) ?? '';
+  const draftCity = draftPref ? draftBrand.location.slice(draftPref.length) : '';
 
   useEffect(() => {
     getMyPlan().then(setCurrentPlan).catch(() => {});
@@ -758,13 +763,25 @@ export default function ProfileScreen() {
             />
 
             <Text style={styles.fieldLabel}>所在地（任意・地域SEO対策に使用）</Text>
-            <TextInput
-              style={styles.input}
-              value={draftBrand.location}
-              onChangeText={(v) => setDraftBrand((p) => ({ ...p, location: v }))}
-              placeholder="例: 愛媛県今治市"
-              placeholderTextColor={COLORS.textMuted}
-            />
+            <View style={styles.locationRow}>
+              <TouchableOpacity
+                style={styles.locationSelectBtn}
+                onPress={() => { setLocationSearch(''); setLocationPicker('pref'); }}
+              >
+                <Text style={[styles.locationSelectText, !draftPref && styles.locationSelectPlaceholder]}>
+                  {draftPref || '都道府県を選択'}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.locationSelectBtn, !draftPref && styles.locationSelectBtnDisabled]}
+                disabled={!draftPref}
+                onPress={() => { setLocationSearch(''); setLocationPicker('city'); }}
+              >
+                <Text style={[styles.locationSelectText, !draftCity && styles.locationSelectPlaceholder]}>
+                  {draftCity || '市区町村を選択'}
+                </Text>
+              </TouchableOpacity>
+            </View>
 
             <Text style={styles.fieldLabel}>デフォルトトーン</Text>
             <View style={styles.toneGrid}>
@@ -835,6 +852,50 @@ export default function ProfileScreen() {
             </Text>
           </View>
         </ScrollView>
+      </Modal>
+
+      {/* 所在地選択（都道府県／市区町村） */}
+      <Modal visible={locationPicker !== null} animationType="slide" presentationStyle="pageSheet">
+        <View style={styles.modal}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => setLocationPicker(null)}>
+              <Text style={styles.modalCancel}>閉じる</Text>
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>{locationPicker === 'pref' ? '都道府県を選択' : '市区町村を選択'}</Text>
+            <View style={{ width: 40 }} />
+          </View>
+          <View style={styles.modalBody}>
+            <TextInput
+              style={styles.input}
+              value={locationSearch}
+              onChangeText={setLocationSearch}
+              placeholder="検索"
+              placeholderTextColor={COLORS.textMuted}
+            />
+          </View>
+          <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps="handled">
+            {(locationPicker === 'pref' ? JP_PREFECTURES : JP_PREFECTURES_CITIES[draftPref] ?? [])
+              .filter((item) => item.includes(locationSearch.trim()))
+              .map((item) => (
+                <TouchableOpacity
+                  key={item}
+                  style={styles.locationOptionRow}
+                  onPress={() => {
+                    if (locationPicker === 'pref') {
+                      setDraftBrand((p) => ({ ...p, location: item }));
+                      setLocationSearch('');
+                      setLocationPicker('city');
+                    } else {
+                      setDraftBrand((p) => ({ ...p, location: draftPref + item }));
+                      setLocationPicker(null);
+                    }
+                  }}
+                >
+                  <Text style={styles.locationOptionText}>{item}</Text>
+                </TouchableOpacity>
+              ))}
+          </ScrollView>
+        </View>
       </Modal>
 
       {/* アカウント切り替え/解除メニュー（Google風） */}
@@ -1156,6 +1217,26 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     fontSize: 15,
   },
+  locationRow: { flexDirection: 'row', gap: SPACING.sm },
+  locationSelectBtn: {
+    flex: 1,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+  },
+  locationSelectBtnDisabled: { opacity: 0.5 },
+  locationSelectText: { color: COLORS.text, fontSize: 15 },
+  locationSelectPlaceholder: { color: COLORS.textMuted },
+  locationOptionRow: {
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  locationOptionText: { color: COLORS.text, fontSize: 15 },
   industryGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
