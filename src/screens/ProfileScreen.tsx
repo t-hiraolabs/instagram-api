@@ -757,6 +757,15 @@ export default function ProfileScreen() {
               placeholderTextColor={COLORS.textMuted}
             />
 
+            <Text style={styles.fieldLabel}>所在地（任意・地域SEO対策に使用）</Text>
+            <TextInput
+              style={styles.input}
+              value={draftBrand.location}
+              onChangeText={(v) => setDraftBrand((p) => ({ ...p, location: v }))}
+              placeholder="例: 愛媛県今治市"
+              placeholderTextColor={COLORS.textMuted}
+            />
+
             <Text style={styles.fieldLabel}>デフォルトトーン</Text>
             <View style={styles.toneGrid}>
               {TONES.map((t) => (

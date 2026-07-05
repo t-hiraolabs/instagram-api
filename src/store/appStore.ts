@@ -20,6 +20,8 @@ export interface BrandSettings {
   accountType: string;
   atmosphere: string;
   targetAudience: string;
+  /** SEO・地域検索対策用の所在地（例: 愛媛県今治市） */
+  location: string;
   tone: string;
   apiKey: string;
   /** ビジネス限定: ONのとき、過去の人気投稿の傾向をAI生成に自動で反映する */
@@ -32,6 +34,7 @@ export const DEFAULT_BRAND_SETTINGS: BrandSettings = {
   accountType: 'personal',
   atmosphere: '',
   targetAudience: '',
+  location: '',
   tone: '明るい・ポジティブ',
   apiKey: '',
   useTopPostsInsight: false,

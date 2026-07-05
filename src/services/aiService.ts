@@ -28,15 +28,34 @@ function extractError(err: unknown): string {
 
 function getBrandContext(): string {
   const { brandSettings, brandSettings2, activeAccountSlot } = useAppStore.getState();
-  const { brandName, industry, atmosphere, targetAudience, tone } =
+  const { brandName, industry, atmosphere, targetAudience, location, tone } =
     activeAccountSlot === 2 ? brandSettings2 : brandSettings;
   const parts: string[] = [];
   if (brandName) parts.push(`ブランド名: ${brandName}`);
   if (industry) parts.push(`業種: ${industry}`);
   if (atmosphere) parts.push(`お店の雰囲気・こだわり: ${atmosphere}`);
   if (targetAudience) parts.push(`ターゲット層: ${targetAudience}`);
+  if (location) parts.push(`所在地: ${location}`);
   if (tone) parts.push(`希望トーン: ${tone}`);
   return parts.length > 0 ? `\n\n【ブランド情報】\n${parts.join('\n')}` : '';
+}
+
+/** キャプション・ハッシュタグ生成に共通するSEO対策の指示。所在地があれば地域SEOも含める。 */
+function seoInstructions(): string {
+  const { brandSettings, brandSettings2, activeAccountSlot } = useAppStore.getState();
+  const { location } = activeAccountSlot === 2 ? brandSettings2 : brandSettings;
+  const local = location
+    ? `所在地は「${location}」です。地域名・市区町村名を自然に本文に1回入れ、` +
+      `「#${location.replace(/[都道府県]$/, '')}」のような地域名ハッシュタグと、「業種＋地域名」を組み合わせた複合キーワードのハッシュタグ（例: 業種が飲食なら#${location}ランチ のような形）も含めてください。` +
+      '地域名は正式名称と省略形（例: 今治市→今治）の両方をバランス良く混ぜてください。'
+    : '';
+  return (
+    '\n\nSEO対策として、以下を必ず守ってください:' +
+    '\n・キャプションの冒頭1文に、検索されやすい核となるキーワード（業種・商品名・シーンなど）を含める' +
+    '\n・キャプション本文にも主要キーワードを不自然にならない範囲で1〜2回含める' +
+    '\n・ハッシュタグは「ビッグワード（投稿数100万以上）」「ミドルワード（投稿数10万〜100万）」「スモールワード・ニッチワード（投稿数1万未満、競合が少なく上位表示されやすい）」をバランス良く組み合わせる' +
+    local
+  );
 }
 
 // ユーザーがAIに覚えさせた説明（事業・サービス内容）
@@ -135,6 +154,7 @@ ${input.instruction ? `追加の指示（最優先で従う）: ${input.instruct
 ハッシュタグ: ${input.includeHashtags ? '含める（15〜20個）' : '含めない'}
 
 ハッシュタグは日本語タグと英語タグをバランスよく混ぜ、人気タグと中規模タグ（投稿数10万〜100万）を組み合わせてください。
+${seoInstructions()}
 
 以下のJSONフォーマットで返してください:
 {
@@ -185,6 +205,7 @@ ${input.industry ? `業種: ${input.industry}` : ''}
 ${input.instruction ? `追加の指示（最優先で従う）: ${input.instruction}` : ''}
 
 ハッシュタグは15〜20個、日本語タグと英語タグをバランスよく。
+${seoInstructions()}
 
 以下のJSONフォーマットで返してください:
 {
@@ -347,6 +368,7 @@ ${input.instruction ? `追加の指示（最優先で従う）: ${input.instruct
 ${extraInstructions}
 
 ハッシュタグは15〜20個、日英混合で。
+${seoInstructions()}
 
 {"caption":"投稿文（絵文字含む、200〜400文字）","hashtags":["#タグ1",...],"suggestions":["アドバイス1","アドバイス2","アドバイス3"]}`,
               },
@@ -391,6 +413,7 @@ export async function generateFromImages(input: {
 ${input.industry ? `業種: ${input.industry}` : ''}
 ${input.instruction ? `追加の指示（最優先で従う）: ${input.instruction}` : ''}
 写真全体の世界観が伝わる文章で。ハッシュタグは15〜20個、日英混合で。
+${seoInstructions()}
 
 {"caption":"投稿文（絵文字含む、200〜400文字）","hashtags":["#タグ1",...],"suggestions":["アドバイス1","アドバイス2","アドバイス3"]}`,
   });
@@ -417,6 +440,7 @@ export async function generateHashtags(theme: string, count: number = 15): Promi
 
   const prompt = `テーマ「${theme}」に関する効果的なInstagramハッシュタグを${count}個生成してください。${brandCtx}
 日本語タグ（60%）と英語タグ（40%）を混ぜて、人気タグ3個・中規模タグ8個・ニッチタグ4個を含めてください。
+${seoInstructions()}
 {"hashtags": ["#タグ1", "#タグ2", ...]}`;
 
   const raw = await callClaude(prompt, systemPrompt);

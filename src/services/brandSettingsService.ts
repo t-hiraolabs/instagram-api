@@ -7,6 +7,7 @@ interface DbRow {
   account_type: string;
   atmosphere: string;
   target_audience: string;
+  location?: string;
   tone: string;
   use_top_posts_insight: boolean;
   api_key?: string;
@@ -19,6 +20,7 @@ function toDb(s: BrandSettings): DbRow {
     account_type: s.accountType,
     atmosphere: s.atmosphere,
     target_audience: s.targetAudience,
+    location: s.location,
     tone: s.tone,
     use_top_posts_insight: s.useTopPostsInsight,
   };
@@ -32,6 +34,7 @@ function fromDb(row: DbRow): BrandSettings {
     accountType: row.account_type ?? 'personal',
     atmosphere: row.atmosphere ?? '',
     targetAudience: row.target_audience ?? '',
+    location: row.location ?? '',
     tone: row.tone ?? '明るい・ポジティブ',
     useTopPostsInsight: row.use_top_posts_insight ?? false,
   };
