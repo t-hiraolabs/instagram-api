@@ -67,8 +67,8 @@ interface AppState {
   setLoginPromptVisible: (visible: boolean) => void;
 
   /** Instagram連携が完了した直後に表示する「アカウント分析→アプリへ」の入口画面 */
-  analysisIntro: { slot: 1 | 2; accessToken: string; username?: string } | null;
-  setAnalysisIntro: (v: { slot: 1 | 2; accessToken: string; username?: string } | null) => void;
+  analysisIntro: { slot: 1 | 2; accessToken: string; username?: string; igUserId?: string } | null;
+  setAnalysisIntro: (v: { slot: 1 | 2; accessToken: string; username?: string; igUserId?: string } | null) => void;
 
   /** ホーム等からAI画像生成チャットを開くためのフラグ */
   openImageChat: boolean;

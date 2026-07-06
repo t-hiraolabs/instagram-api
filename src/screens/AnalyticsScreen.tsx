@@ -13,8 +13,15 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
 import { useAppStore } from '../store/appStore';
 import { getInsightsSummary, InsightsResult, InsightsMedia } from '../services/insightsService';
+import { getFirstAnalysisSnapshot, FirstAnalysisSnapshot } from '../services/firstAnalysisService';
 import { getMyPlan } from '../services/scheduleService';
 import { Plan, canAnalytics } from '../utils/plans';
+
+function shortDateFull(iso?: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
+}
 
 function fmt(n: number | null | undefined): string {
   if (n == null) return '—';
@@ -46,10 +53,17 @@ export default function AnalyticsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<InsightsResult | null>(null);
+  const [firstSnapshot, setFirstSnapshot] = useState<FirstAnalysisSnapshot | null>(null);
 
   useEffect(() => {
     getMyPlan().then(setPlan).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    const igUserId = instagramCredentials?.userId;
+    if (!igUserId) { setFirstSnapshot(null); return; }
+    getFirstAnalysisSnapshot(igUserId).then(setFirstSnapshot).catch(() => setFirstSnapshot(null));
+  }, [instagramCredentials?.userId]);
 
   const load = useCallback(async () => {
     if (!instagramCredentials?.accessToken) {
@@ -185,6 +199,49 @@ export default function AnalyticsScreen() {
         </View>
       ) : data ? (
         <>
+          {firstSnapshot && (
+            <View style={styles.snapshotCard}>
+              <Text style={styles.snapshotTitle}>📌 初回連携時の記録（{shortDateFull(firstSnapshot.capturedAt)}）</Text>
+              <View style={styles.snapshotRow}>
+                <View style={styles.snapshotItem}>
+                  <Text style={styles.snapshotValue}>{fmt(firstSnapshot.followersCount)}</Text>
+                  <Text style={styles.snapshotLabel}>
+                    フォロワー
+                    {firstSnapshot.followersCount != null && data.profile.followers_count != null && (
+                      <Text style={styles.snapshotDiff}>
+                        {' '}→ {fmt(data.profile.followers_count)}
+                        （{data.profile.followers_count - firstSnapshot.followersCount >= 0 ? '+' : ''}
+                        {fmt(data.profile.followers_count - firstSnapshot.followersCount)}）
+                      </Text>
+                    )}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.snapshotRow}>
+                <View style={styles.snapshotItem}>
+                  <Text style={styles.snapshotValue}>{fmt(firstSnapshot.avgLikes)}</Text>
+                  <Text style={styles.snapshotLabel}>
+                    平均いいね
+                    {firstSnapshot.avgLikes != null && (
+                      <Text style={styles.snapshotDiff}> → {fmt(data.summary.avg_likes)}</Text>
+                    )}
+                  </Text>
+                </View>
+                <View style={styles.snapshotItem}>
+                  <Text style={styles.snapshotValue}>
+                    {firstSnapshot.engagementRate != null ? `${firstSnapshot.engagementRate}%` : '—'}
+                  </Text>
+                  <Text style={styles.snapshotLabel}>
+                    エンゲージメント率
+                    {firstSnapshot.engagementRate != null && data.summary.engagement_rate != null && (
+                      <Text style={styles.snapshotDiff}> → {data.summary.engagement_rate}%</Text>
+                    )}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          )}
+
           {/* サマリー */}
           <View style={styles.statRow}>
             <View style={styles.statCard}>
@@ -326,6 +383,21 @@ const styles = StyleSheet.create({
   },
   refreshBtnText: { color: COLORS.text, fontSize: 14, fontWeight: '700' },
 
+  snapshotCard: {
+    marginHorizontal: SPACING.md,
+    marginBottom: SPACING.md,
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.md,
+    padding: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  snapshotTitle: { fontSize: 12, fontWeight: '800', color: COLORS.primary, marginBottom: SPACING.sm },
+  snapshotRow: { flexDirection: 'row', gap: SPACING.md, marginBottom: 4 },
+  snapshotItem: { flex: 1 },
+  snapshotValue: { fontSize: 16, fontWeight: '800', color: COLORS.text },
+  snapshotLabel: { fontSize: 11, color: COLORS.textSecondary },
+  snapshotDiff: { fontSize: 11, color: COLORS.primary, fontWeight: '700' },
   statRow: { flexDirection: 'row', paddingHorizontal: SPACING.md, gap: SPACING.sm, marginBottom: SPACING.sm },
   statCard: {
     flex: 1,

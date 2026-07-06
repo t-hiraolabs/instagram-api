@@ -5,6 +5,7 @@ import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Modal } fr
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppStore } from '../store/appStore';
 import { getInsightsSummary, InsightsResult } from '../services/insightsService';
+import { saveFirstAnalysisSnapshot } from '../services/firstAnalysisService';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
 
 function oneLineTakeaway(insights: InsightsResult): string {
@@ -29,7 +30,10 @@ export default function IgAnalysisIntro() {
     setResult(null);
     setError(null);
     getInsightsSummary(intro.accessToken, 12)
-      .then(setResult)
+      .then((res) => {
+        setResult(res);
+        if (intro.igUserId) saveFirstAnalysisSnapshot(intro.igUserId, res).catch(() => {});
+      })
       .catch((e) => setError(e instanceof Error ? e.message : '分析データの取得に失敗しました'))
       .finally(() => setLoading(false));
   }, [intro]);

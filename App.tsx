@@ -280,7 +280,7 @@ function OAuthHandler() {
         setActiveAccountSlot(slot);
 
         // 連携直後は「アカウント分析→アプリへ」の入口画面を表示する
-        setAnalysisIntro({ slot, accessToken: access_token, username });
+        setAnalysisIntro({ slot, accessToken: access_token, username, igUserId: user_id });
 
         // このアカウントに既存のブランド設定があれば復元し、なければAIで自動分析する（裏側で進める）
         const existing = await loadBrandForAccount(user_id);
