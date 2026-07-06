@@ -94,35 +94,31 @@ export async function getTopPostsForGeneration(): Promise<TopPost[] | undefined>
 }
 
 export type AnalysisFacts =
-  | { ok: true; text: string }
+  | { ok: true; text: string; details: InsightDetails }
   | { ok: false; reason: string };
 
+export interface InsightDetails {
+  bioSet: boolean;
+  websiteSet: boolean;
+  analyzedCount: number;
+  trendPct: number | null;
+  recentCount: number;
+  olderCount: number;
+  bestHour: { hour: number; avg: number; count: number } | null;
+  bestDow: { label: string; avg: number; count: number } | null;
+  topPost: { caption: string; likes: number; comments: number } | null;
+  bottomPost: { caption: string; likes: number; comments: number } | null;
+  typeBreakdown: { label: string; avg: number; count: number }[];
+}
+
 /**
- * チャットで「分析して」と言われたときに使う、プログラム側で計算した事実だけのサマリー。
- * AIには数値の説明・改善提案だけを任せ、集計自体はここで行う（AIコスト削減＋数値の正確性のため）。
+ * 投稿・プロフィールデータから、プログラム側で計算できる分析事実をすべて算出する。
+ * Instagram連携済みでないと絶対に得られない「実データに基づく事実」がAImarkの価値の核なので、
+ * ここで計算した内容はチャットの自動分析にも、連携直後の診断画面にも使い回す。
  */
-export async function getAutoAnalysisFacts(): Promise<AnalysisFacts> {
-  const { instagramCredentials, secondInstagramCredentials, activeAccountSlot } = useAppStore.getState();
-  const activeCreds = activeAccountSlot === 2 ? secondInstagramCredentials : instagramCredentials;
-  if (!activeCreds?.accessToken) {
-    return { ok: false, reason: 'Instagramアカウントが連携されていません。プロフィール画面から連携してください。' };
-  }
-  const plan = await getMyPlan().catch(() => 'free' as const);
-  if (!canAnalytics(plan)) {
-    return { ok: false, reason: '投稿データの自動分析はビジネスプラン限定の機能です。' };
-  }
-
-  let insights: InsightsResult;
-  try {
-    insights = await getInsightsSummary(activeCreds.accessToken, 50);
-  } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : '分析データの取得に失敗しました。' };
-  }
-
+export function computeInsightFacts(insights: InsightsResult): { lines: string[]; details: InsightDetails } | null {
   const media = insights.media.filter((m) => m.timestamp);
-  if (media.length === 0) {
-    return { ok: false, reason: '分析できる投稿がまだありません。' };
-  }
+  if (media.length === 0) return null;
 
   // 投稿を新しい順に。前半（直近）と後半（それ以前）で比較して傾向を見る
   const sorted = [...media].sort(
@@ -149,7 +145,7 @@ export async function getAutoAnalysisFacts(): Promise<AnalysisFacts> {
   const hourAverages = Object.entries(hourBuckets)
     .map(([h, v]) => ({ hour: Number(h), avg: v.total / v.count, count: v.count }))
     .sort((a, b) => b.avg - a.avg);
-  const bestHour = hourAverages[0];
+  const bestHour = hourAverages[0] ?? null;
 
   const top = [...media].sort((a, b) => engagement(b) - engagement(a))[0];
   const bottom = [...media].sort((a, b) => engagement(a) - engagement(b))[0];
@@ -179,7 +175,7 @@ export async function getAutoAnalysisFacts(): Promise<AnalysisFacts> {
   const dowAverages = Object.entries(dowBuckets)
     .map(([d, v]) => ({ label: dowLabel[Number(d)], avg: v.total / v.count, count: v.count }))
     .sort((a, b) => b.avg - a.avg);
-  const bestDow = dowAverages[0];
+  const bestDow = dowAverages[0] ?? null;
 
   const lines: string[] = [];
   const p = insights.profile;
@@ -215,5 +211,54 @@ export async function getAutoAnalysisFacts(): Promise<AnalysisFacts> {
     lines.push(`最も反応が良い曜日: ${bestDow.label}曜日（平均反応${Math.round(bestDow.avg)}、該当${bestDow.count}件）`);
   }
 
-  return { ok: true, text: lines.join('\n') };
+  const details: InsightDetails = {
+    bioSet: !!p.biography,
+    websiteSet: !!p.website,
+    analyzedCount: media.length,
+    trendPct,
+    recentCount: recent.length,
+    olderCount: older.length,
+    bestHour,
+    bestDow,
+    topPost: top
+      ? { caption: (top.caption ?? '').slice(0, 80), likes: top.like_count ?? 0, comments: top.comments_count ?? 0 }
+      : null,
+    bottomPost:
+      bottom && bottom.id !== top?.id
+        ? { caption: (bottom.caption ?? '').slice(0, 80), likes: bottom.like_count ?? 0, comments: bottom.comments_count ?? 0 }
+        : null,
+    typeBreakdown: typeAverages,
+  };
+
+  return { lines, details };
+}
+
+/**
+ * チャットで「分析して」と言われたときに使う、プログラム側で計算した事実だけのサマリー。
+ * AIには数値の説明・改善提案だけを任せ、集計自体はここで行う（AIコスト削減＋数値の正確性のため）。
+ */
+export async function getAutoAnalysisFacts(): Promise<AnalysisFacts> {
+  const { instagramCredentials, secondInstagramCredentials, activeAccountSlot } = useAppStore.getState();
+  const activeCreds = activeAccountSlot === 2 ? secondInstagramCredentials : instagramCredentials;
+  if (!activeCreds?.accessToken) {
+    return { ok: false, reason: 'Instagramアカウントが連携されていません。プロフィール画面から連携してください。' };
+  }
+  const plan = await getMyPlan().catch(() => 'free' as const);
+  if (!canAnalytics(plan)) {
+    return { ok: false, reason: '投稿データの自動分析はビジネスプラン限定の機能です。' };
+  }
+
+  let insights: InsightsResult;
+  try {
+    insights = await getInsightsSummary(activeCreds.accessToken, 50);
+  } catch (e) {
+    return { ok: false, reason: e instanceof Error ? e.message : '分析データの取得に失敗しました。' };
+  }
+
+  const computed = computeInsightFacts(insights);
+  if (!computed) {
+    return { ok: false, reason: '分析できる投稿がまだありません。' };
+  }
+
+  return { ok: true, text: computed.lines.join('\n'), details: computed.details };
 }
