@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import RootNavigator from './src/navigation/RootNavigator';
 import AccountBadge from './src/components/AccountBadge';
-import IgAnalysisIntro from './src/components/IgAnalysisIntro';
+import { navigateWhenReady } from './src/navigation/RootNavigator';
 import { supabase } from './src/services/supabaseClient';
 import { useAppStore, BrandSettings, DEFAULT_BRAND_SETTINGS } from './src/store/appStore';
 import { COLORS, SPACING, RADIUS } from './src/utils/theme';
@@ -279,8 +279,9 @@ function OAuthHandler() {
         // 連携したアカウントを使用中（アクティブ）に切り替える
         setActiveAccountSlot(slot);
 
-        // 連携直後は「アカウント分析→アプリへ」の入口画面を表示する
+        // 連携直後は「アカウント分析→アプリへ」の入口ページに遷移する
         setAnalysisIntro({ slot, accessToken: access_token, username, igUserId: user_id });
+        navigateWhenReady('IgDiagnosis');
 
         // このアカウントに既存のブランド設定があれば復元し、なければAIで自動分析する（裏側で進める）
         const existing = await loadBrandForAccount(user_id);
@@ -296,7 +297,7 @@ function OAuthHandler() {
     })();
   }, []);
 
-  return <IgAnalysisIntro />;
+  return null;
 }
 
 function AuthGate() {

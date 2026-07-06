@@ -4,8 +4,9 @@
 // Instagramと連携しているからこそ得られる実データを見せることで、
 // 汎用チャットボットとの違い＝AImarkにしかできないことをアピールする。
 import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Modal, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 import { useAppStore } from '../store/appStore';
 import { getInsightsSummary, InsightsResult, computeInsightFacts, InsightDetails } from '../services/insightsService';
 import { saveFirstAnalysisSnapshot } from '../services/firstAnalysisService';
@@ -79,12 +80,18 @@ function buildCards(details: InsightDetails): ResultCard[] {
 
 export default function IgAnalysisIntro() {
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation();
   const intro = useAppStore((s) => s.analysisIntro);
   const setAnalysisIntro = useAppStore((s) => s.setAnalysisIntro);
   const [loading, setLoading] = useState(true);
   const [result, setResult] = useState<InsightsResult | null>(null);
   const [details, setDetails] = useState<InsightDetails | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const finish = () => {
+    setAnalysisIntro(null);
+    navigation.reset({ index: 0, routes: [{ name: 'Main' as never }] });
+  };
 
   useEffect(() => {
     if (!intro) return;
@@ -102,13 +109,17 @@ export default function IgAnalysisIntro() {
       .finally(() => setLoading(false));
   }, [intro]);
 
+  useEffect(() => {
+    // 診断データがない状態でこの画面に直接来た場合（リロードなど）はホームへ戻す
+    if (!intro) navigation.reset({ index: 0, routes: [{ name: 'Main' as never }] });
+  }, [intro]);
+
   if (!intro) return null;
 
   const hero = result ? heroLabel(result) : null;
   const cards = details ? buildCards(details) : [];
 
   return (
-    <Modal visible animationType="fade" onRequestClose={() => {}}>
       <View style={styles.page}>
         {loading ? (
           <View style={[styles.loadingScreen, { paddingTop: insets.top }]}>
@@ -118,7 +129,7 @@ export default function IgAnalysisIntro() {
         ) : error ? (
           <View style={[styles.loadingScreen, { paddingTop: insets.top }]}>
             <Text style={styles.errorText}>{error}</Text>
-            <TouchableOpacity style={styles.cta} onPress={() => setAnalysisIntro(null)} activeOpacity={0.85}>
+            <TouchableOpacity style={styles.cta} onPress={finish} activeOpacity={0.85}>
               <Text style={styles.ctaText}>アプリを始める →</Text>
             </TouchableOpacity>
           </View>
@@ -178,13 +189,12 @@ export default function IgAnalysisIntro() {
 
             <Text style={styles.hint}>もっと詳しい分析や改善提案、競合との比較は、アプリ内でいつでも「分析して」と聞くだけでAIが答えます。</Text>
 
-            <TouchableOpacity style={styles.cta} onPress={() => setAnalysisIntro(null)} activeOpacity={0.85}>
+            <TouchableOpacity style={styles.cta} onPress={finish} activeOpacity={0.85}>
               <Text style={styles.ctaText}>アプリを始める →</Text>
             </TouchableOpacity>
           </ScrollView>
         )}
       </View>
-    </Modal>
   );
 }
 

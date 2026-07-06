@@ -1,4 +1,4 @@
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { View, Text, StyleSheet } from 'react-native';
@@ -8,10 +8,25 @@ import ScheduleScreen from '../screens/ScheduleScreen';
 import AnalyticsScreen from '../screens/AnalyticsScreen';
 import DMScreen from '../screens/DMScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import IgAnalysisIntro from '../components/IgAnalysisIntro';
 import { COLORS } from '../utils/theme';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
+
+/** NavigationContainerの外（App.tsxのOAuthHandlerなど）から画面遷移するための参照 */
+export const navigationRef = createNavigationContainerRef();
+
+/** NavigationContainerの準備ができるまで待ってから画面遷移する */
+export function navigateWhenReady(name: string, params?: object, retriesLeft = 40): void {
+  if (navigationRef.isReady()) {
+    // @ts-expect-error 画面名は動的
+    navigationRef.navigate(name, params);
+    return;
+  }
+  if (retriesLeft <= 0) return;
+  setTimeout(() => navigateWhenReady(name, params, retriesLeft - 1), 50);
+}
 
 function TabIcon({ name, focused }: { name: string; focused: boolean }) {
   const icons: Record<string, string> = {
@@ -91,12 +106,14 @@ function TabNavigator() {
 export default function RootNavigator() {
   return (
     <NavigationContainer
+      ref={navigationRef}
       documentTitle={{
         formatter: () => 'AImark アイマーク',
       }}
     >
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         <Stack.Screen name="Main" component={TabNavigator} />
+        <Stack.Screen name="IgDiagnosis" component={IgAnalysisIntro} options={{ animation: 'fade' }} />
       </Stack.Navigator>
     </NavigationContainer>
   );
