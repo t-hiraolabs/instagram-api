@@ -1,7 +1,8 @@
-// Instagram連携が完了した直後に表示する「アカウント分析→アプリへ」の入口画面。
+// Instagram連携が完了した直後に表示する「アカウント分析結果」ページ。
 // ここでのAI呼び出しはコストゼロ（プログラム側の集計のみ）にして、初回体験を軽くする。
-// Instagramと連携しているからこそ得られる「このアカウント固有の実データ」を見せることが、
-// 汎用チャットボットとの違い＝AImarkにしかできないことのアピールになる。
+// MBTI診断のような「大きな結果発表→スクロールでカードごとに詳細」という見せ方にし、
+// Instagramと連携しているからこそ得られる実データを見せることで、
+// 汎用チャットボットとの違い＝AImarkにしかできないことをアピールする。
 import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Modal, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -10,12 +11,70 @@ import { getInsightsSummary, InsightsResult, computeInsightFacts, InsightDetails
 import { saveFirstAnalysisSnapshot } from '../services/firstAnalysisService';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
 
-function oneLineTakeaway(insights: InsightsResult): string {
+const ACCENTS = [COLORS.secondary, COLORS.primary, COLORS.primaryLight];
+
+function heroLabel(insights: InsightsResult): { emoji: string; label: string; desc: string } {
   const rate = insights.summary.engagement_rate;
-  if (rate == null) return 'これから投稿を重ねると、傾向が見えてきます。まずは今日の1枚から始めましょう。';
-  if (rate >= 3) return 'エンゲージメント率は良好です。この調子を維持する投稿を続けましょう。';
-  if (rate >= 1) return '平均的な水準です。投稿時間やハッシュタグを見直すと伸びる余地があります。';
-  return '反応がやや控えめです。投稿頻度や内容を一緒に見直していきましょう。';
+  if (rate == null) return { emoji: '🌱', label: 'これから伸びるアカウント', desc: 'これから投稿を重ねると、傾向が見えてきます。まずは今日の1枚から始めましょう。' };
+  if (rate >= 3) return { emoji: '🔥', label: '反応良好なアカウント', desc: 'エンゲージメント率は良好です。この調子を維持する投稿を続けましょう。' };
+  if (rate >= 1) return { emoji: '👍', label: '平均的なアカウント', desc: '平均的な水準です。投稿時間やハッシュタグを見直すと伸びる余地があります。' };
+  return { emoji: '💡', label: '伸びしろのあるアカウント', desc: '反応がやや控えめです。投稿頻度や内容を一緒に見直していきましょう。' };
+}
+
+interface ResultCard {
+  emoji: string;
+  title: string;
+  body: string;
+}
+
+function buildCards(details: InsightDetails): ResultCard[] {
+  const cards: ResultCard[] = [];
+  if (details.trendPct != null) {
+    cards.push({
+      emoji: details.trendPct >= 0 ? '📈' : '📉',
+      title: '投稿の勢い',
+      body: `直近${details.recentCount}投稿の反応は、その前の${details.olderCount}投稿と比べて${details.trendPct > 0 ? '+' : ''}${details.trendPct}%`,
+    });
+  }
+  if (details.bestHour) {
+    cards.push({
+      emoji: '⏰',
+      title: 'ベストな投稿時間帯',
+      body: `${details.bestHour.hour}時台の投稿が、最も反応を集めています`,
+    });
+  }
+  if (details.bestDow) {
+    cards.push({
+      emoji: '📅',
+      title: 'ベストな投稿曜日',
+      body: `${details.bestDow.label}曜日の投稿が、最も反応を集めています`,
+    });
+  }
+  if (details.typeBreakdown.length > 1) {
+    cards.push({
+      emoji: '🗂',
+      title: '投稿タイプ別の反応',
+      body: details.typeBreakdown.map((t) => `${t.label}: 平均反応${t.avg}`).join('\n'),
+    });
+  }
+  if (details.topPost) {
+    cards.push({
+      emoji: '🏆',
+      title: '一番反応が良かった投稿',
+      body: `「${details.topPost.caption || '（キャプションなし）'}」\n❤️${details.topPost.likes}・💬${details.topPost.comments}`,
+    });
+  }
+  cards.push({
+    emoji: details.bioSet ? '✅' : '⚠️',
+    title: '自己紹介文',
+    body: details.bioSet ? '設定済みです' : '未設定です。設定するとプロフィールの説得力が上がります',
+  });
+  cards.push({
+    emoji: details.websiteSet ? '✅' : '⚠️',
+    title: 'プロフィールのリンク',
+    body: details.websiteSet ? '設定済みです' : '未設定です。予約・購入ページなどを設定すると導線が生まれます',
+  });
+  return cards;
 }
 
 export default function IgAnalysisIntro() {
@@ -45,153 +104,139 @@ export default function IgAnalysisIntro() {
 
   if (!intro) return null;
 
+  const hero = result ? heroLabel(result) : null;
+  const cards = details ? buildCards(details) : [];
+
   return (
     <Modal visible animationType="fade" onRequestClose={() => {}}>
-      <View style={[styles.container, { paddingTop: insets.top + SPACING.lg, paddingBottom: insets.bottom + SPACING.lg }]}>
-        <Text style={styles.eyebrow}>連携完了</Text>
-        <Text style={styles.title}>@{intro.username ?? 'あなたのアカウント'} を分析しています</Text>
-
-        <ScrollView style={styles.scroll} contentContainerStyle={{ paddingBottom: SPACING.md }} showsVerticalScrollIndicator={false}>
-          <View style={styles.card}>
-            {loading ? (
-              <View style={styles.loadingRow}>
-                <ActivityIndicator color={COLORS.primary} />
-                <Text style={styles.loadingText}>投稿データを取得中...</Text>
-              </View>
-            ) : error ? (
-              <Text style={styles.errorText}>{error}</Text>
-            ) : result ? (
-              <>
-                <View style={styles.statsRow}>
-                  <View style={styles.statItem}>
-                    <Text style={styles.statValue}>{result.profile.followers_count}</Text>
-                    <Text style={styles.statLabel}>フォロワー</Text>
-                  </View>
-                  <View style={styles.statItem}>
-                    <Text style={styles.statValue}>{result.summary.avg_likes}</Text>
-                    <Text style={styles.statLabel}>平均いいね</Text>
-                  </View>
-                  <View style={styles.statItem}>
-                    <Text style={styles.statValue}>{result.summary.engagement_rate != null ? `${result.summary.engagement_rate}%` : '—'}</Text>
-                    <Text style={styles.statLabel}>エンゲージメント率</Text>
-                  </View>
-                </View>
-                <Text style={styles.takeaway}>{oneLineTakeaway(result)}</Text>
-              </>
-            ) : null}
+      <View style={styles.page}>
+        {loading ? (
+          <View style={[styles.loadingScreen, { paddingTop: insets.top }]}>
+            <ActivityIndicator color={COLORS.primary} size="large" />
+            <Text style={styles.loadingText}>@{intro.username ?? 'あなたのアカウント'} を診断中...</Text>
           </View>
+        ) : error ? (
+          <View style={[styles.loadingScreen, { paddingTop: insets.top }]}>
+            <Text style={styles.errorText}>{error}</Text>
+            <TouchableOpacity style={styles.cta} onPress={() => setAnalysisIntro(null)} activeOpacity={0.85}>
+              <Text style={styles.ctaText}>アプリを始める →</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: insets.bottom + SPACING.xl }} showsVerticalScrollIndicator={false}>
+            {/* ヒーロー: 診断結果の大きな発表エリア */}
+            <View style={[styles.hero, { paddingTop: insets.top + SPACING.xl }]}>
+              <Text style={styles.heroEyebrow}>連携完了・診断結果</Text>
+              <Text style={styles.heroEmoji}>{hero?.emoji}</Text>
+              <Text style={styles.heroLabel}>{hero?.label}</Text>
+              <Text style={styles.heroAccount}>@{result?.profile.username ?? intro.username}</Text>
 
-          {details && (
-            <View style={styles.detailCard}>
-              <Text style={styles.detailHeader}>🔎 Instagram連携だからわかること</Text>
-              <Text style={styles.detailSub}>あなたのアカウントの実データだけを見て算出した、この場限りの分析です</Text>
-
-              {details.trendPct != null && (
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailIcon}>{details.trendPct >= 0 ? '📈' : '📉'}</Text>
-                  <Text style={styles.detailText}>
-                    直近{details.recentCount}投稿の反応は、その前の{details.olderCount}投稿と比べて
-                    <Text style={styles.detailStrong}>{details.trendPct > 0 ? '+' : ''}{details.trendPct}%</Text>
-                  </Text>
+              <View style={styles.heroStatsRow}>
+                <View style={styles.heroStatItem}>
+                  <Text style={styles.heroStatValue}>{result?.profile.followers_count}</Text>
+                  <Text style={styles.heroStatLabel}>フォロワー</Text>
                 </View>
-              )}
-
-              {details.bestHour && (
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailIcon}>⏰</Text>
-                  <Text style={styles.detailText}>
-                    最も反応が良い投稿時間帯は<Text style={styles.detailStrong}>{details.bestHour.hour}時台</Text>です
-                  </Text>
+                <View style={styles.heroStatDivider} />
+                <View style={styles.heroStatItem}>
+                  <Text style={styles.heroStatValue}>{result?.summary.avg_likes}</Text>
+                  <Text style={styles.heroStatLabel}>平均いいね</Text>
                 </View>
-              )}
-
-              {details.bestDow && (
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailIcon}>📅</Text>
-                  <Text style={styles.detailText}>
-                    最も反応が良い曜日は<Text style={styles.detailStrong}>{details.bestDow.label}曜日</Text>です
+                <View style={styles.heroStatDivider} />
+                <View style={styles.heroStatItem}>
+                  <Text style={styles.heroStatValue}>
+                    {result?.summary.engagement_rate != null ? `${result.summary.engagement_rate}%` : '—'}
                   </Text>
+                  <Text style={styles.heroStatLabel}>エンゲージメント率</Text>
                 </View>
-              )}
-
-              {details.typeBreakdown.length > 1 && (
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailIcon}>🗂</Text>
-                  <Text style={styles.detailText}>
-                    投稿タイプ別の反応: {details.typeBreakdown.map((t) => `${t.label} ${t.avg}`).join(' / ')}
-                  </Text>
-                </View>
-              )}
-
-              {details.topPost && (
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailIcon}>🏆</Text>
-                  <Text style={styles.detailText}>
-                    一番反応が良かった投稿:「{details.topPost.caption || '（キャプションなし）'}」
-                    （❤️{details.topPost.likes}・💬{details.topPost.comments}）
-                  </Text>
-                </View>
-              )}
-
-              <View style={styles.detailRow}>
-                <Text style={styles.detailIcon}>{details.bioSet ? '✅' : '⚠️'}</Text>
-                <Text style={styles.detailText}>
-                  自己紹介文は{details.bioSet ? '設定済みです' : '未設定です。設定するとプロフィールの説得力が上がります'}
-                </Text>
               </View>
-              <View style={styles.detailRow}>
-                <Text style={styles.detailIcon}>{details.websiteSet ? '✅' : '⚠️'}</Text>
-                <Text style={styles.detailText}>
-                  プロフィールのリンクは{details.websiteSet ? '設定済みです' : '未設定です。予約・購入ページなどを設定すると導線が生まれます'}
-                </Text>
-              </View>
-
-              <Text style={styles.detailFootnote}>
-                これは他の誰でもない、あなたのアカウントを連携したからこそ出せた結果です。汎用的なAIチャットだけでは、ここまで具体的な話はできません。
-              </Text>
+              <Text style={styles.heroDesc}>{hero?.desc}</Text>
             </View>
-          )}
-        </ScrollView>
 
-        <Text style={styles.hint}>もっと詳しい分析や改善提案、競合との比較は、アプリ内でいつでも「分析して」と聞くだけでAIが答えます。</Text>
+            {/* 詳細カード群: MBTI診断ページのように、項目ごとにカードで見せる */}
+            {cards.length > 0 && (
+              <View style={styles.cardsSection}>
+                <Text style={styles.sectionTitle}>🔎 Instagram連携だからわかること</Text>
+                <Text style={styles.sectionSub}>あなたのアカウントの実データだけを見て算出した、この場限りの分析です</Text>
 
-        <TouchableOpacity style={styles.cta} onPress={() => setAnalysisIntro(null)} activeOpacity={0.85}>
-          <Text style={styles.ctaText}>アプリを始める →</Text>
-        </TouchableOpacity>
+                {cards.map((c, i) => (
+                  <View key={c.title} style={[styles.resultCard, { borderLeftColor: ACCENTS[i % ACCENTS.length] }]}>
+                    <View style={[styles.resultBadge, { backgroundColor: ACCENTS[i % ACCENTS.length] + '22' }]}>
+                      <Text style={styles.resultBadgeEmoji}>{c.emoji}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.resultTitle}>{c.title}</Text>
+                      <Text style={styles.resultBody}>{c.body}</Text>
+                    </View>
+                  </View>
+                ))}
+
+                <Text style={styles.footnote}>
+                  これは他の誰でもない、あなたのアカウントを連携したからこそ出せた結果です。汎用的なAIチャットだけでは、ここまで具体的な話はできません。
+                </Text>
+              </View>
+            )}
+
+            <Text style={styles.hint}>もっと詳しい分析や改善提案、競合との比較は、アプリ内でいつでも「分析して」と聞くだけでAIが答えます。</Text>
+
+            <TouchableOpacity style={styles.cta} onPress={() => setAnalysisIntro(null)} activeOpacity={0.85}>
+              <Text style={styles.ctaText}>アプリを始める →</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        )}
       </View>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background, paddingHorizontal: SPACING.lg },
-  eyebrow: { color: COLORS.primary, fontSize: 12, fontWeight: '700', textAlign: 'center', marginBottom: 4 },
-  title: { color: COLORS.text, fontSize: 20, fontWeight: '800', textAlign: 'center', marginBottom: SPACING.md },
-  scroll: { flex: 1 },
-  card: {
-    backgroundColor: COLORS.surface, borderRadius: RADIUS.lg, borderWidth: 1, borderColor: COLORS.border,
-    padding: SPACING.lg, minHeight: 140, justifyContent: 'center', marginBottom: SPACING.md,
-  },
-  loadingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm },
+  page: { flex: 1, backgroundColor: COLORS.background },
+  loadingScreen: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: SPACING.lg, gap: SPACING.md },
   loadingText: { color: COLORS.textMuted, fontSize: 13 },
-  errorText: { color: COLORS.error, fontSize: 13, textAlign: 'center' },
-  statsRow: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: SPACING.md },
-  statItem: { alignItems: 'center', gap: 4 },
-  statValue: { color: COLORS.primary, fontSize: 22, fontWeight: '800' },
-  statLabel: { color: COLORS.textMuted, fontSize: 11 },
-  takeaway: { color: COLORS.text, fontSize: 13, lineHeight: 20, textAlign: 'center' },
-  detailCard: {
-    backgroundColor: COLORS.surface, borderRadius: RADIUS.lg, borderWidth: 1.5, borderColor: COLORS.secondary,
-    padding: SPACING.lg, marginBottom: SPACING.md,
+  errorText: { color: COLORS.error, fontSize: 14, textAlign: 'center', marginBottom: SPACING.lg },
+
+  hero: {
+    backgroundColor: COLORS.surface,
+    borderBottomLeftRadius: RADIUS.xl,
+    borderBottomRightRadius: RADIUS.xl,
+    alignItems: 'center',
+    paddingBottom: SPACING.xl,
+    paddingHorizontal: SPACING.lg,
+    marginBottom: SPACING.xl,
+    borderBottomWidth: 3,
+    borderBottomColor: COLORS.primary,
   },
-  detailHeader: { color: COLORS.text, fontSize: 15, fontWeight: '800', marginBottom: 2 },
-  detailSub: { color: COLORS.textMuted, fontSize: 11, marginBottom: SPACING.md, lineHeight: 16 },
-  detailRow: { flexDirection: 'row', alignItems: 'flex-start', gap: SPACING.sm, marginBottom: SPACING.sm },
-  detailIcon: { fontSize: 14, width: 20 },
-  detailText: { flex: 1, color: COLORS.text, fontSize: 13, lineHeight: 19 },
-  detailStrong: { color: COLORS.primary, fontWeight: '800' },
-  detailFootnote: { color: COLORS.textMuted, fontSize: 11, lineHeight: 16, marginTop: SPACING.xs },
-  hint: { color: COLORS.textMuted, fontSize: 12, textAlign: 'center', marginTop: SPACING.md, marginBottom: SPACING.md, lineHeight: 18 },
-  cta: { backgroundColor: COLORS.primary, borderRadius: RADIUS.full, paddingVertical: SPACING.md, alignItems: 'center' },
+  heroEyebrow: { color: COLORS.primary, fontSize: 12, fontWeight: '800', letterSpacing: 1, marginBottom: SPACING.md },
+  heroEmoji: { fontSize: 56, marginBottom: SPACING.xs },
+  heroLabel: { color: COLORS.text, fontSize: 24, fontWeight: '900', textAlign: 'center' },
+  heroAccount: { color: COLORS.textSecondary, fontSize: 14, fontWeight: '600', marginTop: 4, marginBottom: SPACING.lg },
+  heroStatsRow: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.surfaceElevated,
+    borderRadius: RADIUS.lg, paddingVertical: SPACING.md, paddingHorizontal: SPACING.sm, width: '100%',
+  },
+  heroStatItem: { flex: 1, alignItems: 'center' },
+  heroStatDivider: { width: 1, height: 32, backgroundColor: COLORS.border },
+  heroStatValue: { color: COLORS.primary, fontSize: 20, fontWeight: '900' },
+  heroStatLabel: { color: COLORS.textMuted, fontSize: 10, marginTop: 2 },
+  heroDesc: { color: COLORS.text, fontSize: 13, lineHeight: 20, textAlign: 'center', marginTop: SPACING.lg },
+
+  cardsSection: { paddingHorizontal: SPACING.lg },
+  sectionTitle: { color: COLORS.text, fontSize: 16, fontWeight: '800', marginBottom: 2 },
+  sectionSub: { color: COLORS.textMuted, fontSize: 11, marginBottom: SPACING.md, lineHeight: 16 },
+  resultCard: {
+    flexDirection: 'row', gap: SPACING.md, alignItems: 'center',
+    backgroundColor: COLORS.surface, borderRadius: RADIUS.md, borderLeftWidth: 4,
+    padding: SPACING.md, marginBottom: SPACING.sm,
+  },
+  resultBadge: { width: 44, height: 44, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center' },
+  resultBadgeEmoji: { fontSize: 20 },
+  resultTitle: { color: COLORS.text, fontSize: 13, fontWeight: '800', marginBottom: 2 },
+  resultBody: { color: COLORS.textSecondary, fontSize: 12, lineHeight: 18 },
+  footnote: { color: COLORS.textMuted, fontSize: 11, lineHeight: 16, marginTop: SPACING.sm, marginBottom: SPACING.md },
+
+  hint: { color: COLORS.textMuted, fontSize: 12, textAlign: 'center', marginHorizontal: SPACING.lg, marginBottom: SPACING.md, lineHeight: 18 },
+  cta: {
+    backgroundColor: COLORS.primary, borderRadius: RADIUS.full, paddingVertical: SPACING.md,
+    alignItems: 'center', marginHorizontal: SPACING.lg,
+  },
   ctaText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 });
