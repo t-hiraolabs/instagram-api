@@ -238,12 +238,14 @@ export default function ProfileScreen() {
     })();
   }, []);
 
-  const handleInstagramLogin = async () => {
-    if (!(await ensureLoggedIn('Instagram連携にはログインが必要です'))) return;
+  // window.open()はタップの同期処理内で呼ばないとポップアップブロックされるため、
+  // 未ログイン確認のawaitを挟まず、既知のloggedIn状態で同期的に判定してから開く
+  const handleInstagramLogin = () => {
+    if (!loggedIn) { ensureLoggedIn('Instagram連携にはログインが必要です'); return; }
     connectInstagram(1);
   };
-  const handleInstagramLogin2 = async () => {
-    if (!(await ensureLoggedIn('Instagram連携にはログインが必要です'))) return;
+  const handleInstagramLogin2 = () => {
+    if (!loggedIn) { ensureLoggedIn('Instagram連携にはログインが必要です'); return; }
     connectInstagram(2);
   };
 
