@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
 import { chatWithAssistant, getChatUsagePercent, ChatTurn } from '../services/aiService';
 import { getAutoAnalysisFacts } from '../services/insightsService';
+import { getAiUsage, AiUsage } from '../services/scheduleService';
 import {
   listConversations, createConversation, renameConversation, deleteConversation,
   loadMessages, saveMessage, purgeOldConversations, Conversation,
@@ -142,10 +143,12 @@ function ImageGenChat(
     if (a.base64) setPendingImage({ base64: a.base64, mime: a.mimeType ?? 'image/jpeg', uri: a.uri });
   };
   const [chatRemainPct, setChatRemainPct] = useState<number | null>(null);
+  const [aiUsage, setAiUsage] = useState<AiUsage | null>(null);
   const scrollRef = useRef<ScrollView>(null);
 
   const refreshUsage = () => {
     getChatUsagePercent().then((c) => setChatRemainPct(c.remainingPct)).catch(() => {});
+    getAiUsage().then(setAiUsage).catch(() => {});
   };
 
   const chatPrefillText = useAppStore((s) => s.chatPrefillText);
@@ -307,7 +310,7 @@ function ImageGenChat(
       );
       setMessages((m) => [...m, { role: 'assistant', text: reply }]);
       if (id) saveMessage(id, 'assistant', reply).catch(() => {});
-      getChatUsagePercent().then((c) => setChatRemainPct(c.remainingPct)).catch(() => {});
+      refreshUsage();
     } catch (e) {
       setMessages((m) => [...m, { role: 'error', text: e instanceof Error ? e.message : '応答に失敗しました' }]);
     } finally {
@@ -424,6 +427,45 @@ function ImageGenChat(
               <View style={styles.listHeader}>
                 <Text style={styles.listTitle}>会話</Text>
               </View>
+
+              {(chatRemainPct != null || aiUsage) && (
+                <View style={styles.usageBox}>
+                  {chatRemainPct != null && (
+                    <View style={styles.usageRow}>
+                      <Text style={styles.usageLabel}>会話の利用量</Text>
+                      <Text style={styles.usageValue}>残り{chatRemainPct}%</Text>
+                    </View>
+                  )}
+                  {aiUsage && (
+                    <View style={styles.usageRow}>
+                      <Text style={styles.usageLabel}>{aiUsage.plan === 'free' ? 'AI生成（無料・累計）' : '今月のAI生成'}</Text>
+                      <Text style={styles.usageValue}>あと{aiUsage.remaining}回</Text>
+                    </View>
+                  )}
+                </View>
+              )}
+
+              <TouchableOpacity style={styles.newBtn} onPress={newConversation}>
+                <Text style={styles.newBtnText}>＋ 新しい会話</Text>
+              </TouchableOpacity>
+              <ScrollView style={{ flex: 1 }}>
+                {conversations.map((c) => (
+                  <View key={c.id} style={[styles.convRow, c.id === convId && styles.convRowActive]}>
+                    <TouchableOpacity style={{ flex: 1 }} onPress={() => openConversation(c.id)}>
+                      <Text style={styles.convTitle} numberOfLines={1}>{c.title || '新しい会話'}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => setOpenActionsId(c.id)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Text style={styles.convMore}>⋮</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
+                {conversations.length === 0 && <Text style={styles.convEmpty}>会話はまだありません</Text>}
+              </ScrollView>
+
+              {/* アカウント切り替え：メニュー最下部 */}
               {(instagramCredentials || secondInstagramCredentials || thirdInstagramCredentials) && (
                 <View style={styles.accountSwitchRow}>
                   {([
@@ -452,29 +494,6 @@ function ImageGenChat(
                   ))}
                 </View>
               )}
-              {chatRemainPct != null && (
-                <Text style={styles.usageText}>会話の利用量　残り{chatRemainPct}%</Text>
-              )}
-
-              <TouchableOpacity style={styles.newBtn} onPress={newConversation}>
-                <Text style={styles.newBtnText}>＋ 新しい会話</Text>
-              </TouchableOpacity>
-              <ScrollView style={{ flex: 1 }}>
-                {conversations.map((c) => (
-                  <View key={c.id} style={[styles.convRow, c.id === convId && styles.convRowActive]}>
-                    <TouchableOpacity style={{ flex: 1 }} onPress={() => openConversation(c.id)}>
-                      <Text style={styles.convTitle} numberOfLines={1}>{c.title || '新しい会話'}</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => setOpenActionsId(c.id)}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    >
-                      <Text style={styles.convMore}>⋮</Text>
-                    </TouchableOpacity>
-                  </View>
-                ))}
-                {conversations.length === 0 && <Text style={styles.convEmpty}>会話はまだありません</Text>}
-              </ScrollView>
             </View>
           </View>
         )}
@@ -542,8 +561,24 @@ const styles = StyleSheet.create({
   listPanel: { width: '78%', maxWidth: 320, backgroundColor: COLORS.background, borderRightWidth: 1, borderRightColor: COLORS.border, paddingTop: SPACING.lg, position: 'relative' },
   listHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: SPACING.md, paddingBottom: SPACING.sm },
   listTitle: { color: COLORS.text, fontSize: 16, fontWeight: '800' },
-  usageText: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600', paddingHorizontal: SPACING.md, marginBottom: SPACING.sm },
-  accountSwitchRow: { flexDirection: 'row', gap: SPACING.sm, paddingHorizontal: SPACING.md, marginBottom: SPACING.sm },
+  usageBox: {
+    marginHorizontal: SPACING.md,
+    marginBottom: SPACING.md,
+    padding: SPACING.md,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+    gap: SPACING.xs,
+  },
+  usageRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  usageLabel: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },
+  usageValue: { color: COLORS.text, fontSize: 16, fontWeight: '800' },
+  accountSwitchRow: {
+    flexDirection: 'row', gap: SPACING.sm, paddingHorizontal: SPACING.md,
+    paddingTop: SPACING.sm, paddingBottom: SPACING.md,
+    borderTopWidth: 1, borderTopColor: COLORS.border,
+  },
   accountChip: {
     flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1,
     borderWidth: 1.5, borderColor: COLORS.border, borderRadius: RADIUS.full,
