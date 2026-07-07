@@ -425,6 +425,7 @@ export default function ProfileScreen() {
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [notifVisible, setNotifVisible] = useState(false);
   const [loggedIn, setLoggedIn] = useState(false);
+  const [accountEmail, setAccountEmail] = useState<string | null>(null);
   const [accountMenu, setAccountMenu] = useState<1 | 2 | null>(null);
 
   useEffect(() => {
@@ -432,9 +433,13 @@ export default function ProfileScreen() {
   }, []);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setLoggedIn(!!data.session));
+    supabase.auth.getSession().then(({ data }) => {
+      setLoggedIn(!!data.session);
+      setAccountEmail(data.session?.user?.email ?? null);
+    });
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       setLoggedIn(!!session);
+      setAccountEmail(session?.user?.email ?? null);
     });
     return () => listener.subscription.unsubscribe();
   }, []);
@@ -662,6 +667,23 @@ export default function ProfileScreen() {
             <Text style={styles.helpArrow}>›</Text>
           </TouchableOpacity>
         ))}
+
+        {/* アカウント情報 */}
+        {loggedIn && (
+          <>
+            <Text style={styles.sectionTitle}>アカウント</Text>
+            <View style={styles.accountInfoCard}>
+              <View style={[styles.accountInfoRow, styles.accountInfoRowDivided]}>
+                <Text style={styles.accountInfoLabel}>メールアドレス</Text>
+                <Text style={styles.accountInfoValue} numberOfLines={1}>{accountEmail ?? '—'}</Text>
+              </View>
+              <View style={styles.accountInfoRow}>
+                <Text style={styles.accountInfoLabel}>プラン</Text>
+                <Text style={styles.accountInfoValue}>{PLANS.find((p) => p.id === currentPlan)?.name ?? 'フリー'}</Text>
+              </View>
+            </View>
+          </>
+        )}
 
         {/* 設定セクション */}
         <Text style={styles.sectionTitle}>設定</Text>
@@ -1159,6 +1181,26 @@ const styles = StyleSheet.create({
   },
   notifLabel: { color: COLORS.text, fontSize: 15, fontWeight: '700', marginBottom: 2 },
   notifDesc: { color: COLORS.textSecondary, fontSize: 12 },
+  accountInfoCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingHorizontal: SPACING.md,
+    marginBottom: SPACING.md,
+  },
+  accountInfoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: SPACING.sm + 2,
+  },
+  accountInfoRowDivided: {
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  accountInfoLabel: { color: COLORS.textSecondary, fontSize: 13 },
+  accountInfoValue: { color: COLORS.text, fontSize: 13, fontWeight: '700', marginLeft: SPACING.md, flexShrink: 1, textAlign: 'right' },
   logoutBtn: {
     marginTop: SPACING.xl,
     paddingVertical: SPACING.md,
