@@ -2679,14 +2679,63 @@ export default function ScheduleScreen() {
             )}
 
             <Text style={styles.fieldLabel}>予約日時</Text>
-            <TextInput
-              style={styles.input}
-              value={editDate}
-              onChangeText={setEditDate}
-              placeholder="例: 2026-06-15T18:00"
-              placeholderTextColor={COLORS.textMuted}
-              autoCapitalize="none"
-            />
+            <View style={styles.dateTimeRow}>
+              <View style={styles.dateTimeCol}>
+                <Text style={styles.fieldLabel}>日付</Text>
+                {Platform.OS === 'web' ? (
+                  <input
+                    type="date"
+                    value={editDate.split('T')[0] || ''}
+                    min={todayKey}
+                    onChange={(e: any) => {
+                      const d = e.target.value;
+                      const t = editDate.split('T')[1] || '18:00';
+                      setEditDate(d ? `${d}T${t}` : '');
+                    }}
+                    style={webDateInputStyle}
+                  />
+                ) : (
+                  <TextInput
+                    style={styles.input}
+                    value={editDate.split('T')[0] || ''}
+                    onChangeText={(d) => {
+                      const t = editDate.split('T')[1] || '18:00';
+                      setEditDate(d ? `${d}T${t}` : '');
+                    }}
+                    placeholder="2026-06-15"
+                    placeholderTextColor={COLORS.textMuted}
+                    autoCapitalize="none"
+                  />
+                )}
+              </View>
+              <View style={styles.dateTimeCol}>
+                <Text style={styles.fieldLabel}>時間</Text>
+                {Platform.OS === 'web' ? (
+                  <input
+                    type="time"
+                    value={editDate.split('T')[1] || ''}
+                    onChange={(e: any) => {
+                      const t = e.target.value;
+                      const d = editDate.split('T')[0] || todayKey;
+                      setEditDate(t ? `${d}T${t}` : '');
+                    }}
+                    style={webDateInputStyle}
+                  />
+                ) : (
+                  <TextInput
+                    style={styles.input}
+                    value={editDate.split('T')[1] || ''}
+                    onChangeText={(t) => {
+                      const d = editDate.split('T')[0] || todayKey;
+                      setEditDate(t ? `${d}T${t}` : '');
+                    }}
+                    placeholder="18:00"
+                    placeholderTextColor={COLORS.textMuted}
+                    autoCapitalize="none"
+                  />
+                )}
+              </View>
+            </View>
 
             <Text style={styles.fieldLabel}>くりかえし {!canRecurring(plan) && '(Pro限定)'}</Text>
             <View style={styles.repeatRow}>
