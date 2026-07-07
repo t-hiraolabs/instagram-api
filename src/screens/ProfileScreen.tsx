@@ -131,6 +131,7 @@ export default function ProfileScreen() {
     activeAccountSlot, setActiveAccountSlot,
     brandSettings, setBrandSettings, resetBrandSettings,
     brandSettings2, setBrandSettings2, resetBrandSettings2,
+    setLoginPromptVisible,
   } = useAppStore();
 
   const activeBrandSettings = activeAccountSlot === 2 ? brandSettings2 : brandSettings;
@@ -670,9 +671,17 @@ export default function ProfileScreen() {
           <Text style={styles.helpArrow}>›</Text>
         </TouchableOpacity>
 
-        {loggedIn && (
+        {loggedIn ? (
           <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.8}>
             <Text style={styles.logoutBtnText}>ログアウト</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={styles.loginBtn}
+            onPress={() => setLoginPromptVisible(true)}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.loginBtnText}>ログイン / 新規登録</Text>
           </TouchableOpacity>
         )}
 
@@ -1159,6 +1168,14 @@ const styles = StyleSheet.create({
     borderColor: COLORS.error + '55',
   },
   logoutBtnText: { color: COLORS.error, fontSize: 14, fontWeight: '700' },
+  loginBtn: {
+    marginTop: SPACING.xl,
+    paddingVertical: SPACING.md,
+    alignItems: 'center',
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.primary,
+  },
+  loginBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
   version: { color: COLORS.textMuted, fontSize: 11, textAlign: 'center', marginTop: SPACING.lg },
   modal: { flex: 1, backgroundColor: COLORS.background },
   modalHeader: {
