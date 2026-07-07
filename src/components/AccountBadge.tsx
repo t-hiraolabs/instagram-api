@@ -36,6 +36,8 @@ export default function AccountBadge({ hideBadge }: { hideBadge?: boolean } = {}
   const activeAccountSlot = useAppStore((s) => s.activeAccountSlot);
   const setActiveAccountSlot = useAppStore((s) => s.setActiveAccountSlot);
   const activeCredentials = activeAccountSlot === 2 ? secondInstagramCredentials : instagramCredentials;
+  const resetBrandSettings = useAppStore((s) => s.resetBrandSettings);
+  const resetBrandSettings2 = useAppStore((s) => s.resetBrandSettings2);
   const authVisible = useAppStore((s) => s.loginPromptVisible);
   const setAuthVisible = useAppStore((s) => s.setLoginPromptVisible);
 
@@ -145,22 +147,30 @@ export default function AccountBadge({ hideBadge }: { hideBadge?: boolean } = {}
     ]);
   };
 
+  const doLogout = async () => {
+    // アカウント自体をログアウトするときは、連携中のInstagramアカウントもすべて解除する
+    await Promise.all([clearInstagramStorage(), clearInstagramStorage2()]);
+    setInstagramCredentials(null);
+    setSecondInstagramCredentials(null);
+    resetBrandSettings();
+    resetBrandSettings2();
+    await supabase.auth.signOut();
+  };
+
   const handleLogout = () => {
     setVisible(false);
     if (Platform.OS === 'web') {
-      if (window.confirm('ログアウトしますか？')) {
-        supabase.auth.signOut();
+      if (window.confirm('ログアウトしますか？（連携中のInstagramアカウントも解除されます）')) {
+        doLogout();
       }
       return;
     }
-    Alert.alert('ログアウト', 'ログアウトしますか？', [
+    Alert.alert('ログアウト', 'ログアウトしますか？（連携中のInstagramアカウントも解除されます）', [
       { text: 'キャンセル', style: 'cancel' },
       {
         text: 'ログアウト',
         style: 'destructive',
-        onPress: async () => {
-          await supabase.auth.signOut();
-        },
+        onPress: doLogout,
       },
     ]);
   };
