@@ -216,6 +216,9 @@ function OAuthHandler() {
     const code = params.get('code');
     if (!code) return;
 
+    // 連携が成功してコールバックが返ってきたので、画面崩れ対策用の保留フラグは不要になる
+    try { sessionStorage.removeItem('ig_connect_pending'); } catch {}
+
     const state = params.get('state') ?? '';
 
     // Instagram連携とGoogleログインは同じ ?code= を使うため区別する。
@@ -325,31 +328,21 @@ function AuthGate() {
 }
 
 export default function App() {
-  // PWA（standalone）で外部サイト（Instagram認証画面など）へ移動し、アプリスイッチャー経由で
-  // 戻ってくると画面レイアウトが崩れる不具合があり、手動でのページ再読み込みでのみ確実に直ることを
-  // 確認済み。他の対処（CSS/JS側の再計算・SafeAreaProviderの作り直し）では直らなかったため、
-  // バックグラウンドに一定時間（3秒以上）いてから復帰したときは、確実な手段として自動で再読み込みする。
+  // PWA（standalone）でInstagramへの連携画面を開くと、iOSがSafari風の別画面として
+  // 重ねて表示することがあり、閉じて戻ってきても画面レイアウトが崩れることがある。
+  // このケースはvisibilitychange/pageshowなどのブラウザイベントが期待通り発火しないため、
+  // 「連携を開始した」事実（sessionStorage）をポーリングで確認し、戻ってきたら再読み込みする。
   useEffect(() => {
     if (Platform.OS !== 'web') return;
-    let hiddenAt: number | null = null;
-    const onVisibilityChange = () => {
-      if (document.hidden) {
-        hiddenAt = Date.now();
-      } else if (hiddenAt != null && Date.now() - hiddenAt > 3000) {
+    const interval = setInterval(() => {
+      let pending = false;
+      try { pending = sessionStorage.getItem('ig_connect_pending') === '1'; } catch {}
+      if (pending && document.hasFocus()) {
+        try { sessionStorage.removeItem('ig_connect_pending'); } catch {}
         window.location.reload();
       }
-    };
-    document.addEventListener('visibilitychange', onVisibilityChange);
-    // 外部サイトへの行き来がバックグラウンド化ではなく「同一画面内の履歴移動」として扱われ、
-    // ブラウザのbfcacheからページが復元されるケースもあるため、そちらも別途検知してリロードする。
-    const onPageShow = (e: PageTransitionEvent) => {
-      if (e.persisted) window.location.reload();
-    };
-    window.addEventListener('pageshow', onPageShow);
-    return () => {
-      document.removeEventListener('visibilitychange', onVisibilityChange);
-      window.removeEventListener('pageshow', onPageShow);
-    };
+    }, 500);
+    return () => clearInterval(interval);
   }, []);
 
   return (
