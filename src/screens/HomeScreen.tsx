@@ -8,13 +8,6 @@ import AccountBadge from '../components/AccountBadge';
 import ImageGenChat, { ImageGenChatHandle } from '../components/ImageGenChat';
 import { Ionicons } from '@expo/vector-icons';
 
-const QUICK_ACTIONS: { label: string; icon: keyof typeof Ionicons.glyphMap; tab: string }[] = [
-  { label: '投稿', icon: 'camera', tab: 'Post' },
-  { label: '予約', icon: 'calendar', tab: 'Schedule' },
-  { label: '分析', icon: 'stats-chart', tab: 'Analytics' },
-  { label: '設定', icon: 'settings', tab: 'Profile' },
-];
-
 function getGreeting(): string {
   const h = new Date().getHours();
   if (h < 5) return '深夜もお疲れさまです';
@@ -137,14 +130,6 @@ export default function HomeScreen() {
           <Text style={styles.title}>AImark</Text>
           <Text style={[styles.menuCaret, menuOpen && styles.menuCaretOpen]}>▾</Text>
         </TouchableOpacity>
-        <View style={styles.quickActions}>
-          {QUICK_ACTIONS.map((a) => (
-            <TouchableOpacity key={a.label} style={styles.quickBtn} onPress={() => navigation.navigate(a.tab)} activeOpacity={0.8}>
-              <Ionicons name={a.icon} size={18} color={COLORS.textSecondary} />
-              <Text style={styles.quickLabel}>{a.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
       </View>
 
       {/* ホーム画面そのものがチャット */}
@@ -211,15 +196,6 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     transform: [{ rotate: '180deg' }],
   },
-  quickActions: {
-    flexDirection: 'row',
-    gap: SPACING.sm,
-  },
-  quickBtn: {
-    alignItems: 'center',
-    paddingHorizontal: 6,
-  },
-  quickLabel: { color: COLORS.textMuted, fontSize: 10, fontWeight: '600', marginTop: 1 },
   briefing: {
     paddingTop: SPACING.xl,
   },
