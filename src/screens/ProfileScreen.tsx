@@ -971,12 +971,12 @@ export default function ProfileScreen() {
               ))}
             </View>
 
-            <Text style={styles.fieldLabel}>過去の人気投稿を反映</Text>
+            <Text style={styles.fieldLabel}>過去の投稿の書き方の癖を反映</Text>
             <View style={styles.insightToggleRow}>
               <View style={styles.insightToggleTextWrap}>
-                <Text style={styles.insightToggleTitle}>反応が良かった投稿の傾向をAIに反映</Text>
+                <Text style={styles.insightToggleTitle}>あなたらしい文体をAIに反映</Text>
                 <Text style={styles.insightToggleDesc}>
-                  ONにすると、テーマや写真からの生成時に、連携アカウントのいいね数が多い投稿の傾向を自動で分析して文章に反映します。
+                  ONにすると、テーマや写真からの生成時に、連携アカウントの過去の投稿から語尾・口癖・絵文字の使い方などの文体を分析し、あなたらしい書き方で文章を作成します。
                 </Text>
               </View>
               <Switch

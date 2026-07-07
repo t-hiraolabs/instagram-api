@@ -70,17 +70,15 @@ export interface TopPost {
   comments: number;
 }
 
-/** 過去の人気投稿をプロンプトに差し込む文脈ブロックを作る（空なら空文字） */
+/** 過去の投稿をプロンプトに差し込み、ユーザーの文体の癖を再現させる文脈ブロックを作る（空なら空文字） */
 function topPostsContext(topPosts?: TopPost[]): string {
   if (!topPosts || topPosts.length === 0) return '';
-  const ranked = topPosts
-    .slice(0, 5)
-    .map(
-      (p, i) =>
-        `${i + 1}位（❤️${p.likes} / 💬${p.comments}）${(p.caption || '（キャプションなし）').slice(0, 200)}`
-    )
+  const samples = topPosts
+    .slice(0, 8)
+    .map((p, i) => `${i + 1}. ${(p.caption || '（キャプションなし）').slice(0, 200)}`)
     .join('\n');
-  return `\n\n【このアカウントで過去に反応が良かった投稿】\n${ranked}\n\n上記の傾向（よく反応されるテーマ・トーン・文章の長さ・絵文字や改行・ハッシュタグの使い方）を分析し、その成功パターンを今回の生成に反映してください。`;
+  return `\n\n【このアカウントの過去の投稿（文体サンプル）】\n${samples}\n\n上記から、このユーザーの書き方の癖（語尾・口癖、絵文字や改行の使い方、一人称、文章のテンポ・長さ、よく使う言い回しやキーワード）を分析し、` +
+    'いいね数の多さではなく「その人らしい書き方」を再現する形で今回の文章を書いてください。テーマや内容は今回の指示に従いつつ、口調だけをこのユーザーに寄せてください。';
 }
 
 interface GeneratePostInput {
