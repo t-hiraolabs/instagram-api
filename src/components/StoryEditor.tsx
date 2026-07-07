@@ -164,7 +164,7 @@ export default function StoryEditor({ imageUri, overlay, onChange }: Props) {
           activeOpacity={0.85}
         >
           <Text style={[styles.segText, target === 'text' && styles.segTextActive]}>
-            ✏️ 文字を動かす
+            文字を動かす
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -173,7 +173,7 @@ export default function StoryEditor({ imageUri, overlay, onChange }: Props) {
           activeOpacity={0.85}
         >
           <Text style={[styles.segText, target === 'image' && styles.segTextActive]}>
-            🖼 写真を動かす
+            写真を動かす
           </Text>
         </TouchableOpacity>
       </View>

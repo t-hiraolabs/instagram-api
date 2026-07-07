@@ -21,11 +21,11 @@ const STORY_W = (width - SPACING.md * 2) * 0.5;
 const STORY_H = STORY_W * (16 / 9);
 
 const STORY_TYPES = [
-  { key: 'announcement', label: 'お知らせ', emoji: '📢' },
-  { key: 'promotion', label: 'プロモーション', emoji: '🎁' },
-  { key: 'poll', label: 'アンケート', emoji: '📊' },
-  { key: 'quiz', label: 'クイズ', emoji: '❓' },
-  { key: 'countdown', label: 'カウントダウン', emoji: '⏳' },
+  { key: 'announcement', label: 'お知らせ' },
+  { key: 'promotion', label: 'プロモーション' },
+  { key: 'poll', label: 'アンケート' },
+  { key: 'quiz', label: 'クイズ' },
+  { key: 'countdown', label: 'カウントダウン' },
 ];
 
 export default function StoryScreen() {
@@ -75,7 +75,7 @@ export default function StoryScreen() {
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
     >
-      <Text style={styles.title}>📖 ストーリー生成</Text>
+      <Text style={styles.title}>ストーリー生成</Text>
       <Text style={styles.subtitle}>AIが魅力的なストーリーコンテンツを自動生成します</Text>
 
       {/* ストーリータイプ */}
@@ -87,7 +87,6 @@ export default function StoryScreen() {
             style={[styles.typeCard, storyType === t.key && styles.typeCardActive]}
             onPress={() => setStoryType(t.key)}
           >
-            <Text style={styles.typeEmoji}>{t.emoji}</Text>
             <Text style={[styles.typeLabel, storyType === t.key && styles.typeLabelActive]}>
               {t.label}
             </Text>
@@ -134,7 +133,7 @@ export default function StoryScreen() {
         {loading ? (
           <ActivityIndicator color="#fff" />
         ) : (
-          <Text style={styles.generateBtnText}>✨ ストーリーを生成する</Text>
+          <Text style={styles.generateBtnText}>ストーリーを生成する</Text>
         )}
       </TouchableOpacity>
 
@@ -163,7 +162,7 @@ export default function StoryScreen() {
 
           {result.suggestions.length > 0 && (
             <View style={styles.suggestCard}>
-              <Text style={styles.suggestTitle}>💡 追加提案</Text>
+              <Text style={styles.suggestTitle}>追加提案</Text>
               {result.suggestions.map((s, i) => (
                 <Text key={i} style={styles.suggestion}>・{s}</Text>
               ))}

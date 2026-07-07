@@ -10,6 +10,7 @@ import {
   RefreshControl,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
 import { useAppStore } from '../store/appStore';
 import { getInsightsSummary, InsightsResult, InsightsMedia } from '../services/insightsService';
@@ -30,9 +31,9 @@ function fmt(n: number | null | undefined): string {
 }
 
 function mediaTypeLabel(t?: string): string {
-  if (t === 'VIDEO') return '🎬 動画';
-  if (t === 'CAROUSEL_ALBUM') return '🖼 複数枚';
-  return '📷 写真';
+  if (t === 'VIDEO') return '動画';
+  if (t === 'CAROUSEL_ALBUM') return '複数枚';
+  return '写真';
 }
 
 function shortDate(iso?: string): string {
@@ -95,7 +96,6 @@ export default function AnalyticsScreen() {
   if (!canAnalytics(plan)) {
     return (
       <View style={[styles.container, styles.center, { paddingTop: insets.top }]}>
-        <Text style={styles.bigEmoji}>📊</Text>
         <Text style={styles.emptyTitle}>インサイト分析は「ビジネス」プラン限定です</Text>
         <Text style={styles.emptyDesc}>
           フォロワー数や投稿の反応（いいね・コメント・リーチ）を分析し、{'\n'}
@@ -110,7 +110,6 @@ export default function AnalyticsScreen() {
   if (!instagramCredentials?.accessToken) {
     return (
       <View style={[styles.container, styles.center, { paddingTop: insets.top }]}>
-        <Text style={styles.bigEmoji}>📊</Text>
         <Text style={styles.emptyTitle}>分析を見るにはInstagram連携が必要です</Text>
         <Text style={styles.emptyDesc}>
           「プロフィール」タブからInstagramアカウントを連携すると、{'\n'}
@@ -168,7 +167,7 @@ export default function AnalyticsScreen() {
     >
       <View style={styles.header}>
         <View>
-          <Text style={styles.title}>📊 分析</Text>
+          <Text style={styles.title}>分析</Text>
           {data?.profile?.username ? (
             <Text style={styles.subtitle}>@{data.profile.username}</Text>
           ) : null}
@@ -202,7 +201,7 @@ export default function AnalyticsScreen() {
         <>
           {firstSnapshot && (
             <View style={styles.snapshotCard}>
-              <Text style={styles.snapshotTitle}>📌 初回連携時の記録（{shortDateFull(firstSnapshot.capturedAt)}）</Text>
+              <Text style={styles.snapshotTitle}>初回連携時の記録（{shortDateFull(firstSnapshot.capturedAt)}）</Text>
               <View style={styles.snapshotRow}>
                 <View style={styles.snapshotItem}>
                   <Text style={styles.snapshotValue}>{fmt(firstSnapshot.followersCount)}</Text>
@@ -272,10 +271,10 @@ export default function AnalyticsScreen() {
               <Text style={styles.engagementLabel}>エンゲージメント率（直近{data.summary.analyzed_count}投稿の平均）</Text>
               <Text style={styles.engagementHint}>
                 {data.summary.engagement_rate >= 3
-                  ? '🔥 とても良い反応です！'
+                  ? 'とても良い反応です！'
                   : data.summary.engagement_rate >= 1
-                  ? '👍 平均的な反応です'
-                  : '💡 投稿時間やハッシュタグを見直してみましょう'}
+                  ? '平均的な反応です'
+                  : '投稿時間やハッシュタグを見直してみましょう'}
               </Text>
             </View>
           )}
@@ -283,7 +282,7 @@ export default function AnalyticsScreen() {
           {/* 過去投稿の傾向分析: 投稿タイプ別・曜日別 */}
           {(typeStats.length > 1 || dowStats.length > 1) && (
             <>
-              <Text style={styles.sectionTitle}>📈 過去投稿の傾向</Text>
+              <Text style={styles.sectionTitle}>過去投稿の傾向</Text>
               <View style={styles.breakdownCard}>
                 {typeStats.length > 1 && (
                   <>
@@ -321,7 +320,7 @@ export default function AnalyticsScreen() {
           )}
 
           {/* 人気投稿ランキング */}
-          <Text style={styles.sectionTitle}>🏆 人気の投稿（いいね順）</Text>
+          <Text style={styles.sectionTitle}>人気の投稿（いいね順）</Text>
           {ranked.length === 0 ? (
             <Text style={styles.emptyDesc}>まだ投稿がありません</Text>
           ) : (
@@ -335,7 +334,7 @@ export default function AnalyticsScreen() {
                   />
                 ) : (
                   <View style={[styles.thumb, styles.thumbPlaceholder]}>
-                    <Text style={{ fontSize: 20 }}>📷</Text>
+                    <Ionicons name="image-outline" size={20} color={COLORS.textMuted} />
                   </View>
                 )}
                 <View style={styles.postInfo}>
@@ -346,9 +345,9 @@ export default function AnalyticsScreen() {
                     {mediaTypeLabel(m.media_type)} ・ {shortDate(m.timestamp)}
                   </Text>
                   <View style={styles.postStats}>
-                    <Text style={styles.postStat}>❤️ {fmt(m.like_count ?? 0)}</Text>
-                    <Text style={styles.postStat}>💬 {fmt(m.comments_count ?? 0)}</Text>
-                    {m.reach != null && <Text style={styles.postStat}>👁 {fmt(m.reach)}</Text>}
+                    <Text style={styles.postStat}>いいね {fmt(m.like_count ?? 0)}</Text>
+                    <Text style={styles.postStat}>コメント {fmt(m.comments_count ?? 0)}</Text>
+                    {m.reach != null && <Text style={styles.postStat}>リーチ {fmt(m.reach)}</Text>}
                   </View>
                 </View>
               </View>
@@ -357,7 +356,7 @@ export default function AnalyticsScreen() {
 
           <Text style={styles.footnote}>
             {data.summary.has_reach
-              ? '👁 = リーチ（見られた人数）'
+              ? 'リーチ = 見られた人数'
               : '※ リーチは取得できる投稿のみ表示されます'}
             {'\n'}下に引っ張ると最新データに更新できます。
           </Text>
@@ -370,7 +369,6 @@ export default function AnalyticsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   center: { justifyContent: 'center', alignItems: 'center', padding: SPACING.xl },
-  bigEmoji: { fontSize: 56, marginBottom: SPACING.md },
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingHorizontal: SPACING.md, paddingTop: SPACING.md, paddingBottom: SPACING.sm,

@@ -185,7 +185,7 @@ export default function RosterScreen({ onBack }: { onBack?: () => void } = {}) {
         instagram_user_id: instagramCredentials!.userId,
         access_token: instagramCredentials!.accessToken,
       });
-      alertMsg('ストーリーを投稿しました ✅', '投稿完了');
+      alertMsg('ストーリーを投稿しました', '投稿完了');
     } catch (e) {
       alertMsg(e instanceof Error ? e.message : '投稿に失敗しました', 'エラー');
     } finally {
@@ -218,7 +218,7 @@ export default function RosterScreen({ onBack }: { onBack?: () => void } = {}) {
         instagram_user_id: instagramCredentials!.userId,
         access_token: instagramCredentials!.accessToken,
       });
-      alertMsg('予約しました ✅\n指定の日時に自動投稿されます', '予約完了');
+      alertMsg('予約しました\n指定の日時に自動投稿されます', '予約完了');
       setDateText('');
     } catch (e) {
       alertMsg((e as { message?: string })?.message || '予約に失敗しました', 'エラー');
@@ -346,7 +346,7 @@ export default function RosterScreen({ onBack }: { onBack?: () => void } = {}) {
           <ActivityIndicator color="#fff" />
         ) : (
           <Text style={styles.composeBtnText}>
-            🎨 プレビューを作成（{selectedMembers.length}人）
+            プレビューを作成（{selectedMembers.length}人）
           </Text>
         )}
       </TouchableOpacity>
@@ -357,10 +357,10 @@ export default function RosterScreen({ onBack }: { onBack?: () => void } = {}) {
 
           {instagramCredentials ? (
             <Text style={styles.igOk}>
-              ✅ {instagramCredentials.username ? `@${instagramCredentials.username}` : '連携済み'} に投稿します
+              {instagramCredentials.username ? `@${instagramCredentials.username}` : '連携済み'} に投稿します
             </Text>
           ) : (
-            <Text style={styles.igWarn}>⚠️ 右上のアイコンからInstagramを連携してください</Text>
+            <Text style={styles.igWarn}>右上のアイコンからInstagramを連携してください</Text>
           )}
 
           <TouchableOpacity
@@ -372,7 +372,7 @@ export default function RosterScreen({ onBack }: { onBack?: () => void } = {}) {
             {posting ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.postBtnText}>🚀 今すぐストーリー投稿</Text>
+              <Text style={styles.postBtnText}>今すぐストーリー投稿</Text>
             )}
           </TouchableOpacity>
 
@@ -391,7 +391,7 @@ export default function RosterScreen({ onBack }: { onBack?: () => void } = {}) {
             disabled={posting}
             activeOpacity={0.85}
           >
-            <Text style={styles.postBtnText}>📅 この日時に予約する</Text>
+            <Text style={styles.postBtnText}>この日時に予約する</Text>
           </TouchableOpacity>
 
           {posting && status ? <Text style={styles.status}>{status}</Text> : null}

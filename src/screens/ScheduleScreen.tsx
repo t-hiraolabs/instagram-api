@@ -16,6 +16,7 @@ import {
   Dimensions,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
 import { uploadPostImage, uploadBlob } from '../services/storage';
@@ -485,7 +486,7 @@ export default function ScheduleScreen() {
     if (r !== 'none' && !canRecurring(plan)) {
       alertMsg(
         'くりかえし投稿はProプラン限定です。Proにアップグレードすると、毎日・毎週・毎月・平日の自動くりかえし投稿が使えます。',
-        '⭐ Pro限定の機能です'
+        'Pro限定の機能です'
       );
       return;
     }
@@ -1119,9 +1120,9 @@ export default function ScheduleScreen() {
       setResultVisible(false);
       setModalVisible(false);
       const kind = result.posted_type === 'story' ? 'ストーリー' : 'フィード';
-      const ok = `投稿しました ✅（${kind}として投稿）\nInstagramアプリで確認してください`;
+      const ok = `投稿しました（${kind}として投稿）\nInstagramアプリで確認してください`;
       if (Platform.OS === 'web') window.alert(ok);
-      else Alert.alert('投稿完了 ✅', `${kind}として投稿しました。Instagramで確認してください`);
+      else Alert.alert('投稿完了', `${kind}として投稿しました。Instagramで確認してください`);
     } catch (e) {
       const msg = e instanceof Error ? e.message : '投稿に失敗しました';
       if (Platform.OS === 'web') window.alert('投稿失敗\n' + msg);
@@ -1243,7 +1244,7 @@ export default function ScheduleScreen() {
       setModalVisible(false);
       setFilter('draft');
       await fetchPosts();
-      alertMsg('下書きに保存しました。「下書き」タブの 📅 から予約できます', '保存しました');
+      alertMsg('下書きに保存しました。「下書き」タブから予約できます', '保存しました');
     } catch (e) {
       const msg =
         (e as { message?: string })?.message ||
@@ -1529,7 +1530,7 @@ export default function ScheduleScreen() {
 
   const editSelectRepeat = (r: RepeatOption) => {
     if (r !== 'none' && !canRecurring(plan)) {
-      alertMsg('くりかえし投稿はProプラン限定です', '⭐ Pro限定の機能です');
+      alertMsg('くりかえし投稿はProプラン限定です', 'Pro限定の機能です');
       return;
     }
     setEditRepeat(r);
@@ -1562,7 +1563,7 @@ export default function ScheduleScreen() {
         <View style={styles.postMeta}>
           <View style={[styles.typeBadge, post.type !== 'feed' && styles.typeBadgeStory]}>
             <Text style={styles.typeBadgeText}>
-              {post.type === 'feed' ? '📷 フィード' : post.type === 'reel' ? '🎬 リール' : '📖 ストーリー'}
+              {post.type === 'feed' ? 'フィード' : post.type === 'reel' ? 'リール' : 'ストーリー'}
             </Text>
           </View>
           <View
@@ -1574,17 +1575,17 @@ export default function ScheduleScreen() {
           >
             <Text style={styles.statusText}>
               {post.status === 'draft'
-                ? '📝 下書き'
+                ? '下書き'
                 : post.status === 'pending'
-                ? '⏳ 予約中'
+                ? '予約中'
                 : post.status === 'published'
-                ? '✅ 投稿済'
-                : '❌ 失敗'}
+                ? '投稿済'
+                : '失敗'}
             </Text>
           </View>
           {post.repeat && post.repeat !== 'none' && (
             <View style={styles.repeatBadge}>
-              <Text style={styles.repeatBadgeText}>🔁 {REPEAT_SHORT[post.repeat]}</Text>
+              <Text style={styles.repeatBadgeText}>{REPEAT_SHORT[post.repeat]}</Text>
             </View>
           )}
         </View>
@@ -1592,20 +1593,20 @@ export default function ScheduleScreen() {
           {post.status === 'draft' ? (
             // 下書きカードはゴミ箱のみ（その他の操作はタップして詳細から）
             <TouchableOpacity onPress={() => handleDelete(post.id)} hitSlop={8}>
-              <Text style={styles.deleteBtn}>🗑</Text>
+              <Ionicons name="trash-outline" size={16} color={COLORS.textSecondary} />
             </TouchableOpacity>
           ) : (
             <>
               <TouchableOpacity onPress={() => openDuplicate(post)} hitSlop={8}>
-                <Text style={styles.editBtn}>📄</Text>
+                <Ionicons name="copy-outline" size={16} color={COLORS.textSecondary} />
               </TouchableOpacity>
               {post.status === 'pending' && (
                 <TouchableOpacity onPress={() => openEdit(post)} hitSlop={8}>
-                  <Text style={styles.editBtn}>✏️</Text>
+                  <Ionicons name="pencil-outline" size={16} color={COLORS.textSecondary} />
                 </TouchableOpacity>
               )}
               <TouchableOpacity onPress={() => handleDelete(post.id)} hitSlop={8}>
-                <Text style={styles.deleteBtn}>🗑</Text>
+                <Ionicons name="trash-outline" size={16} color={COLORS.textSecondary} />
               </TouchableOpacity>
             </>
           )}
@@ -1623,7 +1624,7 @@ export default function ScheduleScreen() {
 
       <View style={styles.postFooter}>
         <Text style={styles.scheduleTime}>
-          {post.status === 'draft' ? '🕐 日時未定（📅で予約）' : `🕐 ${formatDate(post.scheduled_at)}`}
+          {post.status === 'draft' ? '日時未定（予約から設定）' : formatDate(post.scheduled_at)}
         </Text>
       </View>
     </TouchableOpacity>
@@ -1655,7 +1656,7 @@ export default function ScheduleScreen() {
           <Text style={styles.createMenuTitle}>何を投稿しますか？</Text>
           <View style={styles.createMenuRow}>
             <TouchableOpacity style={styles.createMenuBtn} onPress={openModal} activeOpacity={0.85}>
-              <Text style={styles.createMenuEmoji}>📷</Text>
+              <Ionicons name="image-outline" size={22} color={COLORS.text} style={styles.createMenuEmoji} />
               <Text style={styles.createMenuLabel}>フィード・ストーリー</Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -1663,7 +1664,7 @@ export default function ScheduleScreen() {
               onPress={() => setNowSub('reel')}
               activeOpacity={0.85}
             >
-              <Text style={styles.createMenuEmoji}>🎬</Text>
+              <Ionicons name="film-outline" size={22} color={COLORS.text} style={styles.createMenuEmoji} />
               <Text style={styles.createMenuLabel}>リール</Text>
             </TouchableOpacity>
           </View>
@@ -1672,7 +1673,7 @@ export default function ScheduleScreen() {
         {/* Japan best time hint */}
         <View style={styles.hintCard}>
           <Text style={styles.hintText}>
-            💡 最適な投稿時間: 平日18〜21時・12〜13時 ／ 休日11〜13時・19〜21時
+            最適な投稿時間: 平日18〜21時・12〜13時 ／ 休日11〜13時・19〜21時
           </Text>
         </View>
 
@@ -1682,14 +1683,14 @@ export default function ScheduleScreen() {
             style={[styles.filterTab, calView === 'list' && styles.filterTabActive]}
             onPress={() => setCalView('list')}
           >
-            <Text style={[styles.filterText, calView === 'list' && styles.filterTextActive]}>📋 リスト</Text>
+            <Text style={[styles.filterText, calView === 'list' && styles.filterTextActive]}>リスト</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.filterTab, calView === 'calendar' && styles.filterTabActive]}
             onPress={() => setCalView('calendar')}
           >
             <Text style={[styles.filterText, calView === 'calendar' && styles.filterTextActive]}>
-              📅 カレンダー
+              カレンダー
             </Text>
           </TouchableOpacity>
         </View>
@@ -1714,7 +1715,6 @@ export default function ScheduleScreen() {
               <ActivityIndicator color={COLORS.primary} style={{ marginTop: 60 }} />
             ) : filtered.length === 0 ? (
               <View style={styles.empty}>
-                <Text style={styles.emptyEmoji}>📭</Text>
                 <Text style={styles.emptyTitle}>まだ投稿がありません</Text>
                 <Text style={styles.emptyDesc}>今すぐ投稿も、予約投稿もここに履歴として残ります</Text>
                 <TouchableOpacity style={styles.emptyAddBtn} onPress={startNewPost}>
@@ -1829,7 +1829,7 @@ export default function ScheduleScreen() {
         <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.background }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={styles.modalHeader}>
             <TouchableOpacity onPress={handleResultClose}>
-              <Text style={styles.modalCancel}>✕ キャンセル</Text>
+              <Text style={styles.modalCancel}>キャンセル</Text>
             </TouchableOpacity>
             <Text style={styles.modalTitle}>投稿を作成</Text>
             <View style={{ width: 70 }} />
@@ -1895,7 +1895,7 @@ export default function ScheduleScreen() {
               {imageUploading ? (
                 <ActivityIndicator color={COLORS.secondary} />
               ) : (
-                <Text style={styles.aiBtnGhostText}>{feedPreviews.length > 0 ? '＋ 写真を追加' : '🖼 写真を選ぶ'}</Text>
+                <Text style={styles.aiBtnGhostText}>{feedPreviews.length > 0 ? '＋ 写真を追加' : '写真を選ぶ'}</Text>
               )}
             </TouchableOpacity>
             {feedPreviews.length > 0 && (
@@ -1905,7 +1905,7 @@ export default function ScheduleScreen() {
                 disabled={imageUploading}
                 activeOpacity={0.85}
               >
-                <Text style={styles.aiBtnGhostText}>✏️ 写真を調整する</Text>
+                <Text style={styles.aiBtnGhostText}>写真を調整する</Text>
               </TouchableOpacity>
             )}
 
@@ -1927,7 +1927,7 @@ export default function ScheduleScreen() {
                   disabled={aiLoading}
                   activeOpacity={0.85}
                 >
-                  {aiLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.aiBtnText}>📷 写真から生成</Text>}
+                  {aiLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.aiBtnText}>写真から生成</Text>}
                 </TouchableOpacity>
               )}
               <TouchableOpacity
@@ -1936,7 +1936,7 @@ export default function ScheduleScreen() {
                 disabled={aiLoading}
                 activeOpacity={0.85}
               >
-                {aiLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.aiBtnText}>✨ テーマから生成</Text>}
+                {aiLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.aiBtnText}>テーマから生成</Text>}
               </TouchableOpacity>
             </View>
 
@@ -1959,7 +1959,7 @@ export default function ScheduleScreen() {
               {aiLoading ? (
                 <ActivityIndicator color={COLORS.secondary} />
               ) : (
-                <Text style={styles.aiBtnGhostText}>✏️ 指示で書き直す</Text>
+                <Text style={styles.aiBtnGhostText}>指示で書き直す</Text>
               )}
             </TouchableOpacity>
 
@@ -2081,7 +2081,7 @@ export default function ScheduleScreen() {
               disabled={publishing || !imageUrl}
               activeOpacity={0.85}
             >
-              {publishing ? <ActivityIndicator color="#fff" /> : <Text style={styles.publishNowText}>⚡ 今すぐ投稿する</Text>}
+              {publishing ? <ActivityIndicator color="#fff" /> : <Text style={styles.publishNowText}>今すぐ投稿する</Text>}
             </TouchableOpacity>
             {!imageUrl && <Text style={styles.aiHintText}>※ 写真を選ぶと今すぐ投稿できます</Text>}
 
@@ -2090,7 +2090,7 @@ export default function ScheduleScreen() {
               onPress={() => { scheduleFromResult.current = true; setScheduleModalVisible(true); }}
               activeOpacity={0.85}
             >
-              <Text style={styles.aiBtnText}>📅 予約する</Text>
+              <Text style={styles.aiBtnText}>予約する</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -2099,7 +2099,7 @@ export default function ScheduleScreen() {
               disabled={savingDraft}
               activeOpacity={0.85}
             >
-              {savingDraft ? <ActivityIndicator color={COLORS.textSecondary} /> : <Text style={styles.draftSaveBtnText}>📝 下書き保存</Text>}
+              {savingDraft ? <ActivityIndicator color={COLORS.textSecondary} /> : <Text style={styles.draftSaveBtnText}>下書き保存</Text>}
             </TouchableOpacity>
 
             <Text style={[styles.sectionDivider, { marginTop: SPACING.lg }]}>テンプレート</Text>
@@ -2109,7 +2109,7 @@ export default function ScheduleScreen() {
               disabled={savingTemplate}
               activeOpacity={0.85}
             >
-              {savingTemplate ? <ActivityIndicator color={COLORS.secondary} /> : <Text style={styles.templateSaveText}>💾 テンプレートとして保存</Text>}
+              {savingTemplate ? <ActivityIndicator color={COLORS.secondary} /> : <Text style={styles.templateSaveText}>テンプレートとして保存</Text>}
             </TouchableOpacity>
             <Text style={styles.publishNowHint}>
               ※ 文章・ハッシュタグ・画像をこの端末に保存して、次回そのまま使い回せます
@@ -2149,11 +2149,11 @@ export default function ScheduleScreen() {
               <Text style={styles.modalTitle}>投稿詳細</Text>
               {detailPost.status === 'draft' ? (
                 <TouchableOpacity onPress={() => openEditDraftInResult(detailPost)}>
-                  <Text style={[styles.modalCancel, { color: COLORS.primary }]}>✏️ 編集</Text>
+                  <Text style={[styles.modalCancel, { color: COLORS.primary }]}>編集</Text>
                 </TouchableOpacity>
               ) : (
                 <TouchableOpacity onPress={() => { setDetailPost(null); openDuplicate(detailPost); }}>
-                  <Text style={[styles.modalCancel, { color: COLORS.primary }]}>📄 複製</Text>
+                  <Text style={[styles.modalCancel, { color: COLORS.primary }]}>複製</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -2210,12 +2210,12 @@ export default function ScheduleScreen() {
               <View style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.md, flexWrap: 'wrap' }}>
                 <View style={[styles.typeBadge, detailPost.type !== 'feed' && styles.typeBadgeStory]}>
                   <Text style={styles.typeBadgeText}>
-                    {detailPost.type === 'feed' ? '📷 フィード' : detailPost.type === 'reel' ? '🎬 リール' : '📖 ストーリー'}
+                    {detailPost.type === 'feed' ? 'フィード' : detailPost.type === 'reel' ? 'リール' : 'ストーリー'}
                   </Text>
                 </View>
                 <View style={[styles.statusBadge, detailPost.status === 'published' && styles.statusPublished, detailPost.status === 'failed' && styles.statusFailed]}>
                   <Text style={styles.statusText}>
-                    {detailPost.status === 'draft' ? '📝 下書き' : detailPost.status === 'pending' ? '⏳ 予約中' : detailPost.status === 'published' ? '✅ 投稿済' : '❌ 失敗'}
+                    {detailPost.status === 'draft' ? '下書き' : detailPost.status === 'pending' ? '予約中' : detailPost.status === 'published' ? '投稿済' : '失敗'}
                   </Text>
                 </View>
               </View>
@@ -2242,7 +2242,7 @@ export default function ScheduleScreen() {
               {detailPost.status === 'published' && (
                 <View style={{ backgroundColor: COLORS.surface, borderRadius: RADIUS.md, padding: SPACING.md, marginTop: SPACING.lg, borderWidth: 1, borderColor: COLORS.border }}>
                   <Text style={{ color: COLORS.textSecondary, fontSize: 13, lineHeight: 19 }}>
-                    ⚠️ Instagram APIの仕様上、アプリから Instagram 上の投稿を削除することはできません。{'\n'}
+                    Instagram APIの仕様上、アプリから Instagram 上の投稿を削除することはできません。{'\n'}
                     Instagram 本体から手動で削除してください。{'\n'}
                     下の「削除」はアプリ内の履歴のみを削除します。
                   </Text>
@@ -2255,7 +2255,7 @@ export default function ScheduleScreen() {
                     style={[styles.modalSaveBtn, { backgroundColor: COLORS.primary, marginTop: SPACING.md }]}
                     onPress={() => { const p = detailPost; setDetailPost(null); openScheduleDraft(p); }}
                   >
-                    <Text style={styles.modalSaveBtnText}>📅 予約する</Text>
+                    <Text style={styles.modalSaveBtnText}>予約する</Text>
                   </TouchableOpacity>
                 </>
               )}
@@ -2269,7 +2269,7 @@ export default function ScheduleScreen() {
                 }}
               >
                 <Text style={styles.modalSaveBtnText}>
-                  {detailPost.status === 'published' ? '🗑 履歴から削除する' : '🗑 削除する'}
+                  {detailPost.status === 'published' ? '履歴から削除する' : '削除する'}
                 </Text>
               </TouchableOpacity>
             </ScrollView>
@@ -2302,7 +2302,7 @@ export default function ScheduleScreen() {
                 activeOpacity={0.85}
               >
                 <Text style={styles.templateOpenBtnText}>
-                  📁 テンプレートから選ぶ（{templates.length}）
+                  テンプレートから選ぶ（{templates.length}）
                 </Text>
               </TouchableOpacity>
             )}
@@ -2316,7 +2316,7 @@ export default function ScheduleScreen() {
                   onPress={() => setType(t)}
                 >
                   <Text style={[styles.typeBtnText, type === t && styles.typeBtnTextActive]}>
-                    {t === 'feed' ? '📷 フィード' : '📖 ストーリー'}
+                    {t === 'feed' ? 'フィード' : 'ストーリー'}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -2342,7 +2342,7 @@ export default function ScheduleScreen() {
                     </View>
                   ) : (
                     <View style={styles.imagePlaceholder}>
-                      <Text style={styles.imagePlaceholderIcon}>🖼</Text>
+                      <Ionicons name="image-outline" size={28} color={COLORS.textSecondary} />
                       <Text style={styles.imagePlaceholderText}>タップして写真を選ぶ（複数OK）</Text>
                     </View>
                   )}
@@ -2360,7 +2360,7 @@ export default function ScheduleScreen() {
                     disabled={imageUploading}
                     activeOpacity={0.85}
                   >
-                    <Text style={styles.aiBtnGhostText}>✏️ 写真を調整する</Text>
+                    <Text style={styles.aiBtnGhostText}>写真を調整する</Text>
                   </TouchableOpacity>
                 )}
 
@@ -2371,7 +2371,7 @@ export default function ScheduleScreen() {
                   onPress={openImgChat}
                   activeOpacity={0.85}
                 >
-                  <Text style={styles.aiBtnText}>🎨 AIで画像を作る（チャット）</Text>
+                  <Text style={styles.aiBtnText}>AIで画像を作る（チャット）</Text>
                 </TouchableOpacity>
               </>
             ) : (
@@ -2381,11 +2381,11 @@ export default function ScheduleScreen() {
                 <TouchableOpacity style={styles.imagePickerBox} onPress={pickStoryMedia} activeOpacity={0.85}>
                   {storyMediaType ? (
                     <Text style={styles.imageReadyText}>
-                      ✅ {storyMediaType === 'video' ? '動画' : '写真'}を選びました（タップで変更）
+                      {storyMediaType === 'video' ? '動画' : '写真'}を選びました（タップで変更）
                     </Text>
                   ) : (
                     <View style={styles.imagePlaceholder}>
-                      <Text style={styles.imagePlaceholderIcon}>🖼</Text>
+                      <Ionicons name="image-outline" size={28} color={COLORS.textSecondary} />
                       <Text style={styles.imagePlaceholderText}>タップして写真/動画を選ぶ</Text>
                     </View>
                   )}
@@ -2393,7 +2393,7 @@ export default function ScheduleScreen() {
 
                 {/* AI生成カード（フィードと同じ構成） */}
                 <View style={styles.aiCard}>
-                  <Text style={styles.aiCardTitle}>✨ AIで見出しを作る</Text>
+                  <Text style={styles.aiCardTitle}>AIで見出しを作る</Text>
 
                   <Text style={styles.fieldLabel}>AIへの指示（任意・どちらにも反映）</Text>
                   <TextInput
@@ -2414,13 +2414,13 @@ export default function ScheduleScreen() {
                       {aiLoading ? (
                         <ActivityIndicator color={COLORS.secondary} />
                       ) : (
-                        <Text style={styles.aiBtnGhostText}>✏️ 今の見出しを指示で書き直す</Text>
+                        <Text style={styles.aiBtnGhostText}>今の見出しを指示で書き直す</Text>
                       )}
                     </TouchableOpacity>
                   ) : null}
 
                   <View style={styles.aiMethod}>
-                    <Text style={styles.aiMethodTitle}>📝 テーマから作る</Text>
+                    <Text style={styles.aiMethodTitle}>テーマから作る</Text>
                     <TextInput
                       style={styles.input}
                       value={storyVideoTheme}
@@ -2437,13 +2437,13 @@ export default function ScheduleScreen() {
                       {aiLoading ? (
                         <ActivityIndicator color="#fff" />
                       ) : (
-                        <Text style={styles.aiBtnText}>✨ テーマから作る</Text>
+                        <Text style={styles.aiBtnText}>テーマから作る</Text>
                       )}
                     </TouchableOpacity>
                   </View>
 
                   <View style={styles.aiMethod}>
-                    <Text style={styles.aiMethodTitle}>📷 写真/動画から作る</Text>
+                    <Text style={styles.aiMethodTitle}>写真/動画から作る</Text>
                     <Text style={styles.aiHintText}>選んだメディアを見て見出しを作ります</Text>
                     <TouchableOpacity
                       style={[styles.aiBtn, aiLoading && styles.publishNowBtnDisabled]}
@@ -2451,7 +2451,7 @@ export default function ScheduleScreen() {
                       disabled={aiLoading}
                       activeOpacity={0.85}
                     >
-                      <Text style={styles.aiBtnText}>📷 選んだメディアから作る</Text>
+                      <Text style={styles.aiBtnText}>選んだメディアから作る</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -2506,7 +2506,7 @@ export default function ScheduleScreen() {
                     {storyVideoText.trim() ? (
                       <>
                         <Text style={styles.aiHintText}>
-                          👆 文字をドラッグで移動 ／ 二本指(または＋−)で拡大縮小
+                          文字をドラッグで移動 ／ 二本指(または＋−)で拡大縮小
                         </Text>
                         <View style={styles.typeRow}>
                           <TouchableOpacity
@@ -2552,13 +2552,13 @@ export default function ScheduleScreen() {
                 {instagramCredentials ? (
                   <View style={styles.igConnectedBox}>
                     <Text style={styles.igConnectedText}>
-                      ✅ {instagramCredentials.username ? `@${instagramCredentials.username}` : '連携済み'} に投稿します
+                      {instagramCredentials.username ? `@${instagramCredentials.username}` : '連携済み'} に投稿します
                     </Text>
                   </View>
                 ) : (
                   <View style={styles.igWarnBox}>
                     <Text style={styles.igWarnText}>
-                      ⚠️ 未連携です。右上のアイコンからInstagramを連携してください
+                      未連携です。右上のアイコンからInstagramを連携してください
                     </Text>
                   </View>
                 )}
@@ -2575,7 +2575,7 @@ export default function ScheduleScreen() {
                   {publishing ? (
                     <ActivityIndicator color="#fff" />
                   ) : (
-                    <Text style={styles.publishNowText}>🚀 今すぐ投稿する</Text>
+                    <Text style={styles.publishNowText}>今すぐ投稿する</Text>
                   )}
                 </TouchableOpacity>
                 <Text style={styles.publishNowHint}>※ すぐにInstagramへ投稿します（履歴に残ります）</Text>
@@ -2587,7 +2587,7 @@ export default function ScheduleScreen() {
                   onPress={() => setScheduleModalVisible(true)}
                   activeOpacity={0.85}
                 >
-                  <Text style={styles.publishNowText}>📅 予約する</Text>
+                  <Text style={styles.publishNowText}>予約する</Text>
                 </TouchableOpacity>
                 <Text style={styles.publishNowHint}>※ 次の画面で日時を選びます</Text>
 
@@ -2602,7 +2602,7 @@ export default function ScheduleScreen() {
                   {savingDraft ? (
                     <ActivityIndicator color={COLORS.primary} />
                   ) : (
-                    <Text style={styles.draftSaveText}>📝 下書きに保存</Text>
+                    <Text style={styles.draftSaveText}>下書きに保存</Text>
                   )}
                 </TouchableOpacity>
                 <Text style={styles.publishNowHint}>
@@ -2647,10 +2647,10 @@ export default function ScheduleScreen() {
             {(editingPost ?? editDuplicateSource) && (
               <Text style={styles.editKind}>
                 {(editingPost ?? editDuplicateSource)!.type === 'feed'
-                  ? '📷 フィード投稿'
+                  ? 'フィード投稿'
                   : (editingPost ?? editDuplicateSource)!.type === 'reel'
-                  ? '🎬 リール'
-                  : '📖 ストーリー'}
+                  ? 'リール'
+                  : 'ストーリー'}
                 ／ 画像・動画は変更できません
               </Text>
             )}
@@ -2688,7 +2688,7 @@ export default function ScheduleScreen() {
               autoCapitalize="none"
             />
 
-            <Text style={styles.fieldLabel}>くりかえし {!canRecurring(plan) && '⭐Pro'}</Text>
+            <Text style={styles.fieldLabel}>くりかえし {!canRecurring(plan) && '(Pro限定)'}</Text>
             <View style={styles.repeatRow}>
               {REPEAT_OPTIONS.map((opt) => {
                 const active = editRepeat === opt.key;
@@ -2701,7 +2701,7 @@ export default function ScheduleScreen() {
                   >
                     <Text style={[styles.repeatBtnText, active && styles.repeatBtnTextActive]}>
                       {opt.label}
-                      {locked ? ' 🔒' : ''}
+                      {locked ? ' (Pro)' : ''}
                     </Text>
                   </TouchableOpacity>
                 );
@@ -2717,7 +2717,7 @@ export default function ScheduleScreen() {
               {editSaving ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={styles.publishNowText}>💾 変更を保存する</Text>
+                <Text style={styles.publishNowText}>変更を保存する</Text>
               )}
             </TouchableOpacity>
           </ScrollView>
@@ -2821,7 +2821,7 @@ export default function ScheduleScreen() {
               </View>
             </View>
 
-            <Text style={styles.fieldLabel}>くりかえし {!canRecurring(plan) && '⭐Pro'}</Text>
+            <Text style={styles.fieldLabel}>くりかえし {!canRecurring(plan) && '(Pro限定)'}</Text>
             <View style={styles.repeatRow}>
               {REPEAT_OPTIONS.map((opt) => {
                 const active = repeat === opt.key;
@@ -2834,7 +2834,7 @@ export default function ScheduleScreen() {
                   >
                     <Text style={[styles.repeatBtnText, active && styles.repeatBtnTextActive]}>
                       {opt.label}
-                      {locked ? ' 🔒' : ''}
+                      {locked ? ' (Pro)' : ''}
                     </Text>
                   </TouchableOpacity>
                 );
@@ -2853,7 +2853,7 @@ export default function ScheduleScreen() {
               {saving ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={styles.publishNowText}>📅 この日時で予約する</Text>
+                <Text style={styles.publishNowText}>この日時で予約する</Text>
               )}
             </TouchableOpacity>
           </ScrollView>
@@ -2873,7 +2873,6 @@ export default function ScheduleScreen() {
           <ScrollView style={styles.modalBody} keyboardShouldPersistTaps="handled">
             {templates.length === 0 ? (
               <View style={styles.empty}>
-                <Text style={styles.emptyEmoji}>📁</Text>
                 <Text style={styles.emptyTitle}>テンプレートはありません</Text>
                 <Text style={styles.emptyDesc}>
                   投稿作成画面で「テンプレートとして保存」すると、ここに表示されます
@@ -2888,7 +2887,7 @@ export default function ScheduleScreen() {
                     activeOpacity={0.8}
                   >
                     <Text style={styles.templateName}>
-                      {t.type === 'story' ? '📖' : '📷'} {t.name}
+                      {t.name}
                     </Text>
                     {t.caption ? (
                       <Text style={styles.templateCaption} numberOfLines={2}>
@@ -2906,7 +2905,7 @@ export default function ScheduleScreen() {
                       <Text style={styles.templateUseText}>使う →</Text>
                     </TouchableOpacity>
                     <TouchableOpacity onPress={() => handleDeleteTemplate(t.id)} hitSlop={8}>
-                      <Text style={styles.deleteBtn}>🗑</Text>
+                      <Ionicons name="trash-outline" size={16} color={COLORS.textSecondary} />
                     </TouchableOpacity>
                   </View>
                 </View>

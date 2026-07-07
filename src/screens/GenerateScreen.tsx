@@ -155,7 +155,7 @@ export default function GenerateScreen() {
   const copyResult = () => {
     if (!result) return;
     Clipboard.setString(result.caption + '\n\n' + result.hashtags.join(' '));
-    alertMsg('コピーしました ✅');
+    alertMsg('コピーしました');
   };
 
   // ハッシュタグを1枠ずつ管理する（チップ式）
@@ -245,7 +245,7 @@ export default function GenerateScreen() {
             onPress={() => { setMode(m); setResult(null); }}
           >
             <Text style={[styles.modeBtnText, mode === m && styles.modeBtnTextActive]}>
-              {m === 'photo' ? '📷 写真から生成' : '✏️ テキストで生成'}
+              {m === 'photo' ? '写真から生成' : 'テキストで生成'}
             </Text>
           </TouchableOpacity>
         ))}
@@ -259,7 +259,6 @@ export default function GenerateScreen() {
               <Image source={{ uri: selectedImage.uri }} style={styles.imagePreview} resizeMode="cover" />
             ) : (
               <View style={styles.imagePlaceholder}>
-                <Text style={styles.imagePlaceholderEmoji}>📸</Text>
                 <Text style={styles.imagePlaceholderText}>タップして写真を選択</Text>
                 <Text style={styles.imagePlaceholderSub}>AIが写真を分析してキャプションを生成します</Text>
               </View>
@@ -363,7 +362,7 @@ export default function GenerateScreen() {
             <Text style={styles.generateBtnText}>  AI生成中...</Text>
           </View>
         ) : (
-          <Text style={styles.generateBtnText}>✨ AIで生成する</Text>
+          <Text style={styles.generateBtnText}>AIで生成する</Text>
         )}
       </TouchableOpacity>
 
@@ -373,7 +372,7 @@ export default function GenerateScreen() {
           <View style={styles.resultHeader}>
             <Text style={styles.resultTitle}>生成結果</Text>
             <TouchableOpacity onPress={copyResult} style={styles.copyBtn}>
-              <Text style={styles.copyBtnText}>📋 コピー</Text>
+              <Text style={styles.copyBtnText}>コピー</Text>
             </TouchableOpacity>
           </View>
 
@@ -420,7 +419,7 @@ export default function GenerateScreen() {
 
           {result.suggestions.length > 0 && (
             <>
-              <Text style={styles.resultLabel}>💡 アドバイス</Text>
+              <Text style={styles.resultLabel}>アドバイス</Text>
               {result.suggestions.map((s, i) => (
                 <Text key={i} style={styles.suggestion}>・{s}</Text>
               ))}
@@ -429,10 +428,10 @@ export default function GenerateScreen() {
 
           <TouchableOpacity
             style={styles.scheduleBtn}
-            onPress={() => alertMsg('スケジュール画面で予約投稿に追加できます', '下書き保存 ✅')}
+            onPress={() => alertMsg('スケジュール画面で予約投稿に追加できます', '下書き保存')}
             activeOpacity={0.8}
           >
-            <Text style={styles.scheduleBtnText}>📅 予約投稿に追加 →</Text>
+            <Text style={styles.scheduleBtnText}>予約投稿に追加 →</Text>
           </TouchableOpacity>
         </View>
       )}

@@ -6,20 +6,21 @@ import { COLORS, SPACING, RADIUS } from '../utils/theme';
 import { useAppStore } from '../store/appStore';
 import AccountBadge from '../components/AccountBadge';
 import ImageGenChat, { ImageGenChatHandle } from '../components/ImageGenChat';
+import { Ionicons } from '@expo/vector-icons';
 
-const QUICK_ACTIONS = [
-  { label: '投稿', emoji: '📸', tab: 'Post' },
-  { label: '予約', emoji: '📅', tab: 'Schedule' },
-  { label: '分析', emoji: '📊', tab: 'Analytics' },
-  { label: '設定', emoji: '⚙️', tab: 'Profile' },
+const QUICK_ACTIONS: { label: string; icon: keyof typeof Ionicons.glyphMap; tab: string }[] = [
+  { label: '投稿', icon: 'camera', tab: 'Post' },
+  { label: '予約', icon: 'calendar', tab: 'Schedule' },
+  { label: '分析', icon: 'stats-chart', tab: 'Analytics' },
+  { label: '設定', icon: 'settings', tab: 'Profile' },
 ];
 
 function getGreeting(): string {
   const h = new Date().getHours();
-  if (h < 5) return '深夜もお疲れさまです 🌙';
-  if (h < 10) return 'おはようございます ☀️';
-  if (h < 17) return 'こんにちは 👋';
-  return 'こんばんは 🌆';
+  if (h < 5) return '深夜もお疲れさまです';
+  if (h < 10) return 'おはようございます';
+  if (h < 17) return 'こんにちは';
+  return 'こんばんは';
 }
 
 // 業種を問わず使える、季節・曜日で回転するおすすめネタ（AIを呼ばず無料で出せるもの）
@@ -40,11 +41,11 @@ function getTodaysIdeas(): string[] {
   return [0, 1, 2].map((i) => IDEA_POOL[(dayOfYear + i) % IDEA_POOL.length]);
 }
 
-function getTodoItems(): { key: string; label: string; emoji: string }[] {
+function getTodoItems(): { key: string; label: string; icon: keyof typeof Ionicons.glyphMap }[] {
   return [
-    { key: 'story', label: 'ストーリー', emoji: '📖' },
-    { key: 'dm', label: 'DM返信', emoji: '💬' },
-    { key: 'analytics', label: '分析', emoji: '📊' },
+    { key: 'story', label: 'ストーリー', icon: 'book' },
+    { key: 'dm', label: 'DM返信', icon: 'chatbubble' },
+    { key: 'analytics', label: '分析', icon: 'stats-chart' },
   ];
 }
 
@@ -115,7 +116,8 @@ export default function HomeScreen() {
       <View style={styles.chipRow}>
         {todoItems.map((item) => (
           <TouchableOpacity key={item.key} style={styles.todoChip} onPress={() => goTodo(item.key)} activeOpacity={0.8}>
-            <Text style={styles.todoChipText}>{item.emoji} {item.label}</Text>
+            <Ionicons name={item.icon} size={13} color={COLORS.textSecondary} />
+            <Text style={styles.todoChipText}>{item.label}</Text>
           </TouchableOpacity>
         ))}
       </View>
@@ -138,7 +140,7 @@ export default function HomeScreen() {
         <View style={styles.quickActions}>
           {QUICK_ACTIONS.map((a) => (
             <TouchableOpacity key={a.label} style={styles.quickBtn} onPress={() => navigation.navigate(a.tab)} activeOpacity={0.8}>
-              <Text style={styles.quickEmoji}>{a.emoji}</Text>
+              <Ionicons name={a.icon} size={18} color={COLORS.textSecondary} />
               <Text style={styles.quickLabel}>{a.label}</Text>
             </TouchableOpacity>
           ))}
@@ -217,7 +219,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 6,
   },
-  quickEmoji: { fontSize: 18 },
   quickLabel: { color: COLORS.textMuted, fontSize: 10, fontWeight: '600', marginTop: 1 },
   briefing: {
     paddingTop: SPACING.xl,
@@ -272,6 +273,9 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   todoChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     backgroundColor: COLORS.surface,
     borderRadius: RADIUS.full,
     paddingHorizontal: SPACING.md,

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import {
   View,
   Text,
@@ -167,7 +168,7 @@ export default function ProfileScreen() {
     const params = new URLSearchParams(window.location.search);
     const u = params.get('upgrade');
     if (u === 'success') {
-      window.alert('🎉 Proへのアップグレードが完了しました！反映に少し時間がかかる場合があります。');
+      window.alert('Proへのアップグレードが完了しました！反映に少し時間がかかる場合があります。');
       setTimeout(() => getMyPlan().then(setCurrentPlan).catch(() => {}), 1500);
       window.history.replaceState({}, '', window.location.pathname);
     } else if (u === 'cancel') {
@@ -445,7 +446,7 @@ export default function ProfileScreen() {
         targetAudience: s.targetAudience || p.targetAudience,
         tone: s.tone || p.tone,
       }));
-      Alert.alert('自動生成しました ✨', '内容を確認して「保存」を押してください');
+      Alert.alert('自動生成しました', '内容を確認して「保存」を押してください');
     } catch {
       Alert.alert('エラー', 'ブランドの自動生成に失敗しました');
     } finally {
@@ -466,7 +467,7 @@ export default function ProfileScreen() {
       await save(brandLocalKey(igUserId), JSON.stringify(draftBrand));
       await saveBrandSettingsToDb(draftBrand, igUserId).catch(() => {});
       setBrandModalVisible(false);
-      Alert.alert('保存しました ✅', 'ブランド設定を更新しました');
+      Alert.alert('保存しました', 'ブランド設定を更新しました');
     } catch {
       Alert.alert('エラー', '保存に失敗しました');
     } finally {
@@ -486,7 +487,7 @@ export default function ProfileScreen() {
       await saveBrandSettingsToDb({ ...DEFAULT_BRAND_SETTINGS }, igUserId).catch(() => {});
       setBrandModalVisible(false);
       if (Platform.OS === 'web') window.alert('ブランド設定をリセットしました');
-      else Alert.alert('リセットしました ✅', 'ブランド設定を初期状態に戻しました');
+      else Alert.alert('リセットしました', 'ブランド設定を初期状態に戻しました');
     } catch {
       if (Platform.OS === 'web') window.alert('リセットに失敗しました');
       else Alert.alert('エラー', 'リセットに失敗しました');
@@ -618,7 +619,7 @@ export default function ProfileScreen() {
             {isConnected && instagramCredentials.profilePictureUrl ? (
               <Image source={{ uri: instagramCredentials.profilePictureUrl }} style={styles.avatarImg} />
             ) : (
-              <Text style={styles.avatarText}>{isConnected ? '📷' : '👤'}</Text>
+              <Ionicons name={isConnected ? 'camera' : 'person'} size={20} color={COLORS.textSecondary} />
             )}
           </View>
           <View style={styles.accountInfo}>
@@ -664,7 +665,7 @@ export default function ProfileScreen() {
               {isConnected2 && secondInstagramCredentials!.profilePictureUrl ? (
                 <Image source={{ uri: secondInstagramCredentials!.profilePictureUrl }} style={styles.avatarImg} />
               ) : (
-                <Text style={styles.avatarText}>{isConnected2 ? '📷' : '➕'}</Text>
+                <Ionicons name={isConnected2 ? 'camera' : 'add'} size={20} color={COLORS.textSecondary} />
               )}
             </View>
             <View style={styles.accountInfo}>
@@ -707,7 +708,7 @@ export default function ProfileScreen() {
               {isConnected3 && thirdInstagramCredentials!.profilePictureUrl ? (
                 <Image source={{ uri: thirdInstagramCredentials!.profilePictureUrl }} style={styles.avatarImg} />
               ) : (
-                <Text style={styles.avatarText}>{isConnected3 ? '📷' : '➕'}</Text>
+                <Ionicons name={isConnected3 ? 'camera' : 'add'} size={20} color={COLORS.textSecondary} />
               )}
             </View>
             <View style={styles.accountInfo}>
@@ -784,7 +785,7 @@ export default function ProfileScreen() {
               <Text style={[styles.planName, { color: plan.color }]}>{plan.name}</Text>
               <Text style={styles.planPrice}>{plan.price}</Text>
               {plan.features.map((f) => (
-                <Text key={f} style={styles.planFeature}>✓ {f}</Text>
+                <Text key={f} style={styles.planFeature}>{f}</Text>
               ))}
               {plan.paid && PLAN_RANK[plan.id] > PLAN_RANK[currentPlan] && (
                 <TouchableOpacity
@@ -807,14 +808,14 @@ export default function ProfileScreen() {
         {/* Help */}
         <Text style={styles.sectionTitle}>ヘルプ</Text>
         {[
-          { label: 'AIの使い方ガイド', emoji: '📖', action: () => Alert.alert('ガイド', 'AI生成タブで写真を選択するか、テーマを入力してAIに投稿を生成させましょう。業種を設定するとより精度が上がります。') },
-          { label: 'ハッシュタグについて', emoji: '#️⃣', action: () => Alert.alert('ハッシュタグ', '日本のInstagramではハッシュタグ検索がグローバル平均の3倍！15〜20個のタグを使い、人気タグとニッチタグをバランスよく組み合わせましょう。') },
-          { label: '最適な投稿時間', emoji: '⏰', action: () => Alert.alert('投稿時間', '平日: 12〜13時 / 18〜21時\n休日: 11〜13時 / 19〜21時\n\nこの時間帯は日本のInstagramユーザーのアクティブ率が最も高くなります。') },
-          { label: 'お問い合わせ', emoji: '💬', action: () => Alert.alert('お問い合わせ', 'support@aimark.jp までご連絡ください') },
-          { label: 'プライバシーポリシー', emoji: '🔒', action: () => { if (Platform.OS === 'web') { window.open('/privacy', '_blank'); } else { Alert.alert('プライバシーポリシー', 'https://instagram-api-alpha.vercel.app/privacy'); } } },
+          { label: 'AIの使い方ガイド', icon: 'book-outline' as const, action: () => Alert.alert('ガイド', 'AI生成タブで写真を選択するか、テーマを入力してAIに投稿を生成させましょう。業種を設定するとより精度が上がります。') },
+          { label: 'ハッシュタグについて', icon: 'pricetag-outline' as const, action: () => Alert.alert('ハッシュタグ', '日本のInstagramではハッシュタグ検索がグローバル平均の3倍！15〜20個のタグを使い、人気タグとニッチタグをバランスよく組み合わせましょう。') },
+          { label: '最適な投稿時間', icon: 'time-outline' as const, action: () => Alert.alert('投稿時間', '平日: 12〜13時 / 18〜21時\n休日: 11〜13時 / 19〜21時\n\nこの時間帯は日本のInstagramユーザーのアクティブ率が最も高くなります。') },
+          { label: 'お問い合わせ', icon: 'chatbubble-outline' as const, action: () => Alert.alert('お問い合わせ', 'support@aimark.jp までご連絡ください') },
+          { label: 'プライバシーポリシー', icon: 'lock-closed-outline' as const, action: () => { if (Platform.OS === 'web') { window.open('/privacy', '_blank'); } else { Alert.alert('プライバシーポリシー', 'https://instagram-api-alpha.vercel.app/privacy'); } } },
         ].map((item) => (
           <TouchableOpacity key={item.label} style={styles.helpRow} onPress={item.action} activeOpacity={0.7}>
-            <Text style={styles.helpEmoji}>{item.emoji}</Text>
+            <Ionicons name={item.icon} size={18} color={COLORS.textSecondary} style={styles.helpEmoji} />
             <Text style={styles.helpLabel}>{item.label}</Text>
             <Text style={styles.helpArrow}>›</Text>
           </TouchableOpacity>
@@ -823,7 +824,7 @@ export default function ProfileScreen() {
         {/* 設定セクション */}
         <Text style={styles.sectionTitle}>設定</Text>
         <TouchableOpacity style={styles.helpRow} onPress={() => setSettingsVisible(true)} activeOpacity={0.7}>
-          <Text style={styles.helpEmoji}>⚙️</Text>
+          <Ionicons name="settings-outline" size={18} color={COLORS.textSecondary} style={styles.helpEmoji} />
           <Text style={styles.helpLabel}>設定</Text>
           <Text style={styles.helpArrow}>›</Text>
         </TouchableOpacity>
@@ -850,7 +851,7 @@ export default function ProfileScreen() {
         <ScrollView>
           <Text style={[styles.sectionTitle, { marginTop: SPACING.md }]}>設定項目</Text>
           <TouchableOpacity style={styles.helpRow} onPress={() => setNotifVisible(true)} activeOpacity={0.7}>
-            <Text style={styles.helpEmoji}>🔔</Text>
+            <Ionicons name="notifications-outline" size={18} color={COLORS.textSecondary} style={styles.helpEmoji} />
             <Text style={styles.helpLabel}>通知</Text>
             <Text style={styles.helpArrow}>›</Text>
           </TouchableOpacity>
@@ -971,7 +972,7 @@ export default function ProfileScreen() {
             </View>
 
             <Text style={styles.fieldLabel}>
-              過去の人気投稿を反映 {!canAnalytics(currentPlan) && '⭐ビジネス'}
+              過去の人気投稿を反映 {!canAnalytics(currentPlan) && '（ビジネス）'}
             </Text>
             <View style={styles.insightToggleRow}>
               <View style={styles.insightToggleTextWrap}>
@@ -995,7 +996,7 @@ export default function ProfileScreen() {
 
             <View style={styles.brandTip}>
               <Text style={styles.brandTipText}>
-                💡 ブランド設定を入力するとAIが自動的に業種やブランドに合わせた投稿を生成します
+                ブランド設定を入力するとAIが自動的に業種やブランドに合わせた投稿を生成します
               </Text>
             </View>
 
@@ -1006,7 +1007,7 @@ export default function ProfileScreen() {
               activeOpacity={0.85}
             >
               <Text style={styles.autoBrandText}>
-                {saving ? '生成中...' : '✨ AIで投稿を分析して自動入力'}
+                {saving ? '生成中...' : 'AIで投稿を分析して自動入力'}
               </Text>
             </TouchableOpacity>
             <Text style={styles.resetBrandHint}>
@@ -1019,7 +1020,7 @@ export default function ProfileScreen() {
               disabled={saving}
               activeOpacity={0.85}
             >
-              <Text style={styles.resetBrandText}>🗑 ブランド設定をリセット</Text>
+              <Text style={styles.resetBrandText}>ブランド設定をリセット</Text>
             </TouchableOpacity>
             <Text style={styles.resetBrandHint}>
               ※ すべての項目を初期状態に戻します（この端末の保存データも削除されます）
@@ -1091,7 +1092,7 @@ export default function ProfileScreen() {
                       style={styles.menuItem}
                       onPress={() => { setActiveAccountSlot(slot); setAccountMenu(null); }}
                     >
-                      <Text style={styles.menuItemText}>✅ このアカウントに切り替える</Text>
+                      <Text style={styles.menuItemText}>このアカウントに切り替える</Text>
                     </TouchableOpacity>
                   )}
                   {isActive && (
@@ -1106,7 +1107,7 @@ export default function ProfileScreen() {
                       else handleDisconnect();
                     }}
                   >
-                    <Text style={[styles.menuItemText, { color: COLORS.error }]}>🔌 連携を解除する</Text>
+                    <Text style={[styles.menuItemText, { color: COLORS.error }]}>連携を解除する</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={styles.menuCancel} onPress={() => setAccountMenu(null)}>
                     <Text style={styles.menuCancelText}>キャンセル</Text>

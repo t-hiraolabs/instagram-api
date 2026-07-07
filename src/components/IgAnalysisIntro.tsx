@@ -6,6 +6,7 @@
 // 汎用チャットボットとの違い＝AImarkにしかできないことをアピールする。
 import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, ScrollView } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { useAppStore } from '../store/appStore';
@@ -16,16 +17,16 @@ import { COLORS, SPACING, RADIUS } from '../utils/theme';
 
 const ACCENTS = [COLORS.secondary, COLORS.primary, COLORS.primaryLight];
 
-function heroLabel(insights: InsightsResult): { emoji: string; label: string; desc: string } {
+function heroLabel(insights: InsightsResult): { icon: keyof typeof Ionicons.glyphMap; label: string; desc: string } {
   const rate = insights.summary.engagement_rate;
-  if (rate == null) return { emoji: '🌱', label: 'これから伸びるアカウント', desc: 'これから投稿を重ねると、傾向が見えてきます。まずは今日の1枚から始めましょう。' };
-  if (rate >= 3) return { emoji: '🔥', label: '反応良好なアカウント', desc: 'エンゲージメント率は良好です。この調子を維持する投稿を続けましょう。' };
-  if (rate >= 1) return { emoji: '👍', label: '平均的なアカウント', desc: '平均的な水準です。投稿時間やハッシュタグを見直すと伸びる余地があります。' };
-  return { emoji: '💡', label: '伸びしろのあるアカウント', desc: '反応がやや控えめです。投稿頻度や内容を一緒に見直していきましょう。' };
+  if (rate == null) return { icon: 'leaf', label: 'これから伸びるアカウント', desc: 'これから投稿を重ねると、傾向が見えてきます。まずは今日の1枚から始めましょう。' };
+  if (rate >= 3) return { icon: 'flame', label: '反応良好なアカウント', desc: 'エンゲージメント率は良好です。この調子を維持する投稿を続けましょう。' };
+  if (rate >= 1) return { icon: 'thumbs-up', label: '平均的なアカウント', desc: '平均的な水準です。投稿時間やハッシュタグを見直すと伸びる余地があります。' };
+  return { icon: 'bulb', label: '伸びしろのあるアカウント', desc: '反応がやや控えめです。投稿頻度や内容を一緒に見直していきましょう。' };
 }
 
 interface ResultCard {
-  emoji: string;
+  icon: keyof typeof Ionicons.glyphMap;
   title: string;
   body: string;
 }
@@ -34,46 +35,46 @@ function buildCards(details: InsightDetails): ResultCard[] {
   const cards: ResultCard[] = [];
   if (details.trendPct != null) {
     cards.push({
-      emoji: details.trendPct >= 0 ? '📈' : '📉',
+      icon: details.trendPct >= 0 ? 'trending-up' : 'trending-down',
       title: '投稿の勢い',
       body: `直近${details.recentCount}投稿の反応は、その前の${details.olderCount}投稿と比べて${details.trendPct > 0 ? '+' : ''}${details.trendPct}%`,
     });
   }
   if (details.bestHour) {
     cards.push({
-      emoji: '⏰',
+      icon: 'time',
       title: 'ベストな投稿時間帯',
       body: `${details.bestHour.hour}時台の投稿が、最も反応を集めています`,
     });
   }
   if (details.bestDow) {
     cards.push({
-      emoji: '📅',
+      icon: 'calendar',
       title: 'ベストな投稿曜日',
       body: `${details.bestDow.label}曜日の投稿が、最も反応を集めています`,
     });
   }
   if (details.typeBreakdown.length > 1) {
     cards.push({
-      emoji: '🗂',
+      icon: 'folder',
       title: '投稿タイプ別の反応',
       body: details.typeBreakdown.map((t) => `${t.label}: 平均反応${t.avg}`).join('\n'),
     });
   }
   if (details.topPost) {
     cards.push({
-      emoji: '🏆',
+      icon: 'trophy',
       title: '一番反応が良かった投稿',
-      body: `「${details.topPost.caption || '（キャプションなし）'}」\n❤️${details.topPost.likes}・💬${details.topPost.comments}`,
+      body: `「${details.topPost.caption || '（キャプションなし）'}」\nいいね${details.topPost.likes}・コメント${details.topPost.comments}`,
     });
   }
   cards.push({
-    emoji: details.bioSet ? '✅' : '⚠️',
+    icon: details.bioSet ? 'checkmark-circle' : 'warning',
     title: '自己紹介文',
     body: details.bioSet ? '設定済みです' : '未設定です。設定するとプロフィールの説得力が上がります',
   });
   cards.push({
-    emoji: details.websiteSet ? '✅' : '⚠️',
+    icon: details.websiteSet ? 'checkmark-circle' : 'warning',
     title: 'プロフィールのリンク',
     body: details.websiteSet ? '設定済みです' : '未設定です。予約・購入ページなどを設定すると導線が生まれます',
   });
@@ -153,7 +154,7 @@ export default function IgAnalysisIntro() {
             {/* ヒーロー: 診断結果の大きな発表エリア */}
             <View style={[styles.hero, { paddingTop: insets.top + SPACING.xl }]}>
               <Text style={styles.heroEyebrow}>連携完了・診断結果</Text>
-              <Text style={styles.heroEmoji}>{hero?.emoji}</Text>
+              {hero && <Ionicons name={hero.icon} size={48} color={COLORS.primary} style={{ marginBottom: SPACING.xs }} />}
               <Text style={styles.heroLabel}>{hero?.label}</Text>
               <Text style={styles.heroAccount}>@{result?.profile.username ?? intro.username}</Text>
 
@@ -181,13 +182,13 @@ export default function IgAnalysisIntro() {
             {/* 詳細カード群: MBTI診断ページのように、項目ごとにカードで見せる */}
             {cards.length > 0 && (
               <View style={styles.cardsSection}>
-                <Text style={styles.sectionTitle}>🔎 Instagram連携だからわかること</Text>
+                <Text style={styles.sectionTitle}>Instagram連携だからわかること</Text>
                 <Text style={styles.sectionSub}>あなたのアカウントの実データだけを見て算出した、この場限りの分析です</Text>
 
                 {cards.map((c, i) => (
                   <View key={c.title} style={[styles.resultCard, { borderLeftColor: ACCENTS[i % ACCENTS.length] }]}>
                     <View style={[styles.resultBadge, { backgroundColor: ACCENTS[i % ACCENTS.length] + '22' }]}>
-                      <Text style={styles.resultBadgeEmoji}>{c.emoji}</Text>
+                      <Ionicons name={c.icon} size={20} color={ACCENTS[i % ACCENTS.length]} />
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.resultTitle}>{c.title}</Text>
@@ -204,7 +205,7 @@ export default function IgAnalysisIntro() {
 
             {/* AIによる厳しい評論: 良い点・改善点・市場価値/競合との位置づけ */}
             <View style={styles.critiqueSection}>
-              <Text style={styles.sectionTitle}>🧐 AIの評論</Text>
+              <Text style={styles.sectionTitle}>AIの評論</Text>
               <Text style={styles.sectionSub}>実データをもとに、良い点と改善点を厳しく評価します</Text>
 
               {critiqueLoading ? (
@@ -218,7 +219,7 @@ export default function IgAnalysisIntro() {
                 <>
                   {critique.goodPoints.length > 0 && (
                     <View style={styles.critiqueCard}>
-                      <Text style={styles.critiqueCardTitle}>👍 良い点</Text>
+                      <Text style={styles.critiqueCardTitle}>良い点</Text>
                       {critique.goodPoints.map((p, i) => (
                         <Text key={i} style={styles.critiqueLine}>・{p}</Text>
                       ))}
@@ -226,7 +227,7 @@ export default function IgAnalysisIntro() {
                   )}
                   {critique.improvementPoints.length > 0 && (
                     <View style={[styles.critiqueCard, styles.critiqueCardWarn]}>
-                      <Text style={styles.critiqueCardTitle}>🔥 改善点（厳しめ）</Text>
+                      <Text style={styles.critiqueCardTitle}>改善点（厳しめ）</Text>
                       {critique.improvementPoints.map((p, i) => (
                         <Text key={i} style={styles.critiqueLine}>・{p}</Text>
                       ))}
@@ -234,7 +235,7 @@ export default function IgAnalysisIntro() {
                   )}
                   {!!critique.marketComment && (
                     <View style={styles.critiqueCard}>
-                      <Text style={styles.critiqueCardTitle}>📊 市場価値・競合との位置づけ</Text>
+                      <Text style={styles.critiqueCardTitle}>市場価値・競合との位置づけ</Text>
                       <Text style={styles.critiqueLine}>{critique.marketComment}</Text>
                     </View>
                   )}
@@ -288,7 +289,6 @@ const styles = StyleSheet.create({
     borderBottomColor: COLORS.primary,
   },
   heroEyebrow: { color: COLORS.primary, fontSize: 12, fontWeight: '800', letterSpacing: 1, marginBottom: SPACING.md },
-  heroEmoji: { fontSize: 56, marginBottom: SPACING.xs },
   heroLabel: { color: COLORS.text, fontSize: 24, fontWeight: '900', textAlign: 'center' },
   heroAccount: { color: COLORS.textSecondary, fontSize: 14, fontWeight: '600', marginTop: 4, marginBottom: SPACING.lg },
   heroStatsRow: {
@@ -310,7 +310,6 @@ const styles = StyleSheet.create({
     padding: SPACING.md, marginBottom: SPACING.sm,
   },
   resultBadge: { width: 44, height: 44, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center' },
-  resultBadgeEmoji: { fontSize: 20 },
   resultTitle: { color: COLORS.text, fontSize: 13, fontWeight: '800', marginBottom: 2 },
   resultBody: { color: COLORS.textSecondary, fontSize: 12, lineHeight: 18 },
   footnote: { color: COLORS.textMuted, fontSize: 11, lineHeight: 16, marginTop: SPACING.sm, marginBottom: SPACING.md },

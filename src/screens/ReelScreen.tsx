@@ -213,7 +213,7 @@ export default function ReelScreen({ onBack }: { onBack?: () => void } = {}) {
         instagram_user_id: instagramCredentials!.userId,
         access_token: instagramCredentials!.accessToken,
       });
-      alertMsg('リールを投稿しました ✅\nInstagramアプリで確認してください', '投稿完了');
+      alertMsg('リールを投稿しました\nInstagramアプリで確認してください', '投稿完了');
     } catch (e) {
       alertMsg(e instanceof Error ? e.message : '投稿に失敗しました', 'エラー');
     } finally {
@@ -246,7 +246,7 @@ export default function ReelScreen({ onBack }: { onBack?: () => void } = {}) {
         instagram_user_id: instagramCredentials!.userId,
         access_token: instagramCredentials!.accessToken,
       });
-      alertMsg('リールを予約しました ✅\n指定の日時に自動投稿されます', '予約完了');
+      alertMsg('リールを予約しました\n指定の日時に自動投稿されます', '予約完了');
       setDateText('');
     } catch (e) {
       alertMsg((e as { message?: string })?.message || '予約に失敗しました', 'エラー');
@@ -302,7 +302,7 @@ export default function ReelScreen({ onBack }: { onBack?: () => void } = {}) {
       </Text>
 
       <TouchableOpacity style={styles.ownVideoBtn} onPress={pickOwnVideo} activeOpacity={0.85}>
-        <Text style={styles.ownVideoBtnText}>📹 自分の動画を選んで投稿</Text>
+        <Text style={styles.ownVideoBtnText}>自分の動画を選んで投稿</Text>
       </TouchableOpacity>
 
       <Text style={styles.orText}>― または 写真からスライド動画を作る ―</Text>
@@ -319,7 +319,7 @@ export default function ReelScreen({ onBack }: { onBack?: () => void } = {}) {
 
       {slides.length > 0 && (
         <View style={styles.aiBox}>
-          <Text style={styles.aiBoxLabel}>✨ AIで文字を作る</Text>
+          <Text style={styles.aiBoxLabel}>AIで文字を作る</Text>
           <TextInput
             style={styles.input}
             value={theme}
@@ -336,7 +336,7 @@ export default function ReelScreen({ onBack }: { onBack?: () => void } = {}) {
             {aiLoading ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.aiBtnText}>✨ {slides.length}枚分の文字をAIで作る</Text>
+              <Text style={styles.aiBtnText}>{slides.length}枚分の文字をAIで作る</Text>
             )}
           </TouchableOpacity>
           <Text style={styles.aiHint}>各写真の文字に自動で入ります（あとで手直しもできます）</Text>
@@ -369,7 +369,7 @@ export default function ReelScreen({ onBack }: { onBack?: () => void } = {}) {
                 </TouchableOpacity>
               ))}
               <TouchableOpacity onPress={() => removeSlide(i)} style={{ marginLeft: 'auto' }}>
-                <Text style={styles.removeText}>🗑 削除</Text>
+                <Text style={styles.removeText}>削除</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -386,7 +386,7 @@ export default function ReelScreen({ onBack }: { onBack?: () => void } = {}) {
           {working ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={styles.createBtnText}>🎬 リールを作成する</Text>
+            <Text style={styles.createBtnText}>リールを作成する</Text>
           )}
         </TouchableOpacity>
       )}
@@ -406,7 +406,7 @@ export default function ReelScreen({ onBack }: { onBack?: () => void } = {}) {
         <View style={styles.postWrap}>
           {/* おすすめ：保存してInstagramで音楽をつけて投稿 */}
           <TouchableOpacity style={styles.saveBtn} onPress={downloadReel} activeOpacity={0.85}>
-            <Text style={styles.saveBtnText}>📥 動画を保存する</Text>
+            <Text style={styles.saveBtnText}>動画を保存する</Text>
           </TouchableOpacity>
           <Text style={styles.saveHint}>
             おすすめ：保存した動画をInstagramアプリで投稿すると、トレンド音楽を付けられます
@@ -433,10 +433,10 @@ export default function ReelScreen({ onBack }: { onBack?: () => void } = {}) {
 
           {instagramCredentials ? (
             <Text style={styles.igOk}>
-              ✅ {instagramCredentials.username ? `@${instagramCredentials.username}` : '連携済み'} に投稿します
+              {instagramCredentials.username ? `@${instagramCredentials.username}` : '連携済み'} に投稿します
             </Text>
           ) : (
-            <Text style={styles.igWarn}>⚠️ 右上のアイコンからInstagramを連携してください</Text>
+            <Text style={styles.igWarn}>右上のアイコンからInstagramを連携してください</Text>
           )}
 
           <TouchableOpacity
@@ -448,7 +448,7 @@ export default function ReelScreen({ onBack }: { onBack?: () => void } = {}) {
             {posting ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.createBtnText}>🚀 今すぐ投稿する</Text>
+              <Text style={styles.createBtnText}>今すぐ投稿する</Text>
             )}
           </TouchableOpacity>
 
@@ -467,7 +467,7 @@ export default function ReelScreen({ onBack }: { onBack?: () => void } = {}) {
             disabled={posting}
             activeOpacity={0.85}
           >
-            <Text style={styles.createBtnText}>📅 この日時に予約する</Text>
+            <Text style={styles.createBtnText}>この日時に予約する</Text>
           </TouchableOpacity>
 
           {posting && status ? <Text style={styles.status}>{status}</Text> : null}

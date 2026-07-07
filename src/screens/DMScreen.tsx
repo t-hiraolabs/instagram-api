@@ -4,6 +4,7 @@ import {
   StyleSheet, ActivityIndicator, Image, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
 import { useAppStore } from '../store/appStore';
 import {
@@ -114,7 +115,7 @@ export default function DMScreen() {
   if (!creds?.accessToken) {
     return (
       <View style={[styles.container, styles.center, { paddingTop: insets.top }]}>
-        <Text style={styles.bigEmoji}>💬</Text>
+        <Ionicons name="chatbubble-outline" size={56} color={COLORS.textMuted} style={styles.bigIcon} />
         <Text style={styles.emptyTitle}>Instagram連携が必要です</Text>
         <Text style={styles.emptyDesc}>「プロフィール」タブからInstagramアカウントを連携してください。</Text>
       </View>
@@ -125,7 +126,7 @@ export default function DMScreen() {
   if (permissionError) {
     return (
       <View style={[styles.container, styles.center, { paddingTop: insets.top }]}>
-        <Text style={styles.bigEmoji}>🔒</Text>
+        <Ionicons name="lock-closed-outline" size={56} color={COLORS.textMuted} style={styles.bigIcon} />
         <Text style={styles.emptyTitle}>権限の審査が必要です</Text>
         <Text style={styles.emptyDesc}>{PERMISSION_REQUIRED_MSG}</Text>
         <TouchableOpacity style={styles.retryBtn} onPress={loadConversations}>
@@ -158,7 +159,7 @@ export default function DMScreen() {
               <Image source={{ uri: otherParticipant.profile_picture }} style={styles.threadAvatar} />
             ) : (
               <View style={[styles.threadAvatar, styles.avatarFallback]}>
-                <Text style={{ fontSize: 16 }}>👤</Text>
+                <Ionicons name="person" size={16} color={COLORS.textMuted} />
               </View>
             )}
             <Text style={styles.threadName}>{displayName}</Text>
@@ -223,7 +224,7 @@ export default function DMScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
-        <Text style={styles.title}>💬 DM</Text>
+        <Text style={styles.title}>DM</Text>
         {creds.username && <Text style={styles.subtitle}>@{creds.username}</Text>}
         <TouchableOpacity onPress={loadConversations} disabled={loading}>
           <Text style={[styles.refreshText, loading && { opacity: 0.4 }]}>
@@ -243,7 +244,7 @@ export default function DMScreen() {
         </View>
       ) : conversations.length === 0 ? (
         <View style={styles.center}>
-          <Text style={styles.bigEmoji}>💬</Text>
+          <Ionicons name="chatbubble-outline" size={56} color={COLORS.textMuted} style={styles.bigIcon} />
           <Text style={styles.emptyTitle}>DMはありません</Text>
           <Text style={styles.emptyDesc}>Instagramから届いたDMがここに表示されます。</Text>
         </View>
@@ -263,7 +264,7 @@ export default function DMScreen() {
                   <Image source={{ uri: other.profile_picture }} style={styles.convAvatar} />
                 ) : (
                   <View style={[styles.convAvatar, styles.avatarFallback]}>
-                    <Text style={{ fontSize: 22 }}>👤</Text>
+                    <Ionicons name="person" size={22} color={COLORS.textMuted} />
                   </View>
                 )}
                 <View style={styles.convInfo}>
@@ -295,7 +296,7 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: 13, color: COLORS.primary, fontWeight: '700' },
   refreshText: { color: COLORS.text, fontSize: 14, fontWeight: '700' },
 
-  bigEmoji: { fontSize: 56, marginBottom: SPACING.md },
+  bigIcon: { marginBottom: SPACING.md },
   emptyTitle: { fontSize: 17, fontWeight: '800', color: COLORS.text, textAlign: 'center', marginBottom: SPACING.sm },
   emptyDesc: { fontSize: 13, color: COLORS.textSecondary, textAlign: 'center', lineHeight: 20 },
 

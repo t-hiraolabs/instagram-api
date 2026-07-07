@@ -12,6 +12,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
 import { chatWithAssistant, getChatUsagePercent, ChatTurn } from '../services/aiService';
 import { getAutoAnalysisFacts } from '../services/insightsService';
@@ -332,7 +333,7 @@ function ImageGenChat(
           {messages.length === 0 && (
             emptyState ?? (
               <View style={styles.empty}>
-                <Text style={styles.emptyIcon}>💬</Text>
+                <Ionicons name="chatbubble-outline" size={40} color={COLORS.textMuted} style={styles.emptyIcon} />
                 <Text style={styles.emptyText}>
                   投稿したい写真やキャプションを送ってください。{'\n'}
                   Instagramマーケティングの視点で、厳しく分析・アドバイスします。
@@ -393,7 +394,7 @@ function ImageGenChat(
         {/* 入力欄 */}
         <View style={styles.inputRow}>
           <TouchableOpacity style={styles.attachBtn} onPress={attachPhoto} disabled={chatting}>
-            <Text style={styles.attachBtnText}>📎</Text>
+            <Ionicons name="attach" size={20} color={COLORS.text} />
           </TouchableOpacity>
           <TextInput
             style={styles.input}
@@ -570,7 +571,7 @@ const styles = StyleSheet.create({
   convActionDanger: { color: COLORS.error },
   convEmpty: { color: COLORS.textMuted, fontSize: 13, textAlign: 'center', marginTop: SPACING.xl },
   empty: { alignItems: 'center', marginTop: SPACING.xxl, paddingHorizontal: SPACING.lg },
-  emptyIcon: { fontSize: 40, marginBottom: SPACING.md },
+  emptyIcon: { marginBottom: SPACING.md },
   emptyText: { color: COLORS.textMuted, fontSize: 13, textAlign: 'center', lineHeight: 20 },
   userRow: { alignItems: 'flex-end', marginBottom: SPACING.md },
   userBubble: { backgroundColor: COLORS.primary, borderRadius: RADIUS.lg, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, maxWidth: '85%' },

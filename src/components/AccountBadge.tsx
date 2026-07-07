@@ -241,7 +241,6 @@ export default function AccountBadge({ hideBadge }: { hideBadge?: boolean } = {}
       <Modal visible={igPrompt} transparent animationType="fade" onRequestClose={dismissIgPrompt}>
         <View style={styles.promptOverlay}>
           <View style={styles.promptCard}>
-            <Text style={styles.promptIcon}>📸</Text>
             <Text style={styles.promptTitle}>Instagramアカウントを連携しましょう</Text>
             <Text style={styles.promptDesc}>
               連携すると、AIによる投稿作成・予約投稿・分析・DM管理が使えるようになります。
@@ -303,7 +302,7 @@ export default function AccountBadge({ hideBadge }: { hideBadge?: boolean } = {}
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.email} numberOfLines={1}>{email || '読み込み中...'}</Text>
-                  <Text style={styles.loggedIn}>✅ ログイン中</Text>
+                  <Text style={styles.loggedIn}>ログイン中</Text>
                 </View>
               </View>
 
