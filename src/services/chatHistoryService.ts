@@ -6,8 +6,8 @@ export type ChatRole = 'user' | 'assistant' | 'image' | 'user_image';
 export interface StoredChatMessage { role: ChatRole; content: string; }
 export interface Conversation { id: string; title: string; updated_at: string; }
 
-/** 現在切り替え中のInstagramアカウント（1 or 2）。会話はアカウントごとに分ける */
-function activeSlot(): 1 | 2 {
+/** 現在切り替え中のInstagramアカウント（1〜3）。会話はアカウントごとに分ける */
+function activeSlot(): 1 | 2 | 3 {
   return useAppStore.getState().activeAccountSlot;
 }
 

@@ -45,8 +45,9 @@ export default function AnalyticsScreen() {
   const insets = useSafeAreaInsets();
   const creds1 = useAppStore((s) => s.instagramCredentials);
   const creds2 = useAppStore((s) => s.secondInstagramCredentials);
+  const creds3 = useAppStore((s) => s.thirdInstagramCredentials);
   const activeAccountSlot = useAppStore((s) => s.activeAccountSlot);
-  const instagramCredentials = activeAccountSlot === 2 ? creds2 : creds1;
+  const instagramCredentials = activeAccountSlot === 3 ? creds3 : activeAccountSlot === 2 ? creds2 : creds1;
 
   const [plan, setPlan] = useState<Plan>('free');
   const [loading, setLoading] = useState(false);

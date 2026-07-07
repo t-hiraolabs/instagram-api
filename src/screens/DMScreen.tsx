@@ -30,8 +30,9 @@ export default function DMScreen() {
   const insets = useSafeAreaInsets();
   const creds1 = useAppStore((s) => s.instagramCredentials);
   const creds2 = useAppStore((s) => s.secondInstagramCredentials);
+  const creds3 = useAppStore((s) => s.thirdInstagramCredentials);
   const activeAccountSlot = useAppStore((s) => s.activeAccountSlot);
-  const creds = activeAccountSlot === 2 ? creds2 : creds1;
+  const creds = activeAccountSlot === 3 ? creds3 : activeAccountSlot === 2 ? creds2 : creds1;
 
   const [conversations, setConversations] = useState<DMConversation[]>([]);
   const [loading, setLoading] = useState(false);

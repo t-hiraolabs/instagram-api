@@ -17,9 +17,9 @@ import { supabase } from '../services/supabaseClient';
 import { useAppStore } from '../store/appStore';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
 import AuthScreen from '../screens/AuthScreen';
-import { connectInstagram, clearInstagramStorage, clearInstagramStorage2 } from '../utils/instagram';
+import { connectInstagram, clearInstagramStorage, clearInstagramStorage2, clearInstagramStorage3 } from '../utils/instagram';
 import { getMyPlan } from '../services/scheduleService';
-import { PLANS, Plan, PLAN_RANK } from '../utils/plans';
+import { PLANS, Plan, PLAN_RANK, maxInstagramAccounts } from '../utils/plans';
 import { createCheckoutUrl } from '../services/billingService';
 
 export default function AccountBadge({ hideBadge }: { hideBadge?: boolean } = {}) {
@@ -33,11 +33,14 @@ export default function AccountBadge({ hideBadge }: { hideBadge?: boolean } = {}
   const setInstagramCredentials = useAppStore((s) => s.setInstagramCredentials);
   const secondInstagramCredentials = useAppStore((s) => s.secondInstagramCredentials);
   const setSecondInstagramCredentials = useAppStore((s) => s.setSecondInstagramCredentials);
+  const thirdInstagramCredentials = useAppStore((s) => s.thirdInstagramCredentials);
+  const setThirdInstagramCredentials = useAppStore((s) => s.setThirdInstagramCredentials);
   const activeAccountSlot = useAppStore((s) => s.activeAccountSlot);
   const setActiveAccountSlot = useAppStore((s) => s.setActiveAccountSlot);
-  const activeCredentials = activeAccountSlot === 2 ? secondInstagramCredentials : instagramCredentials;
+  const activeCredentials = activeAccountSlot === 3 ? thirdInstagramCredentials : activeAccountSlot === 2 ? secondInstagramCredentials : instagramCredentials;
   const resetBrandSettings = useAppStore((s) => s.resetBrandSettings);
   const resetBrandSettings2 = useAppStore((s) => s.resetBrandSettings2);
+  const resetBrandSettings3 = useAppStore((s) => s.resetBrandSettings3);
   const authVisible = useAppStore((s) => s.loginPromptVisible);
   const setAuthVisible = useAppStore((s) => s.setLoginPromptVisible);
 
@@ -65,11 +68,11 @@ export default function AccountBadge({ hideBadge }: { hideBadge?: boolean } = {}
   // ログイン済みでInstagram未連携なら、連携を促すモーダルを一度だけ表示する
   useEffect(() => {
     if (!session) return;
-    if (instagramCredentials || secondInstagramCredentials) return;
+    if (instagramCredentials || secondInstagramCredentials || thirdInstagramCredentials) return;
     const SEEN_KEY = 'ig_connect_prompt_seen';
     if (Platform.OS === 'web' && localStorage.getItem(SEEN_KEY)) return;
     setIgPrompt(true);
-  }, [session, instagramCredentials, secondInstagramCredentials]);
+  }, [session, instagramCredentials, secondInstagramCredentials, thirdInstagramCredentials]);
 
   const dismissIgPrompt = () => {
     if (Platform.OS === 'web') localStorage.setItem('ig_connect_prompt_seen', '1');
@@ -111,6 +114,11 @@ export default function AccountBadge({ hideBadge }: { hideBadge?: boolean } = {}
     connectInstagram(2);
   };
 
+  const handleConnectIg3 = () => {
+    setVisible(false);
+    connectInstagram(3);
+  };
+
   const doDisconnectIg = async () => {
     await clearInstagramStorage();
     setInstagramCredentials(null);
@@ -119,6 +127,11 @@ export default function AccountBadge({ hideBadge }: { hideBadge?: boolean } = {}
   const doDisconnectIg2 = async () => {
     await clearInstagramStorage2();
     setSecondInstagramCredentials(null);
+  };
+
+  const doDisconnectIg3 = async () => {
+    await clearInstagramStorage3();
+    setThirdInstagramCredentials(null);
   };
 
   const handleDisconnectIg = () => {
@@ -147,13 +160,28 @@ export default function AccountBadge({ hideBadge }: { hideBadge?: boolean } = {}
     ]);
   };
 
+  const handleDisconnectIg3 = () => {
+    if (Platform.OS === 'web') {
+      if (window.confirm('3つ目のInstagramアカウントの連携を解除しますか？')) {
+        doDisconnectIg3();
+      }
+      return;
+    }
+    Alert.alert('連携解除', '3つ目のInstagramアカウントの連携を解除しますか？', [
+      { text: 'キャンセル', style: 'cancel' },
+      { text: '解除', style: 'destructive', onPress: doDisconnectIg3 },
+    ]);
+  };
+
   const doLogout = async () => {
     // アカウント自体をログアウトするときは、連携中のInstagramアカウントもすべて解除する
-    await Promise.all([clearInstagramStorage(), clearInstagramStorage2()]);
+    await Promise.all([clearInstagramStorage(), clearInstagramStorage2(), clearInstagramStorage3()]);
     setInstagramCredentials(null);
     setSecondInstagramCredentials(null);
+    setThirdInstagramCredentials(null);
     resetBrandSettings();
     resetBrandSettings2();
+    resetBrandSettings3();
     await supabase.auth.signOut();
   };
 
@@ -284,7 +312,10 @@ export default function AccountBadge({ hideBadge }: { hideBadge?: boolean } = {}
               {([
                 { slot: 1 as const, creds: instagramCredentials, onConnect: handleConnectIg, onDisconnect: handleDisconnectIg },
                 { slot: 2 as const, creds: secondInstagramCredentials, onConnect: handleConnectIg2, onDisconnect: handleDisconnectIg2 },
-              ]).map(({ slot, creds, onConnect, onDisconnect }) => {
+                { slot: 3 as const, creds: thirdInstagramCredentials, onConnect: handleConnectIg3, onDisconnect: handleDisconnectIg3 },
+              ])
+                .filter(({ slot, creds }) => creds || slot <= maxInstagramAccounts(plan))
+                .map(({ slot, creds, onConnect, onDisconnect }) => {
                 const isActive = activeAccountSlot === slot;
                 return (
                   <View key={slot} style={[styles.igAccountRow, isActive && styles.igAccountRowActive]}>

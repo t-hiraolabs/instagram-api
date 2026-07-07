@@ -14,6 +14,7 @@ import {
   Platform,
   Linking,
   Switch,
+  Image,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as SecureStore from 'expo-secure-store';
@@ -27,19 +28,22 @@ import { supabase } from '../services/supabaseClient';
 import { getMyPlan } from '../services/scheduleService';
 import { ensureLoggedIn } from '../utils/requireLogin';
 import { createCheckoutUrl } from '../services/billingService';
-import { PLANS, Plan, PLAN_RANK, canAnalytics } from '../utils/plans';
+import { PLANS, Plan, PLAN_RANK, canAnalytics, maxInstagramAccounts } from '../utils/plans';
 import { JP_PREFECTURES, JP_PREFECTURES_CITIES } from '../utils/jpLocations';
 import { registerPush, unregisterPush, isPushSupported, isPushEnabled } from '../services/pushService';
 import {
   connectInstagram,
   clearInstagramStorage,
   clearInstagramStorage2,
+  clearInstagramStorage3,
   SK_USER_ID, SK_TOKEN, SK_USERNAME, SK_PICTURE,
   SK_USER_ID_2, SK_TOKEN_2, SK_USERNAME_2, SK_PICTURE_2,
+  SK_USER_ID_3, SK_TOKEN_3, SK_USERNAME_3, SK_PICTURE_3,
 } from '../utils/instagram';
 
 const SK_BRAND_1 = 'brand_settings_v1';
 const SK_BRAND_2 = 'brand_settings_v2';
+const SK_BRAND_3 = 'brand_settings_v3';
 
 async function save(key: string, value: string) {
   if (Platform.OS === 'web') localStorage.setItem(key, value);
@@ -128,16 +132,18 @@ export default function ProfileScreen() {
   const {
     instagramCredentials, setInstagramCredentials,
     secondInstagramCredentials, setSecondInstagramCredentials,
+    thirdInstagramCredentials, setThirdInstagramCredentials,
     activeAccountSlot, setActiveAccountSlot,
     brandSettings, setBrandSettings, resetBrandSettings,
     brandSettings2, setBrandSettings2, resetBrandSettings2,
+    brandSettings3, setBrandSettings3, resetBrandSettings3,
     setLoginPromptVisible,
   } = useAppStore();
 
-  const activeBrandSettings = activeAccountSlot === 2 ? brandSettings2 : brandSettings;
-  const setActiveBrandSettings = activeAccountSlot === 2 ? setBrandSettings2 : setBrandSettings;
-  const resetActiveBrandSettings = activeAccountSlot === 2 ? resetBrandSettings2 : resetBrandSettings;
-  const SK_BRAND = activeAccountSlot === 2 ? SK_BRAND_2 : SK_BRAND_1;
+  const activeBrandSettings = activeAccountSlot === 3 ? brandSettings3 : activeAccountSlot === 2 ? brandSettings2 : brandSettings;
+  const setActiveBrandSettings = activeAccountSlot === 3 ? setBrandSettings3 : activeAccountSlot === 2 ? setBrandSettings2 : setBrandSettings;
+  const resetActiveBrandSettings = activeAccountSlot === 3 ? resetBrandSettings3 : activeAccountSlot === 2 ? resetBrandSettings2 : resetBrandSettings;
+  const SK_BRAND = activeAccountSlot === 3 ? SK_BRAND_3 : activeAccountSlot === 2 ? SK_BRAND_2 : SK_BRAND_1;
 
   const [brandModalVisible, setBrandModalVisible] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -213,6 +219,19 @@ export default function ProfileScreen() {
         });
       }
 
+      const savedUserId3 = await load(SK_USER_ID_3);
+      const savedToken3 = await load(SK_TOKEN_3);
+      const savedUsername3 = await load(SK_USERNAME_3);
+      const savedPicture3 = await load(SK_PICTURE_3);
+      if (savedUserId3 && savedToken3) {
+        setThirdInstagramCredentials({
+          userId: savedUserId3,
+          accessToken: savedToken3,
+          username: savedUsername3 ?? undefined,
+          profilePictureUrl: savedPicture3 ?? undefined,
+        });
+      }
+
       // ブランド設定はInstagramアカウント(userId)単位で読み込む。
       // DB→ローカルの順でフォールバック。未連携のスロットは読み込まない。
       const loadBrandFor = async (igUserId: string | null): Promise<BrandSettings | null> => {
@@ -223,9 +242,10 @@ export default function ProfileScreen() {
         if (raw) { try { return JSON.parse(raw) as BrandSettings; } catch {} }
         return null;
       };
-      const [b1, b2] = await Promise.all([
+      const [b1, b2, b3] = await Promise.all([
         loadBrandFor(savedUserId),
         loadBrandFor(savedUserId2),
+        loadBrandFor(savedUserId3),
       ]);
       if (b1) {
         setBrandSettings(b1);
@@ -234,6 +254,10 @@ export default function ProfileScreen() {
       if (b2) {
         setBrandSettings2(b2);
         if (savedUserId2 && Platform.OS === 'web') localStorage.setItem(brandLocalKey(savedUserId2), JSON.stringify(b2));
+      }
+      if (b3) {
+        setBrandSettings3(b3);
+        if (savedUserId3 && Platform.OS === 'web') localStorage.setItem(brandLocalKey(savedUserId3), JSON.stringify(b3));
       }
     })();
   }, []);
@@ -244,9 +268,24 @@ export default function ProfileScreen() {
     if (!loggedIn) { ensureLoggedIn('Instagram連携にはログインが必要です'); return; }
     connectInstagram(1);
   };
+  // 2つ目・3つ目のアカウント連携は、フリープランでは使えない（連携数の上限チェック）
+  const requireMultiAccountPlan = (): boolean => {
+    if (maxInstagramAccounts(currentPlan) >= 2) return true;
+    Alert.alert(
+      '複数アカウント連携はPro以上の機能です',
+      '2つ目以降のInstagramアカウントを連携するには、Pro（¥1,980/月）以上のプランへのアップグレードが必要です。'
+    );
+    return false;
+  };
   const handleInstagramLogin2 = () => {
     if (!loggedIn) { ensureLoggedIn('Instagram連携にはログインが必要です'); return; }
+    if (!requireMultiAccountPlan()) return;
     connectInstagram(2);
+  };
+  const handleInstagramLogin3 = () => {
+    if (!loggedIn) { ensureLoggedIn('Instagram連携にはログインが必要です'); return; }
+    if (!requireMultiAccountPlan()) return;
+    connectInstagram(3);
   };
 
   const doDisconnect = async () => {
@@ -260,6 +299,12 @@ export default function ProfileScreen() {
     await clearInstagramStorage2();
     setSecondInstagramCredentials(null);
     resetBrandSettings2();
+  };
+
+  const doDisconnect3 = async () => {
+    await clearInstagramStorage3();
+    setThirdInstagramCredentials(null);
+    resetBrandSettings3();
   };
 
   const handleDisconnect = () => {
@@ -288,11 +333,25 @@ export default function ProfileScreen() {
     ]);
   };
 
-  const activeCredentials = activeAccountSlot === 2 ? secondInstagramCredentials : instagramCredentials;
+  const handleDisconnect3 = () => {
+    if (Platform.OS === 'web') {
+      if (window.confirm('3つ目のInstagramアカウントの連携を解除しますか？')) {
+        doDisconnect3();
+      }
+      return;
+    }
+    Alert.alert('連携解除', '3つ目のInstagramアカウントの連携を解除しますか？', [
+      { text: 'キャンセル', style: 'cancel' },
+      { text: '解除', style: 'destructive', onPress: doDisconnect3 },
+    ]);
+  };
+
+  const activeCredentials = activeAccountSlot === 3 ? thirdInstagramCredentials : activeAccountSlot === 2 ? secondInstagramCredentials : instagramCredentials;
 
   const openBrandModal = () => {
     if (!activeCredentials) {
-      const promptConnect = () => (activeAccountSlot === 2 ? handleInstagramLogin2() : handleInstagramLogin());
+      const promptConnect = () =>
+        activeAccountSlot === 3 ? handleInstagramLogin3() : activeAccountSlot === 2 ? handleInstagramLogin2() : handleInstagramLogin();
       if (Platform.OS === 'web') {
         if (window.confirm('ブランド設定にはInstagram連携が必要です。連携画面を開きますか？')) promptConnect();
         return;
@@ -440,7 +499,7 @@ export default function ProfileScreen() {
   const [notifVisible, setNotifVisible] = useState(false);
   const [loggedIn, setLoggedIn] = useState(false);
   const [accountEmail, setAccountEmail] = useState<string | null>(null);
-  const [accountMenu, setAccountMenu] = useState<1 | 2 | null>(null);
+  const [accountMenu, setAccountMenu] = useState<1 | 2 | 3 | null>(null);
 
   useEffect(() => {
     isPushEnabled().then(setPushEnabled);
@@ -505,6 +564,7 @@ export default function ProfileScreen() {
 
   const isConnected = !!instagramCredentials;
   const isConnected2 = !!secondInstagramCredentials;
+  const isConnected3 = !!thirdInstagramCredentials;
   const hasBrandSetup = !!(activeBrandSettings.brandName || activeBrandSettings.industry);
   const industryInfo = INDUSTRIES.find((i) => i.key === activeBrandSettings.industry);
 
@@ -541,7 +601,11 @@ export default function ProfileScreen() {
           activeOpacity={isConnected ? 0.7 : 1}
         >
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{isConnected ? '📷' : '👤'}</Text>
+            {isConnected && instagramCredentials.profilePictureUrl ? (
+              <Image source={{ uri: instagramCredentials.profilePictureUrl }} style={styles.avatarImg} />
+            ) : (
+              <Text style={styles.avatarText}>{isConnected ? '📷' : '👤'}</Text>
+            )}
           </View>
           <View style={styles.accountInfo}>
             {isConnected ? (
@@ -571,7 +635,7 @@ export default function ProfileScreen() {
           )}
         </TouchableOpacity>
 
-        {/* Second Instagram account card: 1つ目が連携済みのときだけ表示（+で追加） */}
+        {/* 2つ目のInstagramアカウントカード: 1つ目が連携済みのときだけ表示（+で追加） */}
         {isConnected && (
           <TouchableOpacity
             style={[
@@ -583,7 +647,11 @@ export default function ProfileScreen() {
             activeOpacity={0.7}
           >
             <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{isConnected2 ? '📷' : '➕'}</Text>
+              {isConnected2 && secondInstagramCredentials!.profilePictureUrl ? (
+                <Image source={{ uri: secondInstagramCredentials!.profilePictureUrl }} style={styles.avatarImg} />
+              ) : (
+                <Text style={styles.avatarText}>{isConnected2 ? '📷' : '➕'}</Text>
+              )}
             </View>
             <View style={styles.accountInfo}>
               {isConnected2 ? (
@@ -610,9 +678,53 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         )}
 
+        {/* 3つ目のInstagramアカウントカード: 2つ目が連携済みのときだけ表示（+で追加） */}
+        {isConnected2 && (
+          <TouchableOpacity
+            style={[
+              styles.accountCard,
+              isConnected3 && styles.accountCardConnected,
+              isConnected3 && activeAccountSlot === 3 && styles.accountCardActive,
+            ]}
+            onPress={isConnected3 ? () => setAccountMenu(3) : handleInstagramLogin3}
+            activeOpacity={0.7}
+          >
+            <View style={styles.avatar}>
+              {isConnected3 && thirdInstagramCredentials!.profilePictureUrl ? (
+                <Image source={{ uri: thirdInstagramCredentials!.profilePictureUrl }} style={styles.avatarImg} />
+              ) : (
+                <Text style={styles.avatarText}>{isConnected3 ? '📷' : '➕'}</Text>
+              )}
+            </View>
+            <View style={styles.accountInfo}>
+              {isConnected3 ? (
+                <>
+                  <Text style={styles.accountName}>
+                    {thirdInstagramCredentials!.username ? `@${thirdInstagramCredentials!.username}` : 'Instagram連携済み'}
+                  </Text>
+                  <Text style={styles.accountSub}>ID: {thirdInstagramCredentials!.userId}</Text>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.accountName}>3つ目のアカウントを追加</Text>
+                  <Text style={styles.accountSub}>もう1つのInstagramアカウントを連携</Text>
+                </>
+              )}
+            </View>
+            {isConnected3 && (
+              activeAccountSlot === 3 ? (
+                <Text style={styles.activeLabel}>使用中</Text>
+              ) : (
+                <Text style={styles.brandArrow}>›</Text>
+              )
+            )}
+          </TouchableOpacity>
+        )}
+
         {/* Brand Settings Card */}
         <Text style={styles.sectionTitle}>
-          ブランド設定{activeAccountSlot === 2 ? '（アカウント②）' : '（アカウント①）'}
+          ブランド設定
+          {activeAccountSlot === 3 ? '（アカウント③）' : activeAccountSlot === 2 ? '（アカウント②）' : '（アカウント①）'}
         </Text>
         <TouchableOpacity style={styles.brandCard} onPress={openBrandModal} activeOpacity={0.8}>
           <View style={styles.brandInfo}>
@@ -953,7 +1065,7 @@ export default function ProfileScreen() {
             {(() => {
               const slot = accountMenu;
               if (!slot) return null;
-              const creds = slot === 2 ? secondInstagramCredentials : instagramCredentials;
+              const creds = slot === 3 ? thirdInstagramCredentials : slot === 2 ? secondInstagramCredentials : instagramCredentials;
               const isActive = activeAccountSlot === slot;
               return (
                 <>
@@ -975,7 +1087,8 @@ export default function ProfileScreen() {
                     style={styles.menuItem}
                     onPress={() => {
                       setAccountMenu(null);
-                      if (slot === 2) handleDisconnect2();
+                      if (slot === 3) handleDisconnect3();
+                      else if (slot === 2) handleDisconnect2();
                       else handleDisconnect();
                     }}
                   >
@@ -1022,6 +1135,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   avatarText: { fontSize: 24 },
+  avatarImg: { width: 48, height: 48, borderRadius: 24 },
   accountInfo: { flex: 1 },
   accountName: { color: COLORS.text, fontSize: 15, fontWeight: '700' },
   accountSub: { color: COLORS.textMuted, fontSize: 11, marginTop: 2 },

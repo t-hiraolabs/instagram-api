@@ -20,6 +20,11 @@ export function canAnalytics(plan: Plan): boolean {
   return plan === 'business';
 }
 
+/** 連携できるInstagramアカウント数の上限（フリーは1、Pro以上は3） */
+export function maxInstagramAccounts(plan: Plan): number {
+  return plan === 'free' ? 1 : 3;
+}
+
 /** DBの値などを安全に Plan 型へ寄せる */
 export function asPlan(value: unknown): Plan {
   return value === 'pro' || value === 'business' ? value : 'free';
@@ -53,7 +58,7 @@ export const PLANS: PlanInfo[] = [
       'AI生成 月50回',
       '予約投稿 無制限',
       'くりかえし投稿（毎日/毎週/毎月/平日）',
-      '複数アカウント連携',
+      '複数アカウント連携（最大3つ）',
     ],
     color: COLORS.secondary,
   },

@@ -27,9 +27,9 @@ function extractError(err: unknown): string {
 }
 
 function getBrandContext(): string {
-  const { brandSettings, brandSettings2, activeAccountSlot } = useAppStore.getState();
+  const { brandSettings, brandSettings2, brandSettings3, activeAccountSlot } = useAppStore.getState();
   const { brandName, industry, atmosphere, targetAudience, location, tone } =
-    activeAccountSlot === 2 ? brandSettings2 : brandSettings;
+    activeAccountSlot === 3 ? brandSettings3 : activeAccountSlot === 2 ? brandSettings2 : brandSettings;
   const parts: string[] = [];
   if (brandName) parts.push(`ブランド名: ${brandName}`);
   if (industry) parts.push(`業種: ${industry}`);
@@ -42,8 +42,8 @@ function getBrandContext(): string {
 
 /** キャプション・ハッシュタグ生成に共通するSEO対策の指示。所在地があれば地域SEOも含める。 */
 function seoInstructions(): string {
-  const { brandSettings, brandSettings2, activeAccountSlot } = useAppStore.getState();
-  const { location } = activeAccountSlot === 2 ? brandSettings2 : brandSettings;
+  const { brandSettings, brandSettings2, brandSettings3, activeAccountSlot } = useAppStore.getState();
+  const { location } = activeAccountSlot === 3 ? brandSettings3 : activeAccountSlot === 2 ? brandSettings2 : brandSettings;
   const local = location
     ? `所在地は「${location}」です。地域名・市区町村名を自然に本文に1回入れ、` +
       `「#${location.replace(/[都道府県]$/, '')}」のような地域名ハッシュタグと、「業種＋地域名」を組み合わせた複合キーワードのハッシュタグ（例: 業種が飲食なら#${location}ランチ のような形）も含めてください。` +

@@ -19,8 +19,13 @@ export const SK_TOKEN_2 = 'instagram_access_token_2';
 export const SK_USERNAME_2 = 'instagram_username_2';
 export const SK_PICTURE_2 = 'instagram_profile_picture_2';
 
-/** Instagramビジネスログインの認証画面へ遷移する (slot: 1 or 2) */
-export function connectInstagram(slot: 1 | 2 = 1) {
+export const SK_USER_ID_3 = 'instagram_user_id_3';
+export const SK_TOKEN_3 = 'instagram_access_token_3';
+export const SK_USERNAME_3 = 'instagram_username_3';
+export const SK_PICTURE_3 = 'instagram_profile_picture_3';
+
+/** Instagramビジネスログインの認証画面へ遷移する (slot: 1〜3) */
+export function connectInstagram(slot: 1 | 2 | 3 = 1) {
   // state パラメータにスロット番号を埋め込む（リダイレクト後に読み取る）
   const state = `slot${slot}`;
   const url =
@@ -95,4 +100,27 @@ export async function clearInstagramStorage2() {
   await removeItem(SK_TOKEN_2);
   await removeItem(SK_USERNAME_2);
   await removeItem(SK_PICTURE_2);
+}
+
+/** 保存済みの3つ目のInstagram連携情報を読み込む */
+export async function loadInstagramCredentials3(): Promise<InstagramCredentials | null> {
+  const userId = await getItem(SK_USER_ID_3);
+  const accessToken = await getItem(SK_TOKEN_3);
+  if (!userId || !accessToken) return null;
+  const username = await getItem(SK_USERNAME_3);
+  const profilePictureUrl = await getItem(SK_PICTURE_3);
+  return {
+    userId,
+    accessToken,
+    username: username ?? undefined,
+    profilePictureUrl: profilePictureUrl ?? undefined,
+  };
+}
+
+/** 保存された3つ目のInstagram連携情報を消す */
+export async function clearInstagramStorage3() {
+  await removeItem(SK_USER_ID_3);
+  await removeItem(SK_TOKEN_3);
+  await removeItem(SK_USERNAME_3);
+  await removeItem(SK_PICTURE_3);
 }

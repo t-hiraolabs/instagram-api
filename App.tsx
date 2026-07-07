@@ -16,6 +16,7 @@ import { COLORS, SPACING, RADIUS } from './src/utils/theme';
 import {
   loadInstagramCredentials,
   loadInstagramCredentials2,
+  loadInstagramCredentials3,
 } from './src/utils/instagram';
 import { getInsightsSummary } from './src/services/insightsService';
 import { loadBrandSettingsFromDb, saveBrandSettingsToDb, brandLocalKey } from './src/services/brandSettingsService';
@@ -67,8 +68,8 @@ async function fetchCaptionsFromInstagram(accessToken: string): Promise<string[]
 async function runBrandAnalysis(
   accessToken: string,
   username: string,
-  slot: 1 | 2,
-  setBrandConfirmModal: (v: { slot: 1 | 2; draft: BrandSettings } | null) => void
+  slot: 1 | 2 | 3,
+  setBrandConfirmModal: (v: { slot: 1 | 2 | 3; draft: BrandSettings } | null) => void
 ) {
   try {
     const captions = await fetchCaptionsFromInstagram(accessToken);
@@ -96,6 +97,7 @@ function BrandConfirmModal() {
   const setBrandConfirmModal = useAppStore((s) => s.setBrandConfirmModal);
   const setBrandSettings = useAppStore((s) => s.setBrandSettings);
   const setBrandSettings2 = useAppStore((s) => s.setBrandSettings2);
+  const setBrandSettings3 = useAppStore((s) => s.setBrandSettings3);
 
   const [draft, setDraft] = useState<BrandSettings | null>(null);
 
@@ -107,14 +109,14 @@ function BrandConfirmModal() {
 
   const handleConfirm = () => {
     const slot = brandConfirmModal.slot;
-    const creds = slot === 2
-      ? useAppStore.getState().secondInstagramCredentials
-      : useAppStore.getState().instagramCredentials;
+    const state0 = useAppStore.getState();
+    const creds = slot === 3 ? state0.thirdInstagramCredentials : slot === 2 ? state0.secondInstagramCredentials : state0.instagramCredentials;
     const igUserId = creds?.userId ?? '';
     if (igUserId && Platform.OS === 'web') {
       localStorage.setItem(brandLocalKey(igUserId), JSON.stringify(draft));
     }
-    if (slot === 2) setBrandSettings2(draft);
+    if (slot === 3) setBrandSettings3(draft);
+    else if (slot === 2) setBrandSettings2(draft);
     else setBrandSettings(draft);
     saveBrandSettingsToDb(draft, igUserId).catch(() => {});
     setBrandConfirmModal(null);
@@ -179,10 +181,12 @@ function BrandConfirmModal() {
 function OAuthHandler() {
   const setInstagramCredentials = useAppStore((s) => s.setInstagramCredentials);
   const setSecondInstagramCredentials = useAppStore((s) => s.setSecondInstagramCredentials);
+  const setThirdInstagramCredentials = useAppStore((s) => s.setThirdInstagramCredentials);
   const setActiveAccountSlot = useAppStore((s) => s.setActiveAccountSlot);
   const setBrandConfirmModal = useAppStore((s) => s.setBrandConfirmModal);
   const setBrandSettings = useAppStore((s) => s.setBrandSettings);
   const setBrandSettings2 = useAppStore((s) => s.setBrandSettings2);
+  const setBrandSettings3 = useAppStore((s) => s.setBrandSettings3);
   const setAnalysisIntro = useAppStore((s) => s.setAnalysisIntro);
 
   // アプリ起動時に保存済みのInstagram連携情報・ブランド設定・アクティブスロットを読み込む。
@@ -201,36 +205,56 @@ function OAuthHandler() {
         loadBrandForAccount(creds.userId).then((b) => { if (b) setBrandSettings2(b); });
       }
     });
+    loadInstagramCredentials3().then((creds) => {
+      if (creds) {
+        setThirdInstagramCredentials(creds);
+        loadBrandForAccount(creds.userId).then((b) => { if (b) setBrandSettings3(b); });
+      }
+    });
     if (Platform.OS === 'web') {
       const saved = localStorage.getItem('active_account_slot');
       if (saved === '2') setActiveAccountSlot(2);
+      else if (saved === '3') setActiveAccountSlot(3);
     }
     // AIアシスタントのメモリを読み込む
     loadAssistantMemory().then((m) => useAppStore.getState().setAssistantMemory(m)).catch(() => {});
-  }, [setInstagramCredentials, setSecondInstagramCredentials, setActiveAccountSlot, setBrandSettings, setBrandSettings2]);
+  }, [setInstagramCredentials, setSecondInstagramCredentials, setThirdInstagramCredentials, setActiveAccountSlot, setBrandSettings, setBrandSettings2, setBrandSettings3]);
 
   // Instagram連携が成功したときの反映処理。同一タブでの直接コールバックでも、
   // 別タブ（ポップアップ）から通知を受け取った場合でも、この処理を共通で使う。
   const applyIgAuthResult = useCallback(
     async (
-      slot: 1 | 2,
+      slot: 1 | 2 | 3,
       access_token: string,
       user_id: string,
       username: string,
       profile_picture_url?: string
     ) => {
-      // 同じInstagramアカウントを2つのスロットに重複連携させない
+      // 同じInstagramアカウントを他のスロットに重複連携させない
       const state0 = useAppStore.getState();
-      const otherCreds = slot === 2 ? state0.instagramCredentials : state0.secondInstagramCredentials;
-      if (otherCreds && otherCreds.userId === user_id) {
+      const otherCredsList = [
+        slot !== 1 ? state0.instagramCredentials : null,
+        slot !== 2 ? state0.secondInstagramCredentials : null,
+        slot !== 3 ? state0.thirdInstagramCredentials : null,
+      ];
+      if (otherCredsList.some((c) => c && c.userId === user_id)) {
         Alert.alert(
           '連携できません',
-          `@${username} はすでにもう一方のアカウントに連携されています。別のInstagramアカウントを連携してください。`
+          `@${username} はすでに他のアカウント枠に連携されています。別のInstagramアカウントを連携してください。`
         );
         return;
       }
 
-      if (slot === 2) {
+      if (slot === 3) {
+        saveCredential('instagram_user_id_3', user_id);
+        saveCredential('instagram_access_token_3', access_token);
+        saveCredential('instagram_username_3', username);
+        if (profile_picture_url) saveCredential('instagram_profile_picture_3', profile_picture_url);
+        setThirdInstagramCredentials({
+          userId: user_id, accessToken: access_token, username,
+          profilePictureUrl: profile_picture_url || undefined,
+        });
+      } else if (slot === 2) {
         saveCredential('instagram_user_id_2', user_id);
         saveCredential('instagram_access_token_2', access_token);
         saveCredential('instagram_username_2', username);
@@ -260,13 +284,14 @@ function OAuthHandler() {
       // このアカウントに既存のブランド設定があれば復元し、なければAIで自動分析する（裏側で進める）
       const existing = await loadBrandForAccount(user_id);
       if (existing) {
-        if (slot === 2) setBrandSettings2(existing);
+        if (slot === 3) setBrandSettings3(existing);
+        else if (slot === 2) setBrandSettings2(existing);
         else setBrandSettings(existing);
       } else {
         await runBrandAnalysis(access_token, username, slot, setBrandConfirmModal);
       }
     },
-    [setInstagramCredentials, setSecondInstagramCredentials, setActiveAccountSlot, setAnalysisIntro, setBrandSettings, setBrandSettings2, setBrandConfirmModal]
+    [setInstagramCredentials, setSecondInstagramCredentials, setThirdInstagramCredentials, setActiveAccountSlot, setAnalysisIntro, setBrandSettings, setBrandSettings2, setBrandSettings3, setBrandConfirmModal]
   );
 
   // 別タブ（ポップアップ）でInstagram連携した場合、そちらから届く結果をここで受け取って反映する
@@ -294,8 +319,8 @@ function OAuthHandler() {
     const state = params.get('state') ?? '';
 
     // Instagram連携とGoogleログインは同じ ?code= を使うため区別する。
-    // Instagram連携は必ず state=slot1/slot2 を付けるので、それ以外はSupabase(Google)のOAuthとみなす。
-    const isInstagramOAuth = state === 'slot1' || state === 'slot2';
+    // Instagram連携は必ず state=slot1/slot2/slot3 を付けるので、それ以外はSupabase(Google)のOAuthとみなす。
+    const isInstagramOAuth = state === 'slot1' || state === 'slot2' || state === 'slot3';
     if (!isInstagramOAuth) {
       // Supabase(Google)のOAuthコールバック。セッションを確立し、URLを掃除する。
       supabase.auth
@@ -307,7 +332,7 @@ function OAuthHandler() {
       return;
     }
 
-    const slot: 1 | 2 = state === 'slot2' ? 2 : 1;
+    const slot: 1 | 2 | 3 = state === 'slot3' ? 3 : state === 'slot2' ? 2 : 1;
 
     window.history.replaceState({}, '', window.location.pathname);
 

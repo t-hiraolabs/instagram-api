@@ -88,6 +88,7 @@ function ImageGenChat(
   // アカウント切り替え（チャットもアカウントごとに保存・表示する）
   const instagramCredentials = useAppStore((s) => s.instagramCredentials);
   const secondInstagramCredentials = useAppStore((s) => s.secondInstagramCredentials);
+  const thirdInstagramCredentials = useAppStore((s) => s.thirdInstagramCredentials);
   const activeAccountSlot = useAppStore((s) => s.activeAccountSlot);
   const setActiveAccountSlot = useAppStore((s) => s.setActiveAccountSlot);
   const accountSlotRef = useRef(activeAccountSlot);
@@ -102,7 +103,7 @@ function ImageGenChat(
     if (convs[0]) await openConversation(convs[0].id);
   };
 
-  const switchAccount = async (slot: 1 | 2) => {
+  const switchAccount = async (slot: 1 | 2 | 3) => {
     if (slot === activeAccountSlot) return;
     setActiveAccountSlot(slot);
   };
@@ -522,11 +523,12 @@ function ImageGenChat(
               <View style={styles.listHeader}>
                 <Text style={styles.listTitle}>会話</Text>
               </View>
-              {(instagramCredentials || secondInstagramCredentials) && (
+              {(instagramCredentials || secondInstagramCredentials || thirdInstagramCredentials) && (
                 <View style={styles.accountSwitchRow}>
                   {([
                     { slot: 1 as const, creds: instagramCredentials },
                     { slot: 2 as const, creds: secondInstagramCredentials },
+                    { slot: 3 as const, creds: thirdInstagramCredentials },
                   ]).filter((a) => a.creds).map((a) => (
                     <TouchableOpacity
                       key={a.slot}

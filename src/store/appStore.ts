@@ -60,15 +60,18 @@ interface AppState {
   secondInstagramCredentials: InstagramCredentials | null;
   setSecondInstagramCredentials: (creds: InstagramCredentials | null) => void;
 
-  activeAccountSlot: 1 | 2;
-  setActiveAccountSlot: (slot: 1 | 2) => void;
+  thirdInstagramCredentials: InstagramCredentials | null;
+  setThirdInstagramCredentials: (creds: InstagramCredentials | null) => void;
+
+  activeAccountSlot: 1 | 2 | 3;
+  setActiveAccountSlot: (slot: 1 | 2 | 3) => void;
 
   loginPromptVisible: boolean;
   setLoginPromptVisible: (visible: boolean) => void;
 
   /** Instagram連携が完了した直後に表示する「アカウント分析→アプリへ」の入口画面 */
-  analysisIntro: { slot: 1 | 2; accessToken: string; username?: string; igUserId?: string } | null;
-  setAnalysisIntro: (v: { slot: 1 | 2; accessToken: string; username?: string; igUserId?: string } | null) => void;
+  analysisIntro: { slot: 1 | 2 | 3; accessToken: string; username?: string; igUserId?: string } | null;
+  setAnalysisIntro: (v: { slot: 1 | 2 | 3; accessToken: string; username?: string; igUserId?: string } | null) => void;
 
   /** ホーム等からAI画像生成チャットを開くためのフラグ */
   openImageChat: boolean;
@@ -104,9 +107,14 @@ interface AppState {
   setBrandSettings2: (settings: Partial<BrandSettings>) => void;
   resetBrandSettings2: () => void;
 
+  /** アカウント3のブランド設定 */
+  brandSettings3: BrandSettings;
+  setBrandSettings3: (settings: Partial<BrandSettings>) => void;
+  resetBrandSettings3: () => void;
+
   /** 連携完了後のブランド設定確認モーダル */
-  brandConfirmModal: { slot: 1 | 2; draft: BrandSettings } | null;
-  setBrandConfirmModal: (val: { slot: 1 | 2; draft: BrandSettings } | null) => void;
+  brandConfirmModal: { slot: 1 | 2 | 3; draft: BrandSettings } | null;
+  setBrandConfirmModal: (val: { slot: 1 | 2 | 3; draft: BrandSettings } | null) => void;
 
   scheduledPosts: ScheduledPost[];
   addScheduledPost: (post: ScheduledPost) => void;
@@ -132,6 +140,9 @@ export const useAppStore = create<AppState>((set) => ({
 
   secondInstagramCredentials: null,
   setSecondInstagramCredentials: (creds) => set({ secondInstagramCredentials: creds }),
+
+  thirdInstagramCredentials: null,
+  setThirdInstagramCredentials: (creds) => set({ thirdInstagramCredentials: creds }),
 
   activeAccountSlot: 1,
   setActiveAccountSlot: (slot) => {
@@ -172,6 +183,11 @@ export const useAppStore = create<AppState>((set) => ({
   setBrandSettings2: (settings) =>
     set((state) => ({ brandSettings2: { ...state.brandSettings2, ...settings } })),
   resetBrandSettings2: () => set({ brandSettings2: { ...DEFAULT_BRAND_SETTINGS } }),
+
+  brandSettings3: { ...DEFAULT_BRAND_SETTINGS },
+  setBrandSettings3: (settings) =>
+    set((state) => ({ brandSettings3: { ...state.brandSettings3, ...settings } })),
+  resetBrandSettings3: () => set({ brandSettings3: { ...DEFAULT_BRAND_SETTINGS } }),
 
   brandConfirmModal: null,
   setBrandConfirmModal: (val) => set({ brandConfirmModal: val }),
