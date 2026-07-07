@@ -334,7 +334,9 @@ export default function App() {
   // 「連携を開始した」事実（sessionStorage）をポーリングで確認し、戻ってきたら再読み込みする。
   useEffect(() => {
     if (Platform.OS !== 'web') return;
+    let reloadTimer: ReturnType<typeof setTimeout> | null = null;
     const interval = setInterval(() => {
+      if (reloadTimer != null) return; // すでに予約済み
       let setAt = 0;
       try { setAt = Number(sessionStorage.getItem('ig_connect_pending')) || 0; } catch {}
       if (!setAt) return;
@@ -342,10 +344,15 @@ export default function App() {
       // 誤って自分自身をリロードしてしまわないよう、十分な時間が経ってから戻ってきた場合のみ対象にする
       if (Date.now() - setAt > 4000 && document.hasFocus()) {
         try { sessionStorage.removeItem('ig_connect_pending'); } catch {}
-        window.location.reload();
+        // 戻ってきた直後はOS側の画面切り替えアニメーション/レイアウト確定がまだ終わっていないことがあるため、
+        // 少し待ってからリロードする
+        reloadTimer = setTimeout(() => window.location.reload(), 1500);
       }
     }, 500);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      if (reloadTimer != null) clearTimeout(reloadTimer);
+    };
   }, []);
 
   return (
