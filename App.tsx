@@ -320,19 +320,16 @@ function OAuthHandler() {
         );
         const { access_token, user_id, username, profile_picture_url } = res.data;
 
-        // 別タブ（ポップアップ）としてInstagramへ行っていた場合は、
-        // 開いた元のタブへ結果を伝えて、この（ポップアップの）タブは閉じる
-        if (window.opener && window.opener !== window) {
-          try {
-            localStorage.setItem(
-              'ig_oauth_result',
-              JSON.stringify({ slot, access_token, user_id, username, profile_picture_url, ts: Date.now() })
-            );
-          } catch {}
-          window.close();
-          return;
-        }
+        // 別タブ・別ウィンドウ（noopenerのためwindow.opener自体は参照できない）で開いている
+        // 元のPWA側のタブがあれば、そちらにも結果を伝える。同一originであればstorageイベントで届く。
+        try {
+          localStorage.setItem(
+            'ig_oauth_result',
+            JSON.stringify({ slot, access_token, user_id, username, profile_picture_url, ts: Date.now() })
+          );
+        } catch {}
 
+        // このタブ自身でも連携完了として反映する
         await applyIgAuthResult(slot, access_token, user_id, username, profile_picture_url);
       } catch {
         Alert.alert('エラー', 'Instagram連携に失敗しました');

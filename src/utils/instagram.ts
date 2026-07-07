@@ -32,14 +32,10 @@ export function connectInstagram(slot: 1 | 2 = 1) {
     `&scope=${encodeURIComponent(SCOPES)}` +
     `&state=${encodeURIComponent(state)}`;
   if (Platform.OS === 'web') {
-    // PWA(standalone)から同一タブでInstagramへ遷移すると、iOSがSafari風の別画面として
-    // 重ねて表示し、閉じて戻ってきた後に画面レイアウトが崩れたまま直らない不具合がある。
-    // 別タブ（ポップアップ）で開くことで、この重ね表示自体を避ける。
-    const popup = window.open(url, 'ig_oauth', 'width=480,height=720');
-    if (!popup) {
-      // ポップアップがブロックされた場合は従来通り同一タブで遷移する
-      window.location.href = url;
-    }
+    // PWA(standalone)内で外部ドメイン(Instagram)へ同一ウィンドウのまま遷移すると、
+    // 一部環境でviewport/レイアウトが崩れたまま戻ってこない不具合があるため、
+    // PWA本体とは別タブ・別ウィンドウ（実質ブラウザ側）で開く。
+    window.open(url, '_blank', 'noopener,noreferrer');
   } else {
     Linking.openURL(url);
   }
