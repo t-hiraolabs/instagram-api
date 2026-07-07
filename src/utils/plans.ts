@@ -52,7 +52,7 @@ export const PLANS: PlanInfo[] = [
   {
     id: 'pro',
     name: 'Pro',
-    price: '¥1,980/月',
+    price: '¥980/月',
     paid: true,
     features: [
       'AI生成 月30回',

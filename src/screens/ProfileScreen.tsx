@@ -273,7 +273,7 @@ export default function ProfileScreen() {
     if (maxInstagramAccounts(currentPlan) >= 2) return true;
     Alert.alert(
       '複数アカウント連携はPro以上の機能です',
-      '2つ目以降のInstagramアカウントを連携するには、Pro（¥1,980/月）以上のプランへのアップグレードが必要です。'
+      '2つ目以降のInstagramアカウントを連携するには、Pro（¥980/月）以上のプランへのアップグレードが必要です。'
     );
     return false;
   };

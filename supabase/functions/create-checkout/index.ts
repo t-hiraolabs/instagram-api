@@ -1,4 +1,4 @@
-// Pro（¥980/月）の決済（Stripe Checkout）を開始する関数。
+// Pro/ビジネスの決済（Stripe Checkout）を開始する関数。金額はStripe側の価格IDで管理。
 // ログイン中ユーザーの Checkout セッションを作り、決済ページのURLを返す。
 import Stripe from 'https://esm.sh/stripe@16?target=deno';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
