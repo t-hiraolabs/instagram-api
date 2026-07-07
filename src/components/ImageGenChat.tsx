@@ -123,8 +123,16 @@ function ImageGenChat(
   // アクティブなアカウント（スロット×ig_user_id）が変わったら、そのアカウントの会話に切り替える
   useEffect(() => {
     const key = `${activeAccountSlot}:${activeIgUserId ?? ''}`;
-    if (accountKeyRef.current === key) return;
+    const prevKey = accountKeyRef.current;
     accountKeyRef.current = key;
+    if (prevKey === key) return;
+    const prevIgUserId = prevKey.slice(prevKey.indexOf(':') + 1);
+    const nextIgUserId = key.slice(key.indexOf(':') + 1);
+    // 起動直後は、永続化されたInstagram連携情報が非同期で読み込まれる過程で
+    // 「未確定→確定」に変わるだけでもこの効果が発火してしまい、embeddedの
+    // 「毎回新規チャットで始める」を上書きして直近の会話を開いてしまっていた。
+    // 前回が未確定（空）から確定した場合は、起動時の初期解決とみなして無視する。
+    if (prevIgUserId === '' && nextIgUserId !== '') return;
     reloadForAccount().catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeAccountSlot, activeIgUserId]);
@@ -445,7 +453,7 @@ function ImageGenChat(
                     <View style={styles.usageItem}>
                       <View style={styles.usageRow}>
                         <Text style={styles.usageLabel}>会話の利用量</Text>
-                        <Text style={styles.usageValue}>残り{chatRemainPct}%</Text>
+                        <Text style={styles.usageValue}>{100 - chatRemainPct}% 使用済み</Text>
                       </View>
                       <UsageBar pct={100 - chatRemainPct} />
                     </View>
