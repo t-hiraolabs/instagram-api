@@ -325,9 +325,29 @@ function AuthGate() {
 }
 
 export default function App() {
+  const [safeAreaKey, setSafeAreaKey] = useState(0);
+
+  // react-native-safe-area-context のWeb実装は、セーフエリアの計測をマウント時に一度しか行わない。
+  // PWA（standalone）でInstagramの認証画面など外部サイトへ移動してアプリスイッチャー経由で
+  // 戻ってきたとき、この一度きりの計測値が古いまま（＝画面下部に隙間ができる）ことがあるため、
+  // バックグラウンドから復帰したタイミングでSafeAreaProviderごと作り直し、計測をやり直させる。
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const remeasure = () => setSafeAreaKey((k) => k + 1);
+    const onVisibilityChange = () => { if (!document.hidden) remeasure(); };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('pageshow', remeasure);
+    window.addEventListener('focus', remeasure);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('pageshow', remeasure);
+      window.removeEventListener('focus', remeasure);
+    };
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
-      <SafeAreaProvider>
+      <SafeAreaProvider key={safeAreaKey}>
         <StatusBar style="light" />
         <AuthGate />
       </SafeAreaProvider>
