@@ -1,5 +1,6 @@
 // Instagram連携が完了した直後に表示する「アカウント分析結果」ページ。
-// ここでのAI呼び出しはコストゼロ（プログラム側の集計のみ）にして、初回体験を軽くする。
+// 数値の集計はプログラム側で行いコストゼロ、その事実だけを根拠にAI（安価なHaikuモデル、
+// 通常のAI生成回数は消費しない）が評論家として良い点・改善点・市場価値を厳しく評価する。
 // MBTI診断のような「大きな結果発表→スクロールでカードごとに詳細」という見せ方にし、
 // Instagramと連携しているからこそ得られる実データを見せることで、
 // 汎用チャットボットとの違い＝AImarkにしかできないことをアピールする。
@@ -10,6 +11,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useAppStore } from '../store/appStore';
 import { getInsightsSummary, InsightsResult, computeInsightFacts, InsightDetails } from '../services/insightsService';
 import { saveFirstAnalysisSnapshot } from '../services/firstAnalysisService';
+import { critiqueAccountFacts, AccountCritique } from '../services/aiService';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
 
 const ACCENTS = [COLORS.secondary, COLORS.primary, COLORS.primaryLight];
@@ -87,6 +89,9 @@ export default function IgAnalysisIntro() {
   const [result, setResult] = useState<InsightsResult | null>(null);
   const [details, setDetails] = useState<InsightDetails | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [critique, setCritique] = useState<AccountCritique | null>(null);
+  const [critiqueLoading, setCritiqueLoading] = useState(false);
+  const [critiqueError, setCritiqueError] = useState<string | null>(null);
 
   const finish = () => {
     setAnalysisIntro(null);
@@ -99,11 +104,21 @@ export default function IgAnalysisIntro() {
     setResult(null);
     setDetails(null);
     setError(null);
+    setCritique(null);
+    setCritiqueError(null);
     getInsightsSummary(intro.accessToken, 30)
       .then((res) => {
         setResult(res);
-        setDetails(computeInsightFacts(res)?.details ?? null);
+        const computed = computeInsightFacts(res);
+        setDetails(computed?.details ?? null);
         if (intro.igUserId) saveFirstAnalysisSnapshot(intro.igUserId, res).catch(() => {});
+        if (computed) {
+          setCritiqueLoading(true);
+          critiqueAccountFacts(computed.lines.join('\n'))
+            .then(setCritique)
+            .catch((e) => setCritiqueError(e instanceof Error ? e.message : 'AIの評論を取得できませんでした'))
+            .finally(() => setCritiqueLoading(false));
+        }
       })
       .catch((e) => setError(e instanceof Error ? e.message : '分析データの取得に失敗しました'))
       .finally(() => setLoading(false));
@@ -187,6 +202,46 @@ export default function IgAnalysisIntro() {
               </View>
             )}
 
+            {/* AIによる厳しい評論: 良い点・改善点・市場価値/競合との位置づけ */}
+            <View style={styles.critiqueSection}>
+              <Text style={styles.sectionTitle}>🧐 AIの評論</Text>
+              <Text style={styles.sectionSub}>実データをもとに、良い点と改善点を厳しく評価します</Text>
+
+              {critiqueLoading ? (
+                <View style={styles.critiqueLoadingRow}>
+                  <ActivityIndicator color={COLORS.primary} />
+                  <Text style={styles.loadingText}>AIが評論中...</Text>
+                </View>
+              ) : critiqueError ? (
+                <Text style={styles.errorText}>{critiqueError}</Text>
+              ) : critique ? (
+                <>
+                  {critique.goodPoints.length > 0 && (
+                    <View style={styles.critiqueCard}>
+                      <Text style={styles.critiqueCardTitle}>👍 良い点</Text>
+                      {critique.goodPoints.map((p, i) => (
+                        <Text key={i} style={styles.critiqueLine}>・{p}</Text>
+                      ))}
+                    </View>
+                  )}
+                  {critique.improvementPoints.length > 0 && (
+                    <View style={[styles.critiqueCard, styles.critiqueCardWarn]}>
+                      <Text style={styles.critiqueCardTitle}>🔥 改善点（厳しめ）</Text>
+                      {critique.improvementPoints.map((p, i) => (
+                        <Text key={i} style={styles.critiqueLine}>・{p}</Text>
+                      ))}
+                    </View>
+                  )}
+                  {!!critique.marketComment && (
+                    <View style={styles.critiqueCard}>
+                      <Text style={styles.critiqueCardTitle}>📊 市場価値・競合との位置づけ</Text>
+                      <Text style={styles.critiqueLine}>{critique.marketComment}</Text>
+                    </View>
+                  )}
+                </>
+              ) : null}
+            </View>
+
             <Text style={styles.hint}>もっと詳しい分析や改善提案、競合との比較は、アプリ内でいつでも「分析して」と聞くだけでAIが答えます。</Text>
 
             <TouchableOpacity style={styles.cta} onPress={finish} activeOpacity={0.85}>
@@ -242,6 +297,16 @@ const styles = StyleSheet.create({
   resultTitle: { color: COLORS.text, fontSize: 13, fontWeight: '800', marginBottom: 2 },
   resultBody: { color: COLORS.textSecondary, fontSize: 12, lineHeight: 18 },
   footnote: { color: COLORS.textMuted, fontSize: 11, lineHeight: 16, marginTop: SPACING.sm, marginBottom: SPACING.md },
+
+  critiqueSection: { paddingHorizontal: SPACING.lg, marginTop: SPACING.md },
+  critiqueLoadingRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, paddingVertical: SPACING.md },
+  critiqueCard: {
+    backgroundColor: COLORS.surface, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.border,
+    padding: SPACING.md, marginBottom: SPACING.sm,
+  },
+  critiqueCardWarn: { borderColor: COLORS.error + '55' },
+  critiqueCardTitle: { color: COLORS.text, fontSize: 13, fontWeight: '800', marginBottom: SPACING.xs },
+  critiqueLine: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 20, marginBottom: 2 },
 
   hint: { color: COLORS.textMuted, fontSize: 12, textAlign: 'center', marginHorizontal: SPACING.lg, marginBottom: SPACING.md, lineHeight: 18 },
   cta: {

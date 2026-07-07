@@ -571,6 +571,56 @@ ${sample}
   return JSON.parse(jsonMatch[0]) as SuggestedBrandSettings;
 }
 
+export interface AccountCritique {
+  goodPoints: string[];
+  improvementPoints: string[];
+  marketComment: string;
+}
+
+/**
+ * 連携直後の診断画面で使う、プログラム側で集計した実データに対するAIの評論。
+ * Instagramマーケティングの評論家として、良い点・改善点を厳しく指摘し、
+ * 一般的な同業種の市場価値・競合との相対的な位置づけも踏まえてコメントする。
+ * 通常のAI生成回数は消費しない（skipCount）、安価なモデルを使う軽量な呼び出し。
+ */
+export async function critiqueAccountFacts(factsText: string): Promise<AccountCritique> {
+  const headers = await getAuthHeaders();
+  const brandCtx = getBrandContext();
+  const systemPrompt =
+    'あなたはInstagramマーケティングの評論家です。当たり障りのない感想は述べず、' +
+    'プログラム側で集計された実データだけを根拠に、厳しく率直に評価してください。' +
+    '良い点も指摘してよいですが、改善点は具体的に（何が弱く、どう直すべきか）示してください。' +
+    '他アカウントの実データは取得できないため、競合や市場価値については、' +
+    '一般的にその業種・フォロワー規模で期待される水準（一般論・業界の目安）と比較する形でコメントしてください。' +
+    '数値の再計算はせず、与えられた事実だけを根拠にしてください。必ずJSONのみで返答してください。';
+  const prompt = `以下はこのアカウントの実データです。${brandCtx}
+
+【実データ】
+${factsText}
+
+このデータをもとに、以下のJSON形式で返してください:
+{
+  "goodPoints": ["良い点1", "良い点2"],
+  "improvementPoints": ["改善点1（具体的に何が弱く、どう直すべきか）", "改善点2"],
+  "marketComment": "同業種・同規模のアカウントの一般的な水準と比べた市場価値・競合における位置づけのコメント（2〜3文）"
+}`;
+
+  const res = await axios.post(
+    CLAUDE_API_URL,
+    { model: MODEL, system: systemPrompt, messages: [{ role: 'user', content: prompt }], max_tokens: 700, skipCount: true },
+    { headers }
+  );
+  const text: string = res.data?.content?.[0]?.text ?? res.data?.text ?? '';
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error('AI応答のパースに失敗しました');
+  const parsed = JSON.parse(jsonMatch[0]);
+  return {
+    goodPoints: Array.isArray(parsed.goodPoints) ? parsed.goodPoints : [],
+    improvementPoints: Array.isArray(parsed.improvementPoints) ? parsed.improvementPoints : [],
+    marketComment: typeof parsed.marketComment === 'string' ? parsed.marketComment : '',
+  };
+}
+
 export interface ChatTurn { role: 'user' | 'assistant'; content: string; }
 
 // クライアント表示用（サーバーの CHAT_TOKEN_LIMITS と揃える。月間トークン数）
