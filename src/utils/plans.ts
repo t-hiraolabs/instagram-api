@@ -5,7 +5,7 @@ import { COLORS } from './theme';
 export type Plan = 'free' | 'pro' | 'business';
 
 /** プランごとの月間AI生成上限 */
-export const AI_LIMITS: Record<Plan, number> = { free: 5, pro: 50, business: 150 };
+export const AI_LIMITS: Record<Plan, number> = { free: 5, pro: 30, business: 100 };
 
 /** プランの順位（高いほど上位）。アップグレード判定に使う */
 export const PLAN_RANK: Record<Plan, number> = { free: 0, pro: 1, business: 2 };

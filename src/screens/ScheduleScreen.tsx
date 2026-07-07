@@ -87,6 +87,8 @@ import {
   deleteScheduledPost,
   updateScheduledPost,
   getMyPlan,
+  getAiUsage,
+  AiUsage,
   ScheduledPost,
   RepeatOption,
 } from '../services/scheduleService';
@@ -238,6 +240,10 @@ export default function ScheduleScreen() {
   const editingDraftId = useRef<string | null>(null); // 結果画面で既存の下書きを編集中ならそのID
   const draftOriginalRef = useRef<string | null>(null); // 編集開始時の内容スナップショット（変更検知用）
   const [plan, setPlan] = useState<Plan>('free');
+  const [aiUsage, setAiUsage] = useState<AiUsage | null>(null);
+  const refreshAiUsage = useCallback(() => {
+    getAiUsage().then(setAiUsage).catch(() => {});
+  }, []);
   const [nowSub, setNowSub] = useState<'menu' | 'reel' | 'roster'>('menu'); // 投稿タブ内の表示
 
   // テンプレート（ひな形）: この端末だけに保存して再利用する
@@ -401,7 +407,8 @@ export default function ScheduleScreen() {
     fetchPosts();
     getMyPlan().then(setPlan).catch(() => {});
     getTemplates().then(setTemplates).catch(() => {});
-  }, [fetchPosts]);
+    refreshAiUsage();
+  }, [fetchPosts, refreshAiUsage]);
 
   // 動画ストーリーのプレビュー：選んだ動画を<video>で表示
   useEffect(() => {
@@ -637,6 +644,7 @@ export default function ScheduleScreen() {
       alertMsg(e instanceof Error ? e.message : '書き直しに失敗しました');
     } finally {
       setAiLoading(false);
+      refreshAiUsage();
     }
   };
 
@@ -682,6 +690,7 @@ export default function ScheduleScreen() {
       alertMsg(e instanceof Error ? e.message : 'AI生成に失敗しました');
     } finally {
       setAiLoading(false);
+      refreshAiUsage();
     }
   };
 
@@ -707,6 +716,7 @@ export default function ScheduleScreen() {
       alertMsg(e instanceof Error ? e.message : 'AI生成に失敗しました');
     } finally {
       setAiLoading(false);
+      refreshAiUsage();
     }
   };
 
@@ -741,6 +751,7 @@ export default function ScheduleScreen() {
       alertMsg(e instanceof Error ? e.message : 'AI生成に失敗しました');
     } finally {
       setAiLoading(false);
+      refreshAiUsage();
     }
   };
 
@@ -772,6 +783,7 @@ export default function ScheduleScreen() {
       alertMsg(e instanceof Error ? e.message : 'AI生成に失敗しました');
     } finally {
       setAiLoading(false);
+      refreshAiUsage();
     }
   };
 
@@ -815,6 +827,7 @@ export default function ScheduleScreen() {
       alertMsg(e instanceof Error ? e.message : 'AI生成に失敗しました');
     } finally {
       setAiLoading(false);
+      refreshAiUsage();
     }
   };
 
@@ -837,6 +850,7 @@ export default function ScheduleScreen() {
       alertMsg(e instanceof Error ? e.message : '書き直しに失敗しました');
     } finally {
       setAiLoading(false);
+      refreshAiUsage();
     }
   };
 
@@ -865,6 +879,7 @@ export default function ScheduleScreen() {
       alertMsg('AI生成に失敗しました。プロフィール画面でAPIキーを設定してください。');
     } finally {
       setAiLoading(false);
+      refreshAiUsage();
     }
   };
 
@@ -1676,6 +1691,17 @@ export default function ScheduleScreen() {
             最適な投稿時間: 平日18〜21時・12〜13時 ／ 休日11〜13時・19〜21時
           </Text>
         </View>
+
+        {/* AI生成の残り使用量 */}
+        {aiUsage && (
+          <View style={styles.aiUsageCard}>
+            <Text style={styles.aiUsageText}>
+              {aiUsage.plan === 'free' ? 'AI生成（無料・累計）' : '今月のAI生成'}：あと
+              <Text style={styles.aiUsageStrong}> {aiUsage.remaining}</Text> 回
+              <Text style={styles.aiUsageSub}>（{aiUsage.used}/{aiUsage.limit}）</Text>
+            </Text>
+          </View>
+        )}
 
         {/* 表示切替：リスト / カレンダー */}
         <View style={styles.filterRow}>
@@ -2945,6 +2971,17 @@ const styles = StyleSheet.create({
     borderColor: COLORS.secondary + '33',
   },
   hintText: { color: COLORS.secondary, fontSize: 12, lineHeight: 18 },
+  aiUsageCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.md,
+    padding: SPACING.sm,
+    marginBottom: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  aiUsageText: { color: COLORS.textSecondary, fontSize: 12 },
+  aiUsageStrong: { color: COLORS.text, fontWeight: '700', fontSize: 13 },
+  aiUsageSub: { color: COLORS.textMuted, fontSize: 11 },
   calHeader: {
     flexDirection: 'row',
     alignItems: 'center',
