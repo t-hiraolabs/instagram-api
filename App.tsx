@@ -307,17 +307,6 @@ function AuthGate() {
     supabase.auth.getSession().then(() => setLoading(false));
   }, []);
 
-  // Instagramの認証画面など外部サイトへ移動して戻ってきたとき（ブラウザのbfcache復元）、
-  // レイアウトの高さがずれて画面下部に隙間ができることがあるため、その場合だけ読み込み直す。
-  useEffect(() => {
-    if (Platform.OS !== 'web') return;
-    const onPageShow = (e: PageTransitionEvent) => {
-      if (e.persisted) window.location.reload();
-    };
-    window.addEventListener('pageshow', onPageShow);
-    return () => window.removeEventListener('pageshow', onPageShow);
-  }, []);
-
   if (loading) {
     return (
       <View style={{ flex: 1, backgroundColor: COLORS.background, justifyContent: 'center', alignItems: 'center' }}>
