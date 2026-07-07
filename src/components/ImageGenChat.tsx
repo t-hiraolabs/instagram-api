@@ -53,6 +53,17 @@ type Msg =
   | { role: 'user_image'; uri: string }
   | { role: 'error'; text: string };
 
+/** Claudeデスクトップの使用量パネル風の、割合を色付きバーで見せるだけの表示用パーツ */
+function UsageBar({ pct }: { pct: number }) {
+  const clamped = Math.max(0, Math.min(100, pct));
+  const color = clamped >= 90 ? COLORS.error : clamped >= 70 ? COLORS.secondary : COLORS.primary;
+  return (
+    <View style={styles.usageBarTrack}>
+      <View style={[styles.usageBarFill, { width: `${clamped}%`, backgroundColor: color }]} />
+    </View>
+  );
+}
+
 function ImageGenChat(
   { visible, onClose, onUseImage, embedded, onBack, emptyState, onMenuVisibleChange }: Props,
   ref: React.Ref<ImageGenChatHandle>
@@ -431,15 +442,21 @@ function ImageGenChat(
               {(chatRemainPct != null || aiUsage) && (
                 <View style={styles.usageBox}>
                   {chatRemainPct != null && (
-                    <View style={styles.usageRow}>
-                      <Text style={styles.usageLabel}>会話の利用量</Text>
-                      <Text style={styles.usageValue}>残り{chatRemainPct}%</Text>
+                    <View style={styles.usageItem}>
+                      <View style={styles.usageRow}>
+                        <Text style={styles.usageLabel}>会話の利用量</Text>
+                        <Text style={styles.usageValue}>残り{chatRemainPct}%</Text>
+                      </View>
+                      <UsageBar pct={100 - chatRemainPct} />
                     </View>
                   )}
                   {aiUsage && (
-                    <View style={styles.usageRow}>
-                      <Text style={styles.usageLabel}>{aiUsage.plan === 'free' ? 'AI生成（無料・累計）' : '今月のAI生成'}</Text>
-                      <Text style={styles.usageValue}>あと{aiUsage.remaining}回</Text>
+                    <View style={styles.usageItem}>
+                      <View style={styles.usageRow}>
+                        <Text style={styles.usageLabel}>{aiUsage.plan === 'free' ? 'AI生成（無料・累計）' : '今月のAI生成'}</Text>
+                        <Text style={styles.usageValue}>{aiUsage.used}/{aiUsage.limit}回</Text>
+                      </View>
+                      <UsageBar pct={aiUsage.limit > 0 ? (aiUsage.used / aiUsage.limit) * 100 : 0} />
                     </View>
                   )}
                 </View>
@@ -569,11 +586,19 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
     backgroundColor: COLORS.surface,
-    gap: SPACING.xs,
+    gap: SPACING.md,
   },
+  usageItem: { gap: 6 },
   usageRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   usageLabel: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },
   usageValue: { color: COLORS.text, fontSize: 16, fontWeight: '800' },
+  usageBarTrack: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: COLORS.border,
+    overflow: 'hidden',
+  },
+  usageBarFill: { height: '100%', borderRadius: 3 },
   accountSwitchRow: {
     flexDirection: 'row', gap: SPACING.sm, paddingHorizontal: SPACING.md,
     paddingTop: SPACING.sm, paddingBottom: SPACING.md,
