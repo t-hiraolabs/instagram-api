@@ -729,7 +729,9 @@ export async function chatWithAssistant(
       {
         model: MODEL,
         system,
-        max_tokens: 700,
+        // 評論家として複数の観点（写真・文章・投稿の仕方）を具体的に指摘すると
+        // 長めの回答になりやすいため、途中で切れないよう余裕を持たせる
+        max_tokens: 1536,
         messages: msgs,
         chat: true,
       },
