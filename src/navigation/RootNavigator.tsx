@@ -1,7 +1,8 @@
 import { NavigationContainer, createNavigationContainerRef, DarkTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { View, Text, StyleSheet } from 'react-native';
+import { StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 
 import HomeScreen from '../screens/HomeScreen';
 import ScheduleScreen from '../screens/ScheduleScreen';
@@ -35,23 +36,29 @@ export function navigateWhenReady(name: string, params?: object, retriesLeft = 4
   setTimeout(() => navigateWhenReady(name, params, retriesLeft - 1), 50);
 }
 
+const TAB_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
+  Home: 'home',
+  Post: 'add-circle',
+  Analytics: 'bar-chart',
+  DM: 'chatbubble-ellipses',
+  Profile: 'person',
+};
+const TAB_ICONS_OUTLINE: Record<string, keyof typeof Ionicons.glyphMap> = {
+  Home: 'home-outline',
+  Post: 'add-circle-outline',
+  Analytics: 'bar-chart-outline',
+  DM: 'chatbubble-ellipses-outline',
+  Profile: 'person-outline',
+};
+
 function TabIcon({ name, focused }: { name: string; focused: boolean }) {
-  const icons: Record<string, string> = {
-    Home: '🏠',
-    Generate: '✨',
-    Post: '📸',
-    Reel: '🎬',
-    Schedule: '📅',
-    Analytics: '📊',
-    DM: '💬',
-    Profile: '👤',
-  };
+  const iconName = focused ? TAB_ICONS[name] : TAB_ICONS_OUTLINE[name];
   return (
-    <View style={styles.tabIcon}>
-      <Text style={[styles.tabEmoji, focused && styles.tabEmojiActive]}>
-        {icons[name]}
-      </Text>
-    </View>
+    <Ionicons
+      name={iconName}
+      size={24}
+      color={focused ? COLORS.primary : COLORS.textMuted}
+    />
   );
 }
 
@@ -135,17 +142,6 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     paddingTop: 8,
     height: 70,
-  },
-  tabIcon: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tabEmoji: {
-    fontSize: 22,
-    opacity: 0.5,
-  },
-  tabEmojiActive: {
-    opacity: 1,
   },
   tabLabel: {
     fontSize: 10,
