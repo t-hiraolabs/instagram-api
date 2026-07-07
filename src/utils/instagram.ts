@@ -32,11 +32,14 @@ export function connectInstagram(slot: 1 | 2 = 1) {
     `&scope=${encodeURIComponent(SCOPES)}` +
     `&state=${encodeURIComponent(state)}`;
   if (Platform.OS === 'web') {
-    // PWA(standalone)ではInstagramへの遷移がSafari風の別画面として重ねて表示され、
-    // 閉じて戻ってきてもvisibilitychange/pageshowが期待通り発火しないことがある。
-    // 「連携を開始した」という事実だけをここに残しておき、戻ってきたことをポーリングで検知する。
-    try { sessionStorage.setItem('ig_connect_pending', String(Date.now())); } catch {}
-    window.location.href = url;
+    // PWA(standalone)から同一タブでInstagramへ遷移すると、iOSがSafari風の別画面として
+    // 重ねて表示し、閉じて戻ってきた後に画面レイアウトが崩れたまま直らない不具合がある。
+    // 別タブ（ポップアップ）で開くことで、この重ね表示自体を避ける。
+    const popup = window.open(url, 'ig_oauth', 'width=480,height=720');
+    if (!popup) {
+      // ポップアップがブロックされた場合は従来通り同一タブで遷移する
+      window.location.href = url;
+    }
   } else {
     Linking.openURL(url);
   }

@@ -1,5 +1,5 @@
 import 'react-native-gesture-handler';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -209,15 +209,87 @@ function OAuthHandler() {
     loadAssistantMemory().then((m) => useAppStore.getState().setAssistantMemory(m)).catch(() => {});
   }, [setInstagramCredentials, setSecondInstagramCredentials, setActiveAccountSlot, setBrandSettings, setBrandSettings2]);
 
+  // Instagram連携が成功したときの反映処理。同一タブでの直接コールバックでも、
+  // 別タブ（ポップアップ）から通知を受け取った場合でも、この処理を共通で使う。
+  const applyIgAuthResult = useCallback(
+    async (
+      slot: 1 | 2,
+      access_token: string,
+      user_id: string,
+      username: string,
+      profile_picture_url?: string
+    ) => {
+      // 同じInstagramアカウントを2つのスロットに重複連携させない
+      const state0 = useAppStore.getState();
+      const otherCreds = slot === 2 ? state0.instagramCredentials : state0.secondInstagramCredentials;
+      if (otherCreds && otherCreds.userId === user_id) {
+        Alert.alert(
+          '連携できません',
+          `@${username} はすでにもう一方のアカウントに連携されています。別のInstagramアカウントを連携してください。`
+        );
+        return;
+      }
+
+      if (slot === 2) {
+        saveCredential('instagram_user_id_2', user_id);
+        saveCredential('instagram_access_token_2', access_token);
+        saveCredential('instagram_username_2', username);
+        if (profile_picture_url) saveCredential('instagram_profile_picture_2', profile_picture_url);
+        setSecondInstagramCredentials({
+          userId: user_id, accessToken: access_token, username,
+          profilePictureUrl: profile_picture_url || undefined,
+        });
+      } else {
+        saveCredential('instagram_user_id', user_id);
+        saveCredential('instagram_access_token', access_token);
+        saveCredential('instagram_username', username);
+        if (profile_picture_url) saveCredential('instagram_profile_picture', profile_picture_url);
+        setInstagramCredentials({
+          userId: user_id, accessToken: access_token, username,
+          profilePictureUrl: profile_picture_url || undefined,
+        });
+      }
+
+      // 連携したアカウントを使用中（アクティブ）に切り替える
+      setActiveAccountSlot(slot);
+
+      // 連携直後は「アカウント分析→アプリへ」の入口ページに遷移する
+      setAnalysisIntro({ slot, accessToken: access_token, username, igUserId: user_id });
+      navigateWhenReady('IgDiagnosis');
+
+      // このアカウントに既存のブランド設定があれば復元し、なければAIで自動分析する（裏側で進める）
+      const existing = await loadBrandForAccount(user_id);
+      if (existing) {
+        if (slot === 2) setBrandSettings2(existing);
+        else setBrandSettings(existing);
+      } else {
+        await runBrandAnalysis(access_token, username, slot, setBrandConfirmModal);
+      }
+    },
+    [setInstagramCredentials, setSecondInstagramCredentials, setActiveAccountSlot, setAnalysisIntro, setBrandSettings, setBrandSettings2, setBrandConfirmModal]
+  );
+
+  // 別タブ（ポップアップ）でInstagram連携した場合、そちらから届く結果をここで受け取って反映する
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== 'ig_oauth_result' || !e.newValue) return;
+      try {
+        const data = JSON.parse(e.newValue);
+        applyIgAuthResult(data.slot, data.access_token, data.user_id, data.username, data.profile_picture_url);
+      } catch {}
+      try { localStorage.removeItem('ig_oauth_result'); } catch {}
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, [applyIgAuthResult]);
+
   useEffect(() => {
     if (Platform.OS !== 'web') return;
 
     const params = new URLSearchParams(window.location.search);
     const code = params.get('code');
     if (!code) return;
-
-    // 連携が成功してコールバックが返ってきたので、画面崩れ対策用の保留フラグは不要になる
-    try { sessionStorage.removeItem('ig_connect_pending'); } catch {}
 
     const state = params.get('state') ?? '';
 
@@ -248,57 +320,25 @@ function OAuthHandler() {
         );
         const { access_token, user_id, username, profile_picture_url } = res.data;
 
-        // 同じInstagramアカウントを2つのスロットに重複連携させない
-        const state0 = useAppStore.getState();
-        const otherCreds = slot === 2 ? state0.instagramCredentials : state0.secondInstagramCredentials;
-        if (otherCreds && otherCreds.userId === user_id) {
-          Alert.alert(
-            '連携できません',
-            `@${username} はすでにもう一方のアカウントに連携されています。別のInstagramアカウントを連携してください。`
-          );
+        // 別タブ（ポップアップ）としてInstagramへ行っていた場合は、
+        // 開いた元のタブへ結果を伝えて、この（ポップアップの）タブは閉じる
+        if (window.opener && window.opener !== window) {
+          try {
+            localStorage.setItem(
+              'ig_oauth_result',
+              JSON.stringify({ slot, access_token, user_id, username, profile_picture_url, ts: Date.now() })
+            );
+          } catch {}
+          window.close();
           return;
         }
 
-        if (slot === 2) {
-          saveCredential('instagram_user_id_2', user_id);
-          saveCredential('instagram_access_token_2', access_token);
-          saveCredential('instagram_username_2', username);
-          if (profile_picture_url) saveCredential('instagram_profile_picture_2', profile_picture_url);
-          setSecondInstagramCredentials({
-            userId: user_id, accessToken: access_token, username,
-            profilePictureUrl: profile_picture_url || undefined,
-          });
-        } else {
-          saveCredential('instagram_user_id', user_id);
-          saveCredential('instagram_access_token', access_token);
-          saveCredential('instagram_username', username);
-          if (profile_picture_url) saveCredential('instagram_profile_picture', profile_picture_url);
-          setInstagramCredentials({
-            userId: user_id, accessToken: access_token, username,
-            profilePictureUrl: profile_picture_url || undefined,
-          });
-        }
-
-        // 連携したアカウントを使用中（アクティブ）に切り替える
-        setActiveAccountSlot(slot);
-
-        // 連携直後は「アカウント分析→アプリへ」の入口ページに遷移する
-        setAnalysisIntro({ slot, accessToken: access_token, username, igUserId: user_id });
-        navigateWhenReady('IgDiagnosis');
-
-        // このアカウントに既存のブランド設定があれば復元し、なければAIで自動分析する（裏側で進める）
-        const existing = await loadBrandForAccount(user_id);
-        if (existing) {
-          if (slot === 2) setBrandSettings2(existing);
-          else setBrandSettings(existing);
-        } else {
-          await runBrandAnalysis(access_token, username, slot, setBrandConfirmModal);
-        }
+        await applyIgAuthResult(slot, access_token, user_id, username, profile_picture_url);
       } catch {
         Alert.alert('エラー', 'Instagram連携に失敗しました');
       }
     })();
-  }, []);
+  }, [applyIgAuthResult]);
 
   return null;
 }
@@ -328,33 +368,6 @@ function AuthGate() {
 }
 
 export default function App() {
-  // PWA（standalone）でInstagramへの連携画面を開くと、iOSがSafari風の別画面として
-  // 重ねて表示することがあり、閉じて戻ってきても画面レイアウトが崩れることがある。
-  // このケースはvisibilitychange/pageshowなどのブラウザイベントが期待通り発火しないため、
-  // 「連携を開始した」事実（sessionStorage）をポーリングで確認し、戻ってきたら再読み込みする。
-  useEffect(() => {
-    if (Platform.OS !== 'web') return;
-    let reloadTimer: ReturnType<typeof setTimeout> | null = null;
-    const interval = setInterval(() => {
-      if (reloadTimer != null) return; // すでに予約済み
-      let setAt = 0;
-      try { setAt = Number(sessionStorage.getItem('ig_connect_pending')) || 0; } catch {}
-      if (!setAt) return;
-      // 連携画面へ移動した直後（まだこのページにフォーカスが残っている一瞬）に
-      // 誤って自分自身をリロードしてしまわないよう、十分な時間が経ってから戻ってきた場合のみ対象にする
-      if (Date.now() - setAt > 4000 && document.hasFocus()) {
-        try { sessionStorage.removeItem('ig_connect_pending'); } catch {}
-        // 戻ってきた直後はOS側の画面切り替えアニメーション/レイアウト確定がまだ終わっていないことがあるため、
-        // 少し待ってからリロードする
-        reloadTimer = setTimeout(() => window.location.reload(), 1500);
-      }
-    }, 500);
-    return () => {
-      clearInterval(interval);
-      if (reloadTimer != null) clearTimeout(reloadTimer);
-    };
-  }, []);
-
   return (
     <QueryClientProvider client={queryClient}>
       <SafeAreaProvider>
