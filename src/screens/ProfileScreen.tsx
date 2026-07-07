@@ -135,6 +135,7 @@ export default function ProfileScreen() {
     secondInstagramCredentials, setSecondInstagramCredentials,
     thirdInstagramCredentials, setThirdInstagramCredentials,
     activeAccountSlot, setActiveAccountSlot,
+    disconnectInstagramSlot,
     brandSettings, setBrandSettings, resetBrandSettings,
     brandSettings2, setBrandSettings2, resetBrandSettings2,
     brandSettings3, setBrandSettings3, resetBrandSettings3,
@@ -302,25 +303,11 @@ export default function ProfileScreen() {
     connectInstagram(3);
   };
 
-  const doDisconnect = async () => {
-    await clearInstagramStorage();
-    setInstagramCredentials(null);
-    // 連携解除したら、このスロットのブランド設定（メモリ上）も初期化して混ざらないようにする
-    // （会話はig_user_id単位で保存されているため、連携解除しても削除せずそのまま残す）
-    resetBrandSettings();
-  };
-
-  const doDisconnect2 = async () => {
-    await clearInstagramStorage2();
-    setSecondInstagramCredentials(null);
-    resetBrandSettings2();
-  };
-
-  const doDisconnect3 = async () => {
-    await clearInstagramStorage3();
-    setThirdInstagramCredentials(null);
-    resetBrandSettings3();
-  };
+  // 連携解除すると、後ろのスロット（2→1、3→2）が繰り上がり、間が空かないようにする
+  // （会話はig_user_id単位で保存されているため、連携解除しても削除せずそのまま残る）
+  const doDisconnect = () => disconnectInstagramSlot(1);
+  const doDisconnect2 = () => disconnectInstagramSlot(2);
+  const doDisconnect3 = () => disconnectInstagramSlot(3);
 
   const handleDisconnect = () => {
     if (Platform.OS === 'web') {
@@ -552,11 +539,13 @@ export default function ProfileScreen() {
 
   const doLogout = async () => {
     // アカウント自体をログアウトするときは、連携中のInstagramアカウントもすべて解除する
-    await Promise.all([clearInstagramStorage(), clearInstagramStorage2()]);
+    await Promise.all([clearInstagramStorage(), clearInstagramStorage2(), clearInstagramStorage3()]);
     setInstagramCredentials(null);
     setSecondInstagramCredentials(null);
+    setThirdInstagramCredentials(null);
     resetBrandSettings();
     resetBrandSettings2();
+    resetBrandSettings3();
     await supabase.auth.signOut();
   };
 
@@ -651,7 +640,7 @@ export default function ProfileScreen() {
         </TouchableOpacity>
 
         {/* 2つ目のInstagramアカウントカード: 連携済み、またはプランで2つ目まで使えるときに表示（+で追加） */}
-        {(isConnected2 || maxInstagramAccounts(currentPlan) >= 2) && (
+        {(isConnected2 || (isConnected && maxInstagramAccounts(currentPlan) >= 2)) && (
           <TouchableOpacity
             style={[
               styles.accountCard,
@@ -694,7 +683,7 @@ export default function ProfileScreen() {
         )}
 
         {/* 3つ目のInstagramアカウントカード: 連携済み、またはプランで3つ目まで使えるときに表示（+で追加） */}
-        {(isConnected3 || maxInstagramAccounts(currentPlan) >= 3) && (
+        {(isConnected3 || (isConnected2 && maxInstagramAccounts(currentPlan) >= 3)) && (
           <TouchableOpacity
             style={[
               styles.accountCard,

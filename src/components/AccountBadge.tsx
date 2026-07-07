@@ -37,6 +37,7 @@ export default function AccountBadge({ hideBadge }: { hideBadge?: boolean } = {}
   const setThirdInstagramCredentials = useAppStore((s) => s.setThirdInstagramCredentials);
   const activeAccountSlot = useAppStore((s) => s.activeAccountSlot);
   const setActiveAccountSlot = useAppStore((s) => s.setActiveAccountSlot);
+  const disconnectInstagramSlot = useAppStore((s) => s.disconnectInstagramSlot);
   const activeCredentials = activeAccountSlot === 3 ? thirdInstagramCredentials : activeAccountSlot === 2 ? secondInstagramCredentials : instagramCredentials;
   const resetBrandSettings = useAppStore((s) => s.resetBrandSettings);
   const resetBrandSettings2 = useAppStore((s) => s.resetBrandSettings2);
@@ -119,20 +120,10 @@ export default function AccountBadge({ hideBadge }: { hideBadge?: boolean } = {}
     connectInstagram(3);
   };
 
-  const doDisconnectIg = async () => {
-    await clearInstagramStorage();
-    setInstagramCredentials(null);
-  };
-
-  const doDisconnectIg2 = async () => {
-    await clearInstagramStorage2();
-    setSecondInstagramCredentials(null);
-  };
-
-  const doDisconnectIg3 = async () => {
-    await clearInstagramStorage3();
-    setThirdInstagramCredentials(null);
-  };
+  // 連携解除すると、後ろのスロット（2→1、3→2）が繰り上がり、間が空かないようにする
+  const doDisconnectIg = () => disconnectInstagramSlot(1);
+  const doDisconnectIg2 = () => disconnectInstagramSlot(2);
+  const doDisconnectIg3 = () => disconnectInstagramSlot(3);
 
   const handleDisconnectIg = () => {
     if (Platform.OS === 'web') {
@@ -313,7 +304,14 @@ export default function AccountBadge({ hideBadge }: { hideBadge?: boolean } = {}
                 { slot: 2 as const, creds: secondInstagramCredentials, onConnect: handleConnectIg2, onDisconnect: handleDisconnectIg2 },
                 { slot: 3 as const, creds: thirdInstagramCredentials, onConnect: handleConnectIg3, onDisconnect: handleDisconnectIg3 },
               ])
-                .filter(({ slot, creds }) => creds || slot <= maxInstagramAccounts(plan))
+                .filter(({ slot, creds }) => {
+                  if (creds) return true;
+                  if (slot > maxInstagramAccounts(plan)) return false;
+                  // 前のスロットが連携済みのときだけ「次の追加」枠を見せる（先に飛び番で見せない）
+                  if (slot === 2) return !!instagramCredentials;
+                  if (slot === 3) return !!secondInstagramCredentials;
+                  return true;
+                })
                 .map(({ slot, creds, onConnect, onDisconnect }) => {
                 const isActive = activeAccountSlot === slot;
                 return (

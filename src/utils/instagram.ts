@@ -56,6 +56,35 @@ async function removeItem(key: string) {
   else await SecureStore.deleteItemAsync(key);
 }
 
+async function setItem(key: string, value: string) {
+  if (Platform.OS === 'web') localStorage.setItem(key, value);
+  else await SecureStore.setItemAsync(key, value);
+}
+
+const SLOT_KEYS: Record<1 | 2 | 3, { userId: string; token: string; username: string; picture: string }> = {
+  1: { userId: SK_USER_ID, token: SK_TOKEN, username: SK_USERNAME, picture: SK_PICTURE },
+  2: { userId: SK_USER_ID_2, token: SK_TOKEN_2, username: SK_USERNAME_2, picture: SK_PICTURE_2 },
+  3: { userId: SK_USER_ID_3, token: SK_TOKEN_3, username: SK_USERNAME_3, picture: SK_PICTURE_3 },
+};
+
+/** 指定スロットにInstagram連携情報を書き込む */
+export async function saveInstagramCredentialsToSlot(slot: 1 | 2 | 3, creds: InstagramCredentials): Promise<void> {
+  const keys = SLOT_KEYS[slot];
+  await setItem(keys.userId, creds.userId);
+  await setItem(keys.token, creds.accessToken);
+  if (creds.username) await setItem(keys.username, creds.username);
+  if (creds.profilePictureUrl) await setItem(keys.picture, creds.profilePictureUrl);
+}
+
+/** 指定スロットの保存済みInstagram連携情報を消す */
+export async function clearInstagramStorageForSlot(slot: 1 | 2 | 3): Promise<void> {
+  const keys = SLOT_KEYS[slot];
+  await removeItem(keys.userId);
+  await removeItem(keys.token);
+  await removeItem(keys.username);
+  await removeItem(keys.picture);
+}
+
 /** 保存済みのInstagram連携情報を読み込む（アプリ起動時に使う） */
 export async function loadInstagramCredentials(): Promise<InstagramCredentials | null> {
   const userId = await getItem(SK_USER_ID);

@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { saveInstagramCredentialsToSlot, clearInstagramStorageForSlot } from '../utils/instagram';
 
 interface User {
   id: string;
@@ -66,6 +67,12 @@ interface AppState {
   activeAccountSlot: 1 | 2 | 3;
   setActiveAccountSlot: (slot: 1 | 2 | 3) => void;
 
+  /**
+   * 指定スロットのInstagram連携を解除する。後続スロット（2→1、3→2）が
+   * あれば繰り上げ、間が空かないようにする（保存先ストレージ・ブランド設定も含む）。
+   */
+  disconnectInstagramSlot: (slot: 1 | 2 | 3) => Promise<void>;
+
   loginPromptVisible: boolean;
   setLoginPromptVisible: (visible: boolean) => void;
 
@@ -127,7 +134,7 @@ interface AppState {
   clearDraft: () => void;
 }
 
-export const useAppStore = create<AppState>((set) => ({
+export const useAppStore = create<AppState>((set, get) => ({
   user: null,
   setUser: (user) => set({ user }),
 
@@ -144,6 +151,56 @@ export const useAppStore = create<AppState>((set) => ({
   setActiveAccountSlot: (slot) => {
     if (typeof localStorage !== 'undefined') localStorage.setItem('active_account_slot', String(slot));
     set({ activeAccountSlot: slot });
+  },
+
+  disconnectInstagramSlot: async (slot) => {
+    const state = get();
+    const creds2 = state.secondInstagramCredentials;
+    const creds3 = state.thirdInstagramCredentials;
+    const brand2 = state.brandSettings2;
+    const brand3 = state.brandSettings3;
+
+    if (slot === 1) {
+      // 2→1、3→2に繰り上げ、3は空にする
+      if (creds2) await saveInstagramCredentialsToSlot(1, creds2);
+      else await clearInstagramStorageForSlot(1);
+      if (creds3) await saveInstagramCredentialsToSlot(2, creds3);
+      else await clearInstagramStorageForSlot(2);
+      await clearInstagramStorageForSlot(3);
+      set({
+        instagramCredentials: creds2 ?? null,
+        secondInstagramCredentials: creds3 ?? null,
+        thirdInstagramCredentials: null,
+        brandSettings: creds2 ? brand2 : { ...DEFAULT_BRAND_SETTINGS },
+        brandSettings2: creds3 ? brand3 : { ...DEFAULT_BRAND_SETTINGS },
+        brandSettings3: { ...DEFAULT_BRAND_SETTINGS },
+      });
+    } else if (slot === 2) {
+      // 3→2に繰り上げ、3は空にする
+      if (creds3) await saveInstagramCredentialsToSlot(2, creds3);
+      else await clearInstagramStorageForSlot(2);
+      await clearInstagramStorageForSlot(3);
+      set({
+        secondInstagramCredentials: creds3 ?? null,
+        thirdInstagramCredentials: null,
+        brandSettings2: creds3 ? brand3 : { ...DEFAULT_BRAND_SETTINGS },
+        brandSettings3: { ...DEFAULT_BRAND_SETTINGS },
+      });
+    } else {
+      await clearInstagramStorageForSlot(3);
+      set({ thirdInstagramCredentials: null, brandSettings3: { ...DEFAULT_BRAND_SETTINGS } });
+    }
+
+    // アクティブスロットも繰り上げに合わせて調整する
+    const current = get().activeAccountSlot;
+    let nextActive = current > slot ? ((current - 1) as 1 | 2 | 3) : current;
+    const nextCredsBySlot = {
+      1: get().instagramCredentials,
+      2: get().secondInstagramCredentials,
+      3: get().thirdInstagramCredentials,
+    };
+    if (!nextCredsBySlot[nextActive]) nextActive = 1;
+    if (nextActive !== current) get().setActiveAccountSlot(nextActive);
   },
 
   loginPromptVisible: false,
