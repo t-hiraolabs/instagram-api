@@ -112,8 +112,10 @@ function ImageGenChat(
     setOpenActionsId(null);
     const convs = await purgeEmptyConversations(await listConversations());
     setConversations(convs);
-    // アカウント切り替え時にメニュー（会話一覧）を開いたまま操作を続けられるよう、閉じない
-    if (convs[0]) await openConversation(convs[0].id, false);
+    // ホーム埋め込み表示は「毎回新規チャットで始める」ルールなので、アカウントが
+    // 切り替わった（起動直後の永続化データ復元によるものも含む）ときも
+    // 既存の会話を自動で開かず、空の新規チャット状態のままにする。
+    if (!embedded && convs[0]) await openConversation(convs[0].id, false);
   };
 
   const switchAccount = async (slot: 1 | 2 | 3) => {
