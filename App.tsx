@@ -340,7 +340,16 @@ export default function App() {
       }
     };
     document.addEventListener('visibilitychange', onVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
+    // 外部サイトへの行き来がバックグラウンド化ではなく「同一画面内の履歴移動」として扱われ、
+    // ブラウザのbfcacheからページが復元されるケースもあるため、そちらも別途検知してリロードする。
+    const onPageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) window.location.reload();
+    };
+    window.addEventListener('pageshow', onPageShow);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('pageshow', onPageShow);
+    };
   }, []);
 
   return (
