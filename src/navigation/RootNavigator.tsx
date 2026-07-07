@@ -9,7 +9,6 @@ import ScheduleScreen from '../screens/ScheduleScreen';
 import AnalyticsScreen from '../screens/AnalyticsScreen';
 import DMScreen from '../screens/DMScreen';
 import ProfileScreen from '../screens/ProfileScreen';
-import IgAnalysisIntro from '../components/IgAnalysisIntro';
 import { COLORS } from '../utils/theme';
 
 const Tab = createBottomTabNavigator();
@@ -128,7 +127,6 @@ export default function RootNavigator() {
     >
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         <Stack.Screen name="Main" component={TabNavigator} />
-        <Stack.Screen name="IgDiagnosis" component={IgAnalysisIntro} options={{ animation: 'fade' }} />
       </Stack.Navigator>
     </NavigationContainer>
   );

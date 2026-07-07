@@ -9,7 +9,6 @@ import {
 } from 'react-native';
 import RootNavigator from './src/navigation/RootNavigator';
 import AccountBadge from './src/components/AccountBadge';
-import { navigateWhenReady } from './src/navigation/RootNavigator';
 import { supabase } from './src/services/supabaseClient';
 import { useAppStore, BrandSettings, DEFAULT_BRAND_SETTINGS } from './src/store/appStore';
 import { COLORS, SPACING, RADIUS } from './src/utils/theme';
@@ -19,6 +18,7 @@ import {
   loadInstagramCredentials3,
 } from './src/utils/instagram';
 import { getInsightsSummary } from './src/services/insightsService';
+import { saveFirstAnalysisSnapshot } from './src/services/firstAnalysisService';
 import { loadBrandSettingsFromDb, saveBrandSettingsToDb, brandLocalKey } from './src/services/brandSettingsService';
 import { analyzeBrandFromPosts } from './src/services/aiService';
 import { loadAssistantMemory } from './src/services/memoryService';
@@ -187,7 +187,6 @@ function OAuthHandler() {
   const setBrandSettings = useAppStore((s) => s.setBrandSettings);
   const setBrandSettings2 = useAppStore((s) => s.setBrandSettings2);
   const setBrandSettings3 = useAppStore((s) => s.setBrandSettings3);
-  const setAnalysisIntro = useAppStore((s) => s.setAnalysisIntro);
 
   // アプリ起動時に保存済みのInstagram連携情報・ブランド設定・アクティブスロットを読み込む。
   // ブランド設定は「Instagramアカウント(userId)単位」で読み込むので、
@@ -277,9 +276,10 @@ function OAuthHandler() {
       // 連携したアカウントを使用中（アクティブ）に切り替える
       setActiveAccountSlot(slot);
 
-      // 連携直後は「アカウント分析→アプリへ」の入口ページに遷移する
-      setAnalysisIntro({ slot, accessToken: access_token, username, igUserId: user_id });
-      navigateWhenReady('IgDiagnosis');
+      // 「初回連携時の記録」として基準値を1回だけ保存しておく（分析タブでの比較用。裏側で進める）
+      getInsightsSummary(access_token, 12)
+        .then((res) => saveFirstAnalysisSnapshot(user_id, res))
+        .catch(() => {});
 
       // このアカウントに既存のブランド設定があれば復元し、なければAIで自動分析する（裏側で進める）
       const existing = await loadBrandForAccount(user_id);
@@ -291,7 +291,7 @@ function OAuthHandler() {
         await runBrandAnalysis(access_token, username, slot, setBrandConfirmModal);
       }
     },
-    [setInstagramCredentials, setSecondInstagramCredentials, setThirdInstagramCredentials, setActiveAccountSlot, setAnalysisIntro, setBrandSettings, setBrandSettings2, setBrandSettings3, setBrandConfirmModal]
+    [setInstagramCredentials, setSecondInstagramCredentials, setThirdInstagramCredentials, setActiveAccountSlot, setBrandSettings, setBrandSettings2, setBrandSettings3, setBrandConfirmModal]
   );
 
   // 別タブ（ポップアップ）でInstagram連携した場合、そちらから届く結果をここで受け取って反映する
