@@ -14,14 +14,14 @@ const MODEL_SONNET = 'claude-sonnet-4-6';
 const MODEL_HAIKU = 'claude-haiku-4-6';
 
 // プランごとの月間AI回数の上限
-const LIMITS: Record<string, number> = { free: 5, pro: 50, business: 150 };
+const LIMITS: Record<string, number> = { free: 5, pro: 30, business: 150 };
 
 // ブランド分析など「カウント対象外」のAI呼び出しに対する裏の上限（不正利用防止）。
 // フリーは累計、Pro/ビジネスは月間でリセット。
 const BRAND_LIMITS: Record<string, number> = { free: 3, pro: 10, business: 10 };
 
 // チャット会話の「月間」上限（トークン数：入力+出力の合計）。表示は「% 使用」で見せる。
-const CHAT_TOKEN_LIMITS: Record<string, number> = { free: 100000, pro: 800000, business: 2000000 };
+const CHAT_TOKEN_LIMITS: Record<string, number> = { free: 100000, pro: 300000, business: 2000000 };
 
 // 同じ月か判定
 function isSameMonth(periodStartStr: string): boolean {

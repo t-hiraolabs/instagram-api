@@ -55,7 +55,7 @@ export const PLANS: PlanInfo[] = [
     price: '¥1,980/月',
     paid: true,
     features: [
-      'AI生成 月50回',
+      'AI生成 月30回',
       '予約投稿 無制限',
       'くりかえし投稿（毎日/毎週/毎月/平日）',
       '複数アカウント連携（最大3つ）',
