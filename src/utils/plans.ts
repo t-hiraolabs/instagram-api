@@ -65,7 +65,7 @@ export const PLANS: PlanInfo[] = [
   {
     id: 'business',
     name: 'ビジネス',
-    price: '¥4,980/月',
+    price: '¥2,480/月',
     paid: true,
     features: [
       'AI生成 月100回',
