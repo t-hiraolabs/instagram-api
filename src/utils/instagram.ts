@@ -35,7 +35,7 @@ export function connectInstagram(slot: 1 | 2 = 1) {
     // PWA(standalone)ではInstagramへの遷移がSafari風の別画面として重ねて表示され、
     // 閉じて戻ってきてもvisibilitychange/pageshowが期待通り発火しないことがある。
     // 「連携を開始した」という事実だけをここに残しておき、戻ってきたことをポーリングで検知する。
-    try { sessionStorage.setItem('ig_connect_pending', '1'); } catch {}
+    try { sessionStorage.setItem('ig_connect_pending', String(Date.now())); } catch {}
     window.location.href = url;
   } else {
     Linking.openURL(url);

@@ -335,9 +335,12 @@ export default function App() {
   useEffect(() => {
     if (Platform.OS !== 'web') return;
     const interval = setInterval(() => {
-      let pending = false;
-      try { pending = sessionStorage.getItem('ig_connect_pending') === '1'; } catch {}
-      if (pending && document.hasFocus()) {
+      let setAt = 0;
+      try { setAt = Number(sessionStorage.getItem('ig_connect_pending')) || 0; } catch {}
+      if (!setAt) return;
+      // 連携画面へ移動した直後（まだこのページにフォーカスが残っている一瞬）に
+      // 誤って自分自身をリロードしてしまわないよう、十分な時間が経ってから戻ってきた場合のみ対象にする
+      if (Date.now() - setAt > 4000 && document.hasFocus()) {
         try { sessionStorage.removeItem('ig_connect_pending'); } catch {}
         window.location.reload();
       }
