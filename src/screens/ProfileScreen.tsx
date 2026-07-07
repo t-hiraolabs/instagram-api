@@ -171,8 +171,21 @@ export default function ProfileScreen() {
       setTimeout(() => getMyPlan().then(setCurrentPlan).catch(() => {}), 1500);
       window.history.replaceState({}, '', window.location.pathname);
     } else if (u === 'cancel') {
+      setUpgrading(false);
       window.history.replaceState({}, '', window.location.pathname);
     }
+  }, []);
+
+  // Stripeの決済ページから「戻る」で復帰した場合、bfcache（ブラウザのページ復元）により
+  // ?upgrade=cancel が付かないまま upgrading=true の状態で画面が復元されることがあるため、
+  // ページ復帰時に必ずローディング状態を解除する。
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const onPageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) setUpgrading(false);
+    };
+    window.addEventListener('pageshow', onPageShow);
+    return () => window.removeEventListener('pageshow', onPageShow);
   }, []);
 
   // アップグレード（Stripe Checkoutへ遷移）。target で 'pro' / 'business' を指定
