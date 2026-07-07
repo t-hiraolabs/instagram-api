@@ -244,8 +244,20 @@ export default function IgAnalysisIntro() {
 
             <Text style={styles.hint}>もっと詳しい分析や改善提案、競合との比較は、アプリ内でいつでも「分析して」と聞くだけでAIが答えます。</Text>
 
-            <TouchableOpacity style={styles.cta} onPress={finish} activeOpacity={0.85}>
-              <Text style={styles.ctaText}>アプリを始める →</Text>
+            <TouchableOpacity
+              style={[styles.cta, critiqueLoading && styles.ctaDisabled]}
+              onPress={finish}
+              disabled={critiqueLoading}
+              activeOpacity={0.85}
+            >
+              {critiqueLoading ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
+                  <ActivityIndicator color="#fff" />
+                  <Text style={styles.ctaText}>AIの評論を待っています...</Text>
+                </View>
+              ) : (
+                <Text style={styles.ctaText}>アプリを始める →</Text>
+              )}
             </TouchableOpacity>
           </ScrollView>
         )}
@@ -313,5 +325,6 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary, borderRadius: RADIUS.full, paddingVertical: SPACING.md,
     alignItems: 'center', marginHorizontal: SPACING.lg,
   },
+  ctaDisabled: { opacity: 0.6 },
   ctaText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 });
