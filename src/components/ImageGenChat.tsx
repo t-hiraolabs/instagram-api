@@ -87,7 +87,11 @@ function ImageGenChat(
   const thirdInstagramCredentials = useAppStore((s) => s.thirdInstagramCredentials);
   const activeAccountSlot = useAppStore((s) => s.activeAccountSlot);
   const setActiveAccountSlot = useAppStore((s) => s.setActiveAccountSlot);
-  const accountSlotRef = useRef(activeAccountSlot);
+  // 会話はスロット番号ではなくアカウント本体（ig_user_id）に紐づくため、
+  // 連携解除でスロットが繰り上がりスロット番号が変わらないまま中身のアカウントだけ
+  // 変わるケースも検知できるよう、実際のアカウントIDで比較する。
+  const activeIgUserId = activeAccountSlot === 3 ? thirdInstagramCredentials?.userId : activeAccountSlot === 2 ? secondInstagramCredentials?.userId : instagramCredentials?.userId;
+  const accountKeyRef = useRef(`${activeAccountSlot}:${activeIgUserId ?? ''}`);
 
   const reloadForAccount = async () => {
     await cleanupIfEmpty(convIdRef.current);
@@ -104,13 +108,14 @@ function ImageGenChat(
     setActiveAccountSlot(slot);
   };
 
-  // activeAccountSlotが変わったら（他画面からの切替も含めて）そのアカウントの会話に切り替える
+  // アクティブなアカウント（スロット×ig_user_id）が変わったら、そのアカウントの会話に切り替える
   useEffect(() => {
-    if (accountSlotRef.current === activeAccountSlot) return;
-    accountSlotRef.current = activeAccountSlot;
+    const key = `${activeAccountSlot}:${activeIgUserId ?? ''}`;
+    if (accountKeyRef.current === key) return;
+    accountKeyRef.current = key;
     reloadForAccount().catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeAccountSlot]);
+  }, [activeAccountSlot, activeIgUserId]);
 
   // 過去に空のまま保存された会話（このアプリでは今後作られなくなる）を掃除する
   const purgeEmptyConversations = async (convs: Conversation[]): Promise<Conversation[]> => {
