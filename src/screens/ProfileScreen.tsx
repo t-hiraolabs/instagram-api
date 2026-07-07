@@ -571,46 +571,44 @@ export default function ProfileScreen() {
           )}
         </TouchableOpacity>
 
-        {/* Second Instagram account card */}
-        <TouchableOpacity
-          style={[
-            styles.accountCard,
-            isConnected2 && styles.accountCardConnected,
-            isConnected2 && activeAccountSlot === 2 && styles.accountCardActive,
-          ]}
-          onPress={isConnected2 ? () => setAccountMenu(2) : undefined}
-          activeOpacity={isConnected2 ? 0.7 : 1}
-        >
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{isConnected2 ? '📷' : '➕'}</Text>
-          </View>
-          <View style={styles.accountInfo}>
-            {isConnected2 ? (
-              <>
-                <Text style={styles.accountName}>
-                  {secondInstagramCredentials!.username ? `@${secondInstagramCredentials!.username}` : 'Instagram連携済み'}
-                </Text>
-                <Text style={styles.accountSub}>ID: {secondInstagramCredentials!.userId}</Text>
-              </>
-            ) : (
-              <>
-                <Text style={styles.accountName}>未連携</Text>
-                <Text style={styles.accountSub}>2つ目のInstagramアカウントを連携</Text>
-              </>
+        {/* Second Instagram account card: 1つ目が連携済みのときだけ表示（+で追加） */}
+        {isConnected && (
+          <TouchableOpacity
+            style={[
+              styles.accountCard,
+              isConnected2 && styles.accountCardConnected,
+              isConnected2 && activeAccountSlot === 2 && styles.accountCardActive,
+            ]}
+            onPress={isConnected2 ? () => setAccountMenu(2) : handleInstagramLogin2}
+            activeOpacity={0.7}
+          >
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>{isConnected2 ? '📷' : '➕'}</Text>
+            </View>
+            <View style={styles.accountInfo}>
+              {isConnected2 ? (
+                <>
+                  <Text style={styles.accountName}>
+                    {secondInstagramCredentials!.username ? `@${secondInstagramCredentials!.username}` : 'Instagram連携済み'}
+                  </Text>
+                  <Text style={styles.accountSub}>ID: {secondInstagramCredentials!.userId}</Text>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.accountName}>2つ目のアカウントを追加</Text>
+                  <Text style={styles.accountSub}>もう1つのInstagramアカウントを連携</Text>
+                </>
+              )}
+            </View>
+            {isConnected2 && (
+              activeAccountSlot === 2 ? (
+                <Text style={styles.activeLabel}>使用中</Text>
+              ) : (
+                <Text style={styles.brandArrow}>›</Text>
+              )
             )}
-          </View>
-          {isConnected2 ? (
-            activeAccountSlot === 2 ? (
-              <Text style={styles.activeLabel}>使用中</Text>
-            ) : (
-              <Text style={styles.brandArrow}>›</Text>
-            )
-          ) : (
-            <TouchableOpacity style={styles.connectBtn} onPress={handleInstagramLogin2}>
-              <Text style={styles.connectBtnText}>連携する</Text>
-            </TouchableOpacity>
-          )}
-        </TouchableOpacity>
+          </TouchableOpacity>
+        )}
 
         {/* Brand Settings Card */}
         <Text style={styles.sectionTitle}>
