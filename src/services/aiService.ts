@@ -581,7 +581,7 @@ export interface AccountCritique {
  * 連携直後の診断画面で使う、プログラム側で集計した実データに対するAIの評論。
  * Instagramマーケティングの評論家として、良い点・改善点を厳しく指摘し、
  * 一般的な同業種の市場価値・競合との相対的な位置づけも踏まえてコメントする。
- * 通常のAI生成回数（月5〜150回）は消費せず、チャット用のトークン上限（月10万〜200万）を使う、
+ * 通常のAI生成回数（月5〜100回）は消費せず、チャット用のトークン上限（月10万〜100万）を使う、
  * 安価なHaikuモデルでの軽量な呼び出し。
  */
 export async function critiqueAccountFacts(factsText: string): Promise<AccountCritique> {
@@ -608,7 +608,7 @@ ${factsText}
 
   const res = await axios.post(
     CLAUDE_API_URL,
-    // chat: true にして、件数の少ないブランド分析用の裏枠ではなく、チャットのトークン上限（月10万〜200万）を使う
+    // chat: true にして、件数の少ないブランド分析用の裏枠ではなく、チャットのトークン上限（月10万〜100万）を使う
     { model: MODEL, system: systemPrompt, messages: [{ role: 'user', content: prompt }], max_tokens: 1024, chat: true },
     { headers }
   );

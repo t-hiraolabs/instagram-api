@@ -68,7 +68,7 @@ export const PLANS: PlanInfo[] = [
     price: '¥4,980/月',
     paid: true,
     features: [
-      'AI生成 月150回',
+      'AI生成 月100回',
       'Proのすべての機能',
       '📊 インサイト分析',
       '過去投稿の反応を分析してAI生成',
