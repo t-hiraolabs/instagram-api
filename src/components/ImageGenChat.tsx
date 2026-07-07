@@ -13,10 +13,8 @@ import {
   Platform,
 } from 'react-native';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
-import { chatWithAssistant, planDesign, getChatUsagePercent, ChatTurn } from '../services/aiService';
+import { chatWithAssistant, getChatUsagePercent, ChatTurn } from '../services/aiService';
 import { getAutoAnalysisFacts } from '../services/insightsService';
-import { composeStoryImage } from '../utils/composeStory';
-import { composeFlyerImage } from '../utils/composeFlyer';
 import {
   listConversations, createConversation, renameConversation, deleteConversation,
   loadMessages, saveMessage, purgeOldConversations, Conversation,
@@ -48,7 +46,7 @@ export interface ImageGenChatHandle {
 
 type Msg =
   | { role: 'user'; text: string }
-  | { role: 'assistant'; text: string; options?: string[] }
+  | { role: 'assistant'; text: string }
   | { role: 'image'; uri: string }
   | { role: 'user_image'; uri: string }
   | { role: 'error'; text: string };
@@ -60,9 +58,6 @@ function ImageGenChat(
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState('');
   const [chatting, setChatting] = useState(false);
-  const [generating, setGenerating] = useState(false);
-  // 選択肢ボタンをタップしたときに、デザイン生成フローを再開するためのフラグ
-  const [awaitingDesign, setAwaitingDesign] = useState(false);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [convId, setConvId] = useState<string | null>(null);
   const [listVisible, setListVisible] = useState(false);
@@ -320,83 +315,6 @@ function ImageGenChat(
     toggleMenu: () => setListVisible((v) => !v),
   }));
 
-  const answerOption = async (opt: string) => {
-    if (chatting || generating) return;
-    await send(opt);
-    if (awaitingDesign) await runDesign();
-  };
-
-  // 会話中でユーザーが添付した最後の写真（デザインの土台にする）
-  const lastUserPhoto = (): string | null => {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const m = messages[i];
-      if (m.role === 'user_image') return m.uri;
-    }
-    return null;
-  };
-
-  /**
-   * 手持ち写真をもとにデザインを作る（画像生成AIは使わない）。
-   * 会話の内容から、ストーリー（写真に文字だけ）かパンフレット/チラシ（見出し・詳細・価格など）かをAIが判断する。
-   */
-  const runDesign = async (photoOverride?: string) => {
-    if (generating) return;
-    const photo = photoOverride ?? lastUserPhoto();
-    if (!photo) {
-      setMessages((m) => [...m, { role: 'error', text: 'まず写真を選んでください。' }]);
-      toEnd();
-      return;
-    }
-    setGenerating(true);
-    setAwaitingDesign(false);
-    toEnd();
-    try {
-      const plan = await planDesign(history());
-      if (!plan.ready || (!plan.storyOverlay && !plan.flyer)) {
-        const q = plan.question ?? 'どんな内容のデザインにしたいか、もう少し教えてください。';
-        setAwaitingDesign(true);
-        setMessages((m) => [...m, { role: 'assistant', text: q, options: plan.options }]);
-        if (convId) saveMessage(convId, 'assistant', q).catch(() => {});
-        getChatUsagePercent().then((c) => setChatRemainPct(c.remainingPct)).catch(() => {});
-        return;
-      }
-      const { blob, previewUrl, label } =
-        plan.designType === 'flyer' && plan.flyer
-          ? { ...(await composeFlyerImage(photo, plan.flyer)), label: `パンフレットを作りました：\n「${plan.flyer.headline}」` }
-          : { ...(await composeStoryImage(photo, plan.storyOverlay!)), label: `この写真でデザインを作りました：\n「${plan.storyOverlay!.title}」` };
-      let stored = previewUrl;
-      try { stored = await uploadBlob(blob); } catch { /* アップ失敗時はプレビューのまま表示 */ }
-      setMessages((m) => [...m, { role: 'assistant', text: label }, { role: 'image', uri: stored }]);
-      if (convId) {
-        saveMessage(convId, 'assistant', label).catch(() => {});
-        saveMessage(convId, 'image', stored).catch(() => {});
-      }
-      toEnd();
-    } catch (e) {
-      setMessages((m) => [...m, { role: 'error', text: e instanceof Error ? e.message : 'デザイン作成に失敗しました' }]);
-    } finally {
-      setGenerating(false);
-      toEnd();
-    }
-  };
-
-  /** 「生成する」ボタン → その場で写真を選んでもらい、選んだ写真にAIがデザインを加える */
-  const startGenerate = async () => {
-    if (generating) return;
-    const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.85,
-    });
-    if (res.canceled) return;
-    const asset = res.assets[0];
-    let stored = asset.uri;
-    try { stored = await uploadBlob(await (await fetch(asset.uri)).blob()); } catch { /* アップ失敗時は元のURIのまま */ }
-    setMessages((m) => [...m, { role: 'user_image', uri: stored }]);
-    if (convId) saveMessage(convId, 'user_image', stored).catch(() => {});
-    toEnd();
-    await runDesign(stored);
-  };
-
   if (embedded && !visible) return null;
 
   const content = (
@@ -416,8 +334,8 @@ function ImageGenChat(
               <View style={styles.empty}>
                 <Text style={styles.emptyIcon}>💬</Text>
                 <Text style={styles.emptyText}>
-                  作りたい投稿について相談できます。{'\n'}
-                  「生成する」を押すと、写真を選んでその写真にデザインを加えます。
+                  投稿したい写真やキャプションを送ってください。{'\n'}
+                  Instagramマーケティングの視点で、厳しく分析・アドバイスします。
                 </Text>
               </View>
             )
@@ -430,21 +348,6 @@ function ImageGenChat(
               <View key={i} style={styles.aiRow}>
                 <View style={styles.aiBubble}>
                   <Text style={styles.aiText}>{m.text}</Text>
-                  {!!m.options?.length && i === messages.length - 1 && (
-                    <View style={styles.optionsWrap}>
-                      {m.options.map((opt, oi) => (
-                        <TouchableOpacity
-                          key={oi}
-                          style={styles.optionChip}
-                          onPress={() => answerOption(opt)}
-                          disabled={chatting || generating}
-                          activeOpacity={0.85}
-                        >
-                          <Text style={styles.optionChipText}>{opt}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  )}
                 </View>
               </View>
             );
@@ -467,23 +370,15 @@ function ImageGenChat(
               </View>
             );
           })}
-          {(chatting || generating) && (
+          {chatting && (
             <View style={styles.aiRow}>
               <View style={styles.loadingBubble}>
                 <ActivityIndicator color={COLORS.primary} />
-                <Text style={styles.loadingText}>{generating ? '生成中...' : '考え中...'}</Text>
+                <Text style={styles.loadingText}>考え中...</Text>
               </View>
             </View>
           )}
         </ScrollView>
-
-        <TouchableOpacity
-          style={[styles.genBtn, generating && styles.genBtnDisabled]}
-          onPress={startGenerate}
-          disabled={generating}
-        >
-          <Text style={styles.genBtnText}>🎨 生成する</Text>
-        </TouchableOpacity>
 
         {/* 添付プレビュー */}
         {pendingImage && (
@@ -683,9 +578,6 @@ const styles = StyleSheet.create({
   aiRow: { alignItems: 'flex-start', marginBottom: SPACING.md },
   aiBubble: { backgroundColor: COLORS.surface, borderRadius: RADIUS.lg, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, maxWidth: '90%', borderWidth: 1, borderColor: COLORS.border },
   aiText: { color: COLORS.text, fontSize: 14, lineHeight: 21 },
-  optionsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs, marginTop: SPACING.sm },
-  optionChip: { borderWidth: 1, borderColor: COLORS.primaryLight, borderRadius: RADIUS.lg, paddingHorizontal: SPACING.sm, paddingVertical: 6, backgroundColor: COLORS.background },
-  optionChipText: { color: COLORS.primaryLight, fontSize: 13, fontWeight: '600' },
   imageBubble: { backgroundColor: COLORS.surface, borderRadius: RADIUS.lg, padding: SPACING.sm, maxWidth: '85%', borderWidth: 1, borderColor: COLORS.border },
   genImage: { width: 240, height: 240, borderRadius: RADIUS.md, marginBottom: SPACING.sm },
   useBtn: { backgroundColor: COLORS.primary, borderRadius: RADIUS.full, paddingVertical: SPACING.sm, alignItems: 'center' },
@@ -694,9 +586,6 @@ const styles = StyleSheet.create({
   errorText: { color: COLORS.error, fontSize: 13 },
   loadingBubble: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: COLORS.surface, borderRadius: RADIUS.lg, padding: SPACING.md },
   loadingText: { color: COLORS.textSecondary, fontSize: 13 },
-  genBtn: { backgroundColor: COLORS.primary, marginHorizontal: SPACING.md, marginTop: SPACING.sm, borderRadius: RADIUS.full, paddingVertical: SPACING.md, alignItems: 'center' },
-  genBtnDisabled: { opacity: 0.5 },
-  genBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   inputRow: {
     flexDirection: 'row', gap: SPACING.sm, alignItems: 'center',
     paddingHorizontal: SPACING.md, paddingVertical: SPACING.md,
