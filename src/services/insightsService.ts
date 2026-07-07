@@ -1,7 +1,5 @@
 // インサイト（分析）: instagram-insights エッジ関数を呼んで集計データを取得する
 import { useAppStore } from '../store/appStore';
-import { getMyPlan } from './scheduleService';
-import { canReflectPastPosts } from '../utils/plans';
 import type { TopPost } from './aiService';
 
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
@@ -75,8 +73,6 @@ export async function getTopPostsForGeneration(): Promise<TopPost[] | undefined>
   if (!brandSettings.useTopPostsInsight) return undefined;
   if (!activeCreds?.accessToken) return undefined;
   try {
-    const plan = await getMyPlan();
-    if (!canReflectPastPosts(plan)) return undefined;
     const insights = await getInsightsSummary(activeCreds.accessToken, 24);
     const top = insights.media
       .filter((m) => (m.caption ?? '').trim().length > 0)

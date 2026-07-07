@@ -15,11 +15,6 @@ export function canRecurring(plan: Plan): boolean {
   return plan !== 'free';
 }
 
-/** 過去の人気投稿の傾向をAI生成に自動反映できるか（ビジネスのみ） */
-export function canReflectPastPosts(plan: Plan): boolean {
-  return plan === 'business';
-}
-
 /** 連携できるInstagramアカウント数の上限（フリーは1、Pro以上は3） */
 export function maxInstagramAccounts(plan: Plan): number {
   return plan === 'free' ? 1 : 3;
