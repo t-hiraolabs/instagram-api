@@ -112,7 +112,8 @@ function ImageGenChat(
     setOpenActionsId(null);
     const convs = await purgeEmptyConversations(await listConversations());
     setConversations(convs);
-    if (convs[0]) await openConversation(convs[0].id);
+    // アカウント切り替え時にメニュー（会話一覧）を開いたまま操作を続けられるよう、閉じない
+    if (convs[0]) await openConversation(convs[0].id, false);
   };
 
   const switchAccount = async (slot: 1 | 2 | 3) => {
@@ -227,10 +228,10 @@ function ImageGenChat(
     }
   }, [pendingAutoSend]);
 
-  const openConversation = async (id: string) => {
+  const openConversation = async (id: string, closeMenu = true) => {
     if (convIdRef.current !== id) await cleanupIfEmpty(convIdRef.current);
     setConvId(id);
-    setListVisible(false);
+    if (closeMenu) setListVisible(false);
     const rows = await loadMessages(id);
     setMessages(rows.map((r) =>
       r.role === 'image' ? { role: 'image', uri: r.content }
