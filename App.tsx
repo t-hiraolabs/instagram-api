@@ -325,29 +325,27 @@ function AuthGate() {
 }
 
 export default function App() {
-  const [safeAreaKey, setSafeAreaKey] = useState(0);
-
-  // react-native-safe-area-context のWeb実装は、セーフエリアの計測をマウント時に一度しか行わない。
-  // PWA（standalone）でInstagramの認証画面など外部サイトへ移動してアプリスイッチャー経由で
-  // 戻ってきたとき、この一度きりの計測値が古いまま（＝画面下部に隙間ができる）ことがあるため、
-  // バックグラウンドから復帰したタイミングでSafeAreaProviderごと作り直し、計測をやり直させる。
+  // PWA（standalone）で外部サイト（Instagram認証画面など）へ移動し、アプリスイッチャー経由で
+  // 戻ってくると画面レイアウトが崩れる不具合があり、手動でのページ再読み込みでのみ確実に直ることを
+  // 確認済み。他の対処（CSS/JS側の再計算・SafeAreaProviderの作り直し）では直らなかったため、
+  // バックグラウンドに一定時間（3秒以上）いてから復帰したときは、確実な手段として自動で再読み込みする。
   useEffect(() => {
     if (Platform.OS !== 'web') return;
-    const remeasure = () => setSafeAreaKey((k) => k + 1);
-    const onVisibilityChange = () => { if (!document.hidden) remeasure(); };
-    document.addEventListener('visibilitychange', onVisibilityChange);
-    window.addEventListener('pageshow', remeasure);
-    window.addEventListener('focus', remeasure);
-    return () => {
-      document.removeEventListener('visibilitychange', onVisibilityChange);
-      window.removeEventListener('pageshow', remeasure);
-      window.removeEventListener('focus', remeasure);
+    let hiddenAt: number | null = null;
+    const onVisibilityChange = () => {
+      if (document.hidden) {
+        hiddenAt = Date.now();
+      } else if (hiddenAt != null && Date.now() - hiddenAt > 3000) {
+        window.location.reload();
+      }
     };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
   }, []);
 
   return (
     <QueryClientProvider client={queryClient}>
-      <SafeAreaProvider key={safeAreaKey}>
+      <SafeAreaProvider>
         <StatusBar style="light" />
         <AuthGate />
       </SafeAreaProvider>
