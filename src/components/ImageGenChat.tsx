@@ -11,6 +11,7 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  Clipboard,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
@@ -373,12 +374,25 @@ function ImageGenChat(
           )}
           {messages.map((m, i) => {
             if (m.role === 'user') return (
-              <View key={i} style={styles.userRow}><View style={styles.userBubble}><Text style={styles.userText}>{m.text}</Text></View></View>
+              <View key={i} style={styles.userRow}>
+                <View style={styles.userBubble}>
+                  <Text style={styles.userText} selectable>{m.text}</Text>
+                </View>
+              </View>
             );
             if (m.role === 'assistant') return (
               <View key={i} style={styles.aiRow}>
                 <View style={styles.aiBubble}>
-                  <Text style={styles.aiText}>{m.text}</Text>
+                  <Text style={styles.aiText} selectable>{m.text}</Text>
+                  <TouchableOpacity
+                    style={styles.copyBtn}
+                    onPress={() => Clipboard.setString(m.text)}
+                    activeOpacity={0.7}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  >
+                    <Ionicons name="copy-outline" size={14} color={COLORS.textMuted} />
+                    <Text style={styles.copyBtnText}>コピー</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
             );
@@ -655,6 +669,8 @@ const styles = StyleSheet.create({
   aiRow: { alignItems: 'flex-start', marginBottom: SPACING.md },
   aiBubble: { backgroundColor: COLORS.surface, borderRadius: RADIUS.lg, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, maxWidth: '90%', borderWidth: 1, borderColor: COLORS.border },
   aiText: { color: COLORS.text, fontSize: 14, lineHeight: 21 },
+  copyBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-end', marginTop: 6 },
+  copyBtnText: { color: COLORS.textMuted, fontSize: 11, fontWeight: '600' },
   imageBubble: { backgroundColor: COLORS.surface, borderRadius: RADIUS.lg, padding: SPACING.sm, maxWidth: '85%', borderWidth: 1, borderColor: COLORS.border },
   genImage: { width: 240, height: 240, borderRadius: RADIUS.md, marginBottom: SPACING.sm },
   useBtn: { backgroundColor: COLORS.primary, borderRadius: RADIUS.full, paddingVertical: SPACING.sm, alignItems: 'center' },
