@@ -29,7 +29,7 @@ import { supabase } from '../services/supabaseClient';
 import { getMyPlan } from '../services/scheduleService';
 import { ensureLoggedIn } from '../utils/requireLogin';
 import { createCheckoutUrl } from '../services/billingService';
-import { PLANS, Plan, PLAN_RANK, canAnalytics, maxInstagramAccounts } from '../utils/plans';
+import { PLANS, Plan, PLAN_RANK, canReflectPastPosts, maxInstagramAccounts } from '../utils/plans';
 import { JP_PREFECTURES, JP_PREFECTURES_CITIES } from '../utils/jpLocations';
 import { registerPush, unregisterPush, isPushSupported, isPushEnabled } from '../services/pushService';
 import {
@@ -972,7 +972,7 @@ export default function ProfileScreen() {
             </View>
 
             <Text style={styles.fieldLabel}>
-              過去の人気投稿を反映 {!canAnalytics(currentPlan) && '（ビジネス）'}
+              過去の人気投稿を反映 {!canReflectPastPosts(currentPlan) && '（ビジネス）'}
             </Text>
             <View style={styles.insightToggleRow}>
               <View style={styles.insightToggleTextWrap}>
@@ -983,12 +983,12 @@ export default function ProfileScreen() {
               </View>
               <Switch
                 value={draftBrand.useTopPostsInsight}
-                disabled={!canAnalytics(currentPlan)}
+                disabled={!canReflectPastPosts(currentPlan)}
                 onValueChange={(v) => setDraftBrand((p) => ({ ...p, useTopPostsInsight: v }))}
                 trackColor={{ true: COLORS.primary, false: COLORS.border }}
               />
             </View>
-            {!canAnalytics(currentPlan) && (
+            {!canReflectPastPosts(currentPlan) && (
               <Text style={styles.insightToggleLocked}>
                 この機能はビジネスプラン限定です。
               </Text>

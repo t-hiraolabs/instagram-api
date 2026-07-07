@@ -15,8 +15,8 @@ export function canRecurring(plan: Plan): boolean {
   return plan !== 'free';
 }
 
-/** 分析・インサイト系（過去投稿分析・DM管理など）が使えるか（ビジネスのみ） */
-export function canAnalytics(plan: Plan): boolean {
+/** 過去の人気投稿の傾向をAI生成に自動反映できるか（ビジネスのみ） */
+export function canReflectPastPosts(plan: Plan): boolean {
   return plan === 'business';
 }
 
