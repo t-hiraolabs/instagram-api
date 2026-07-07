@@ -18,7 +18,6 @@ import {
   loadInstagramCredentials3,
 } from './src/utils/instagram';
 import { getInsightsSummary } from './src/services/insightsService';
-import { saveFirstAnalysisSnapshot } from './src/services/firstAnalysisService';
 import { loadBrandSettingsFromDb, saveBrandSettingsToDb, brandLocalKey } from './src/services/brandSettingsService';
 import { analyzeBrandFromPosts } from './src/services/aiService';
 import { loadAssistantMemory } from './src/services/memoryService';
@@ -275,11 +274,6 @@ function OAuthHandler() {
 
       // 連携したアカウントを使用中（アクティブ）に切り替える
       setActiveAccountSlot(slot);
-
-      // 「初回連携時の記録」として基準値を1回だけ保存しておく（分析タブでの比較用。裏側で進める）
-      getInsightsSummary(access_token, 12)
-        .then((res) => saveFirstAnalysisSnapshot(user_id, res))
-        .catch(() => {});
 
       // このアカウントに既存のブランド設定があれば復元し、なければAIで自動分析する（裏側で進める）
       const existing = await loadBrandForAccount(user_id);
