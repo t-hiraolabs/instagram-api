@@ -650,8 +650,8 @@ export default function ProfileScreen() {
           )}
         </TouchableOpacity>
 
-        {/* 2つ目のInstagramアカウントカード: 1つ目が連携済みのときだけ表示（+で追加） */}
-        {isConnected && (
+        {/* 2つ目のInstagramアカウントカード: 連携済み、またはプランで2つ目まで使えるときに表示（+で追加） */}
+        {(isConnected2 || maxInstagramAccounts(currentPlan) >= 2) && (
           <TouchableOpacity
             style={[
               styles.accountCard,
@@ -693,8 +693,8 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         )}
 
-        {/* 3つ目のInstagramアカウントカード: 2つ目が連携済みのときだけ表示（+で追加） */}
-        {isConnected2 && (
+        {/* 3つ目のInstagramアカウントカード: 連携済み、またはプランで3つ目まで使えるときに表示（+で追加） */}
+        {(isConnected3 || maxInstagramAccounts(currentPlan) >= 3) && (
           <TouchableOpacity
             style={[
               styles.accountCard,
