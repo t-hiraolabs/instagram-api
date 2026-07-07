@@ -1,4 +1,4 @@
-import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
+import { NavigationContainer, createNavigationContainerRef, DarkTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { View, Text, StyleSheet } from 'react-native';
@@ -13,6 +13,13 @@ import { COLORS } from '../utils/theme';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
+
+// React NavigationはデフォルトでLightTheme（白背景）を使うため、画面遷移中やコンテンツが
+// 画面より短いときに白い隙間が見えてしまう。アプリはダークテーマ固定なので背景色を合わせる。
+const NAV_THEME = {
+  ...DarkTheme,
+  colors: { ...DarkTheme.colors, background: COLORS.background, card: COLORS.surface, border: COLORS.border },
+};
 
 /** NavigationContainerの外（App.tsxのOAuthHandlerなど）から画面遷移するための参照 */
 export const navigationRef = createNavigationContainerRef();
@@ -107,6 +114,7 @@ export default function RootNavigator() {
   return (
     <NavigationContainer
       ref={navigationRef}
+      theme={NAV_THEME}
       documentTitle={{
         formatter: () => 'AImark アイマーク',
       }}

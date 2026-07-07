@@ -286,12 +286,24 @@ export default function ProfileScreen() {
     ]);
   };
 
+  const activeCredentials = activeAccountSlot === 2 ? secondInstagramCredentials : instagramCredentials;
+
   const openBrandModal = () => {
+    if (!activeCredentials) {
+      const promptConnect = () => (activeAccountSlot === 2 ? handleInstagramLogin2() : handleInstagramLogin());
+      if (Platform.OS === 'web') {
+        if (window.confirm('ブランド設定にはInstagram連携が必要です。連携画面を開きますか？')) promptConnect();
+        return;
+      }
+      Alert.alert('Instagram連携が必要です', 'ブランド設定を行うには、先にInstagramアカウントを連携してください。', [
+        { text: 'キャンセル', style: 'cancel' },
+        { text: '連携する', onPress: promptConnect },
+      ]);
+      return;
+    }
     setDraftBrand({ ...activeBrandSettings });
     setBrandModalVisible(true);
   };
-
-  const activeCredentials = activeAccountSlot === 2 ? secondInstagramCredentials : instagramCredentials;
 
   // Instagram投稿のキャプションを取得（インサイト→基本メディアの順でフォールバック）
   const fetchCaptions = async (token: string): Promise<string[]> => {
