@@ -502,6 +502,20 @@ export default function ProfileScreen() {
       >
         <Text style={styles.title}>プロフィール</Text>
 
+        {/* アカウント情報 */}
+        {loggedIn && (
+          <View style={styles.accountInfoCard}>
+            <View style={[styles.accountInfoRow, styles.accountInfoRowDivided]}>
+              <Text style={styles.accountInfoLabel}>メールアドレス</Text>
+              <Text style={styles.accountInfoValue} numberOfLines={1}>{accountEmail ?? '—'}</Text>
+            </View>
+            <View style={styles.accountInfoRow}>
+              <Text style={styles.accountInfoLabel}>プラン</Text>
+              <Text style={styles.accountInfoValue}>{PLANS.find((p) => p.id === currentPlan)?.name ?? 'フリー'}</Text>
+            </View>
+          </View>
+        )}
+
         {/* Instagram account card（タップで切り替え/解除メニュー） */}
         <TouchableOpacity
           style={[
@@ -667,23 +681,6 @@ export default function ProfileScreen() {
             <Text style={styles.helpArrow}>›</Text>
           </TouchableOpacity>
         ))}
-
-        {/* アカウント情報 */}
-        {loggedIn && (
-          <>
-            <Text style={styles.sectionTitle}>アカウント</Text>
-            <View style={styles.accountInfoCard}>
-              <View style={[styles.accountInfoRow, styles.accountInfoRowDivided]}>
-                <Text style={styles.accountInfoLabel}>メールアドレス</Text>
-                <Text style={styles.accountInfoValue} numberOfLines={1}>{accountEmail ?? '—'}</Text>
-              </View>
-              <View style={styles.accountInfoRow}>
-                <Text style={styles.accountInfoLabel}>プラン</Text>
-                <Text style={styles.accountInfoValue}>{PLANS.find((p) => p.id === currentPlan)?.name ?? 'フリー'}</Text>
-              </View>
-            </View>
-          </>
-        )}
 
         {/* 設定セクション */}
         <Text style={styles.sectionTitle}>設定</Text>
