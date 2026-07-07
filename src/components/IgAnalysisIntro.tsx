@@ -238,6 +238,11 @@ export default function IgAnalysisIntro() {
                       <Text style={styles.critiqueLine}>{critique.marketComment}</Text>
                     </View>
                   )}
+                  {critique.goodPoints.length === 0 && critique.improvementPoints.length === 0 && !critique.marketComment && (
+                    <Text style={styles.errorText}>
+                      AIの評論を取得できませんでした。少し時間をおいて、チャットで「分析して」と聞いてみてください。
+                    </Text>
+                  )}
                 </>
               ) : null}
             </View>

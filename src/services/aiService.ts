@@ -609,18 +609,28 @@ ${factsText}
   const res = await axios.post(
     CLAUDE_API_URL,
     // chat: true にして、件数の少ないブランド分析用の裏枠ではなく、チャットのトークン上限（月10万〜200万）を使う
-    { model: MODEL, system: systemPrompt, messages: [{ role: 'user', content: prompt }], max_tokens: 700, chat: true },
+    { model: MODEL, system: systemPrompt, messages: [{ role: 'user', content: prompt }], max_tokens: 1024, chat: true },
     { headers }
   );
-  const text: string = res.data?.content?.[0]?.text ?? res.data?.text ?? '';
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error('AI応答のパースに失敗しました');
-  const parsed = JSON.parse(jsonMatch[0]);
-  return {
-    goodPoints: Array.isArray(parsed.goodPoints) ? parsed.goodPoints : [],
-    improvementPoints: Array.isArray(parsed.improvementPoints) ? parsed.improvementPoints : [],
-    marketComment: typeof parsed.marketComment === 'string' ? parsed.marketComment : '',
-  };
+  const raw: string = res.data?.content?.[0]?.text ?? res.data?.text ?? '';
+  const clean = raw.replace(/```json|```/g, '').trim();
+  const jsonMatch = clean.match(/\{[\s\S]*\}/);
+  const fallback: AccountCritique = { goodPoints: [], improvementPoints: [], marketComment: '' };
+  if (!jsonMatch) {
+    console.warn('[critiqueAccountFacts] AI応答にJSONが見つかりませんでした:', raw);
+    return fallback;
+  }
+  try {
+    const parsed = JSON.parse(jsonMatch[0]);
+    return {
+      goodPoints: Array.isArray(parsed.goodPoints) ? parsed.goodPoints : [],
+      improvementPoints: Array.isArray(parsed.improvementPoints) ? parsed.improvementPoints : [],
+      marketComment: typeof parsed.marketComment === 'string' ? parsed.marketComment : '',
+    };
+  } catch (e) {
+    console.warn('[critiqueAccountFacts] JSON.parseに失敗しました:', e, raw);
+    return fallback;
+  }
 }
 
 export interface ChatTurn { role: 'user' | 'assistant'; content: string; }
