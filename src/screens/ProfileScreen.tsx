@@ -24,6 +24,7 @@ import { INDUSTRIES, analyzeBrandFromPosts } from '../services/aiService';
 import { getInsightsSummary } from '../services/insightsService';
 import axios from 'axios';
 import { loadBrandSettingsFromDb, saveBrandSettingsToDb, brandLocalKey } from '../services/brandSettingsService';
+import { deleteConversationsForAccount } from '../services/chatHistoryService';
 import { supabase } from '../services/supabaseClient';
 import { getMyPlan } from '../services/scheduleService';
 import { ensureLoggedIn } from '../utils/requireLogin';
@@ -289,22 +290,28 @@ export default function ProfileScreen() {
   };
 
   const doDisconnect = async () => {
+    const igUserId = instagramCredentials?.userId;
     await clearInstagramStorage();
     setInstagramCredentials(null);
     // 連携解除したら、このスロットのブランド設定（メモリ上）も初期化して混ざらないようにする
     resetBrandSettings();
+    if (igUserId) deleteConversationsForAccount(igUserId).catch(() => {});
   };
 
   const doDisconnect2 = async () => {
+    const igUserId = secondInstagramCredentials?.userId;
     await clearInstagramStorage2();
     setSecondInstagramCredentials(null);
     resetBrandSettings2();
+    if (igUserId) deleteConversationsForAccount(igUserId).catch(() => {});
   };
 
   const doDisconnect3 = async () => {
+    const igUserId = thirdInstagramCredentials?.userId;
     await clearInstagramStorage3();
     setThirdInstagramCredentials(null);
     resetBrandSettings3();
+    if (igUserId) deleteConversationsForAccount(igUserId).catch(() => {});
   };
 
   const handleDisconnect = () => {

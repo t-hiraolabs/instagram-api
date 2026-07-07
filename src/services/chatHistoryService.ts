@@ -6,36 +6,56 @@ export type ChatRole = 'user' | 'assistant' | 'image' | 'user_image';
 export interface StoredChatMessage { role: ChatRole; content: string; }
 export interface Conversation { id: string; title: string; updated_at: string; }
 
-/** 現在切り替え中のInstagramアカウント（1〜3）。会話はアカウントごとに分ける */
-function activeSlot(): 1 | 2 | 3 {
-  return useAppStore.getState().activeAccountSlot;
+/**
+ * 現在アクティブなInstagramアカウントの実際のID（連携が解除されたら別物になる値）。
+ * スロット番号（1〜3）だけで会話を分けると、連携解除後に別アカウントを同じスロットへ
+ * 連携したときに前のアカウントの会話が引き継がれてしまうため、実際のアカウントIDで分ける。
+ */
+function activeIgUserId(): string | null {
+  const { instagramCredentials, secondInstagramCredentials, thirdInstagramCredentials, activeAccountSlot } = useAppStore.getState();
+  const creds = activeAccountSlot === 3 ? thirdInstagramCredentials : activeAccountSlot === 2 ? secondInstagramCredentials : instagramCredentials;
+  return creds?.userId ?? null;
 }
 
-/** 会話スレッド一覧（新しい順・現在のアカウントぶんのみ） */
+/** 会話スレッド一覧（新しい順・現在連携中のInstagramアカウントぶんのみ） */
 export async function listConversations(): Promise<Conversation[]> {
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return [];
+  const igUserId = activeIgUserId();
+  if (!user || !igUserId) return [];
   const { data, error } = await supabase
     .from('chat_conversations')
     .select('id, title, updated_at')
     .eq('user_id', user.id)
-    .eq('account_slot', activeSlot())
+    .eq('ig_user_id', igUserId)
     .order('updated_at', { ascending: false });
   if (error || !data) return [];
   return data as Conversation[];
 }
 
-/** 新しい会話を作成してIDを返す（現在のアカウントに紐づける） */
+/** 新しい会話を作成してIDを返す（現在連携中のInstagramアカウントに紐づける） */
 export async function createConversation(title = '新しい会話'): Promise<string | null> {
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
+  const igUserId = activeIgUserId();
+  if (!user || !igUserId) return null;
   const { data, error } = await supabase
     .from('chat_conversations')
-    .insert({ user_id: user.id, title, account_slot: activeSlot() })
+    .insert({ user_id: user.id, title, ig_user_id: igUserId })
     .select('id')
     .single();
   if (error || !data) return null;
   return data.id as string;
+}
+
+/** 指定したInstagramアカウントの会話をすべて削除する（連携解除時に呼ぶ） */
+export async function deleteConversationsForAccount(igUserId: string): Promise<void> {
+  if (!igUserId) return;
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
+  await supabase
+    .from('chat_conversations')
+    .delete()
+    .eq('user_id', user.id)
+    .eq('ig_user_id', igUserId);
 }
 
 /** 会話のタイトルを変更 */

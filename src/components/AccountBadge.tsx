@@ -21,6 +21,7 @@ import { connectInstagram, clearInstagramStorage, clearInstagramStorage2, clearI
 import { getMyPlan } from '../services/scheduleService';
 import { PLANS, Plan, PLAN_RANK, maxInstagramAccounts } from '../utils/plans';
 import { createCheckoutUrl } from '../services/billingService';
+import { deleteConversationsForAccount } from '../services/chatHistoryService';
 
 export default function AccountBadge({ hideBadge }: { hideBadge?: boolean } = {}) {
   const insets = useSafeAreaInsets();
@@ -120,18 +121,24 @@ export default function AccountBadge({ hideBadge }: { hideBadge?: boolean } = {}
   };
 
   const doDisconnectIg = async () => {
+    const igUserId = instagramCredentials?.userId;
     await clearInstagramStorage();
     setInstagramCredentials(null);
+    if (igUserId) deleteConversationsForAccount(igUserId).catch(() => {});
   };
 
   const doDisconnectIg2 = async () => {
+    const igUserId = secondInstagramCredentials?.userId;
     await clearInstagramStorage2();
     setSecondInstagramCredentials(null);
+    if (igUserId) deleteConversationsForAccount(igUserId).catch(() => {});
   };
 
   const doDisconnectIg3 = async () => {
+    const igUserId = thirdInstagramCredentials?.userId;
     await clearInstagramStorage3();
     setThirdInstagramCredentials(null);
+    if (igUserId) deleteConversationsForAccount(igUserId).catch(() => {});
   };
 
   const handleDisconnectIg = () => {
