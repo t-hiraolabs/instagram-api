@@ -65,11 +65,22 @@ function UsageBar({ pct }: { pct: number }) {
   );
 }
 
+/**
+ * コピー用のテキストを取り出す。画像生成AI用プロンプトなどはコードブロック
+ * （```〜```）で返す運用にしているので、それがあれば中身だけをコピー対象にし、
+ * 前後の日本語の説明文が混ざらないようにする。無ければメッセージ全体を使う。
+ */
+function extractCopyText(text: string): string {
+  const match = text.match(/```[a-zA-Z]*\n?([\s\S]*?)```/);
+  return (match ? match[1] : text).trim();
+}
+
 function ImageGenChat(
   { visible, onClose, onUseImage, embedded, onBack, emptyState, onMenuVisibleChange }: Props,
   ref: React.Ref<ImageGenChatHandle>
 ) {
   const [messages, setMessages] = useState<Msg[]>([]);
+  const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
   const [input, setInput] = useState('');
   const [chatting, setChatting] = useState(false);
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -383,16 +394,19 @@ function ImageGenChat(
             if (m.role === 'assistant') return (
               <View key={i} style={styles.aiRow}>
                 <View style={styles.aiBubble}>
-                  <Text style={styles.aiText} selectable>{m.text}</Text>
                   <TouchableOpacity
                     style={styles.copyBtn}
-                    onPress={() => Clipboard.setString(m.text)}
+                    onPress={() => {
+                      Clipboard.setString(extractCopyText(m.text));
+                      setCopiedIdx(i);
+                      setTimeout(() => setCopiedIdx((cur) => (cur === i ? null : cur)), 1500);
+                    }}
                     activeOpacity={0.7}
                     hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                   >
-                    <Ionicons name="copy-outline" size={14} color={COLORS.textMuted} />
-                    <Text style={styles.copyBtnText}>コピー</Text>
+                    <Ionicons name={copiedIdx === i ? 'checkmark' : 'copy-outline'} size={16} color={copiedIdx === i ? COLORS.primary : COLORS.textMuted} />
                   </TouchableOpacity>
+                  <Text style={styles.aiText} selectable>{m.text}</Text>
                 </View>
               </View>
             );
@@ -667,10 +681,19 @@ const styles = StyleSheet.create({
   userBubble: { backgroundColor: COLORS.primary, borderRadius: RADIUS.lg, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, maxWidth: '85%' },
   userText: { color: '#fff', fontSize: 14, lineHeight: 20 },
   aiRow: { alignItems: 'flex-start', marginBottom: SPACING.md },
-  aiBubble: { backgroundColor: COLORS.surface, borderRadius: RADIUS.lg, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, maxWidth: '90%', borderWidth: 1, borderColor: COLORS.border },
+  aiBubble: {
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.lg,
+    paddingLeft: SPACING.md,
+    paddingRight: SPACING.md + 20,
+    paddingVertical: SPACING.sm,
+    maxWidth: '90%',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    position: 'relative',
+  },
   aiText: { color: COLORS.text, fontSize: 14, lineHeight: 21 },
-  copyBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-end', marginTop: 6 },
-  copyBtnText: { color: COLORS.textMuted, fontSize: 11, fontWeight: '600' },
+  copyBtn: { position: 'absolute', top: 8, right: 8 },
   imageBubble: { backgroundColor: COLORS.surface, borderRadius: RADIUS.lg, padding: SPACING.sm, maxWidth: '85%', borderWidth: 1, borderColor: COLORS.border },
   genImage: { width: 240, height: 240, borderRadius: RADIUS.md, marginBottom: SPACING.sm },
   useBtn: { backgroundColor: COLORS.primary, borderRadius: RADIUS.full, paddingVertical: SPACING.sm, alignItems: 'center' },
