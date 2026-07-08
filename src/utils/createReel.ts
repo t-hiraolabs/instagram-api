@@ -286,6 +286,35 @@ export async function renderSlide(
 
 // 見出しを任意サイズのcanvasに描く（写真・動画オーバーレイ共通）
 // nx,ny は 0〜1 の正規化座標で文字ブロックの「中心」位置、scale は文字の拡大率
+// テキストの下に敷く「ボックス」のスタイル。単なる白文字+黒縁取りだけだと
+// 素人っぽく見えがちなので、Instagramのテキストスタンプ風の半透明の帯を敷く。
+function drawTextBackdrop(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  top: number,
+  blockW: number,
+  blockH: number,
+  radius: number
+) {
+  const x = cx - blockW / 2;
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.4)';
+  ctx.beginPath();
+  if (typeof (ctx as any).roundRect === 'function') {
+    (ctx as any).roundRect(x, top, blockW, blockH, radius);
+  } else {
+    // roundRect未対応環境向けの手書きフォールバック
+    const r = radius;
+    ctx.moveTo(x + r, top);
+    ctx.arcTo(x + blockW, top, x + blockW, top + blockH, r);
+    ctx.arcTo(x + blockW, top + blockH, x, top + blockH, r);
+    ctx.arcTo(x, top + blockH, x, top, r);
+    ctx.arcTo(x, top, x + blockW, top, r);
+  }
+  ctx.fill();
+  ctx.restore();
+}
+
 async function drawHeadline(
   ctx: CanvasRenderingContext2D,
   Wt: number,
@@ -303,17 +332,24 @@ async function drawHeadline(
   const { lines, lineH } = fitText(ctx, text, Wt - Wt * 0.12, base, min);
   const blockH = lines.length * lineH;
   const cx = nx * Wt;
+  const padX = Math.round(Wt * 0.05);
+  const padY = Math.round(lineH * 0.28);
+  const widest = Math.max(...lines.map((l) => ctx.measureText(l).width));
+  const boxTop = ny * Ht - blockH / 2 - padY;
+  const boxH = blockH + padY * 2;
+  drawTextBackdrop(ctx, cx, boxTop, widest + padX * 2, boxH, Math.min(16, boxH / 4));
+
   let y = ny * Ht - blockH / 2 + lineH * 0.8;
-  const lw = Math.max(8, Math.round(Wt * 0.022));
-  ctx.lineJoin = 'round';
+  // 縁取りは細めの影程度にとどめ、太い黒縁の「ダサさ」を避けつつ視認性を確保する
+  ctx.shadowColor = 'rgba(0,0,0,0.5)';
+  ctx.shadowBlur = Math.round(Wt * 0.006);
   for (const line of lines) {
-    ctx.lineWidth = lw;
-    ctx.strokeStyle = 'rgba(0,0,0,0.92)';
-    ctx.strokeText(line, cx, y);
     ctx.fillStyle = '#FFFFFF';
     ctx.fillText(line, cx, y);
     y += lineH;
   }
+  ctx.shadowColor = 'transparent';
+  ctx.shadowBlur = 0;
 }
 
 // 透明背景に見出しを描いたPNG(dataURL)（動画オーバーレイ用）
