@@ -1223,7 +1223,7 @@ export default function ScheduleScreen() {
           <View style={styles.createMenuRow}>
             <TouchableOpacity style={styles.createMenuBtn} onPress={openModal} activeOpacity={0.85}>
               <Ionicons name="image-outline" size={22} color={COLORS.text} style={styles.createMenuEmoji} />
-              <Text style={styles.createMenuLabel}>フィード・ストーリー</Text>
+              <Text style={styles.createMenuLabel}>フィード</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.createMenuBtn} onPress={openCollage} activeOpacity={0.85}>
               <Ionicons name="grid-outline" size={22} color={COLORS.text} style={styles.createMenuEmoji} />

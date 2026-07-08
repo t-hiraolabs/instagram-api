@@ -54,7 +54,7 @@ can understand how their posts perform.
 2. Sign in with the provided test email / password.
 3. Go to the **「プロフィール」(Profile)** tab → tap **「Instagram連携」(Connect Instagram)** →
    log in with the provided Instagram **Business/Creator** test account and approve permissions.
-4. **Publish (content_publish)**: Go to **「投稿」(Post)** tab → 「フィード・ストーリーを作成」 →
+4. **Publish (content_publish)**: Go to **「投稿」(Post)** tab → 「フィード」 →
    choose a photo → write or AI-generate a caption → tap **「🚀 今すぐ投稿する」(Post now)**.
    The post appears on the connected Instagram account.
 5. **Scheduling**: 「予約投稿」(Schedule) tab → 「＋追加」 → set a future date → 「予約する」.
