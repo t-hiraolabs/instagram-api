@@ -1,6 +1,18 @@
 // コラージュ型ストーリー画像の合成（composeCollage/composeTemplatePreview）で使う
 // canvas描画ヘルパー群。
 
+import { Image as RNImage } from 'react-native';
+
+// ユーザーが用意した花のイラスト素材（透過PNG）。Canvasに描画するにはURL文字列が
+// 必要なので、Metroのアセット参照をresolveAssetSourceでURIに変換して使う。
+function assetUri(mod: number): string {
+  return RNImage.resolveAssetSource(mod)?.uri ?? '';
+}
+const FLOWER_CORNER_TL = () => assetUri(require('../assets/collage/corner-tl.png'));
+const FLOWER_CORNER_TR = () => assetUri(require('../assets/collage/corner-tr.png'));
+const FLOWER_FRAME_BORDER = () => assetUri(require('../assets/collage/frame-border.png'));
+const FLOWER_CLUSTER = () => assetUri(require('../assets/collage/flower-cluster.png'));
+
 // おしゃれな日本語フォント（極太）をWebフォントとして読み込んで使う
 const FONT_NAME = 'Zen Kaku Gothic New';
 const FONT_FAMILY = `"${FONT_NAME}", sans-serif`;
@@ -144,40 +156,23 @@ export interface CollageTemplate {
   /** グリッド領域内に写真カードを配置する（枚数はphotoCountと一致させる） */
   drawPhotos: (ctx: CanvasRenderingContext2D, photos: string[], area: CollageArea) => Promise<void>;
   /** レイアウトごとの装飾（区切り線・フレームなど） */
-  drawDecoration?: (ctx: CanvasRenderingContext2D, area: CollageArea, accent: string) => void;
+  drawDecoration?: (ctx: CanvasRenderingContext2D, area: CollageArea, accent: string) => void | Promise<void>;
 }
 
-// 花びらを円弧で並べただけのシンプルな花（特定のイラストを模したものではなく、
-// 円形図形の組み合わせで表現するオリジナルの簡易的な花マーク）
-function drawSimpleFlower(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number, color: string, alpha = 0.55) {
-  const petalCount = 5;
-  const petalR = size * 0.42;
-  const dist = size * 0.42;
-  ctx.save();
-  ctx.globalAlpha = alpha;
-  ctx.fillStyle = color;
-  for (let i = 0; i < petalCount; i++) {
-    const angle = (Math.PI * 2 * i) / petalCount - Math.PI / 2;
-    const px = cx + Math.cos(angle) * dist;
-    const py = cy + Math.sin(angle) * dist;
-    ctx.beginPath();
-    ctx.ellipse(px, py, petalR, petalR * 0.72, angle, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  ctx.globalAlpha = Math.min(1, alpha + 0.35);
-  ctx.beginPath();
-  ctx.arc(cx, cy, size * 0.24, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
+// 花のイラスト素材（透過PNG）を指定位置に描く
+async function drawFlowerAsset(ctx: CanvasRenderingContext2D, uriGetter: () => string, x: number, y: number, w: number, h: number) {
+  const uri = uriGetter();
+  if (!uri) return;
+  const img = await loadImage(uri);
+  ctx.drawImage(img, x, y, w, h);
 }
 
-// 花を角に数輪散らして「テンプレートらしい」装飾にする
-function drawCornerFlowers(ctx: CanvasRenderingContext2D, color: string) {
-  const flowers: [number, number, number][] = [
-    [86, 110, 46], [150, 66, 26],
-    [COLLAGE_W - 90, COLLAGE_H - 120, 50], [COLLAGE_W - 150, COLLAGE_H - 70, 28],
-  ];
-  for (const [x, y, size] of flowers) drawSimpleFlower(ctx, x, y, size, color);
+// 実際の花イラスト素材を、左下・右上の角に配置する
+async function drawCornerFlowers(ctx: CanvasRenderingContext2D) {
+  const blW = 300, blH = 264;
+  const trW = 190, trH = 218;
+  await drawFlowerAsset(ctx, FLOWER_CORNER_TL, -20, COLLAGE_H - blH + 20, blW, blH);
+  await drawFlowerAsset(ctx, FLOWER_CORNER_TR, COLLAGE_W - trW + 20, -20, trW, trH);
 }
 
 // 縦の点線区切り（「C」チェーン柄の簡易代替）
@@ -203,35 +198,6 @@ function drawSolidDividerH(ctx: CanvasRenderingContext2D, y: number, xLeft: numb
   ctx.moveTo(xLeft, y);
   ctx.lineTo(xRight, y);
   ctx.stroke();
-  ctx.restore();
-}
-
-// 領域全体を囲む二重線フレーム＋四隅のL字アクセント（花柄の代わりの控えめな装飾）
-function drawDoubleFrame(ctx: CanvasRenderingContext2D, area: CollageArea, color: string) {
-  ctx.save();
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 3;
-  ctx.strokeRect(area.x - 14, area.y - 14, area.w + 28, area.h + 28);
-  ctx.lineWidth = 1.5;
-  ctx.strokeRect(area.x - 22, area.y - 22, area.w + 44, area.h + 44);
-
-  const len = 46;
-  const off = 34;
-  const corners: [number, number, number, number][] = [
-    [area.x - off, area.y - off, 1, 1],
-    [area.x + area.w + off, area.y - off, -1, 1],
-    [area.x - off, area.y + area.h + off, 1, -1],
-    [area.x + area.w + off, area.y + area.h + off, -1, -1],
-  ];
-  ctx.lineWidth = 4;
-  ctx.lineCap = 'round';
-  for (const [cx, cy, dx, dy] of corners) {
-    ctx.beginPath();
-    ctx.moveTo(cx + len * dx, cy);
-    ctx.lineTo(cx, cy);
-    ctx.lineTo(cx, cy + len * dy);
-    ctx.stroke();
-  }
   ctx.restore();
 }
 
@@ -332,9 +298,9 @@ export const COLLAGE_TEMPLATES: CollageTemplate[] = [
     drawPhotos: async (ctx, photos, area) => {
       await drawPhotoCard(ctx, photos[0], area.x, area.y, area.w, area.h);
     },
-    drawDecoration: (ctx, area, accent) => {
-      drawDoubleFrame(ctx, area, accent);
-      drawCornerFlowers(ctx, accent);
+    drawDecoration: async (ctx, area) => {
+      const pad = 26;
+      await drawFlowerAsset(ctx, FLOWER_FRAME_BORDER, area.x - pad, area.y - pad, area.w + pad * 2, area.h + pad * 2);
     },
   },
   {
@@ -366,11 +332,11 @@ export const COLLAGE_TEMPLATES: CollageTemplate[] = [
       await drawPhotoCard(ctx, photos[2], area.x, area.y + cellH + gap, cellW, cellH);
       await drawPhotoCard(ctx, photos[3], area.x + cellW + gap, area.y + cellH + gap, cellW, cellH);
     },
-    drawDecoration: (ctx, area, accent) => {
+    drawDecoration: async (ctx, area, accent) => {
       const gap = 24;
       const cellW = (area.w - gap) / 2;
       drawDottedDivider(ctx, area.x + cellW + gap / 2, area.y, area.y + area.h, accent);
-      drawCornerFlowers(ctx, accent);
+      await drawCornerFlowers(ctx);
     },
   },
   {
@@ -391,8 +357,8 @@ export const COLLAGE_TEMPLATES: CollageTemplate[] = [
         -6
       );
     },
-    drawDecoration: (ctx, area, accent) => {
-      drawSimpleFlower(ctx, area.x - 8, area.y - 8, 40, accent, 0.7);
+    drawDecoration: async (ctx, area) => {
+      await drawFlowerAsset(ctx, FLOWER_CLUSTER, area.x - 40, area.y - 30, 150, 80);
     },
   },
   {
@@ -464,7 +430,7 @@ export async function composeCollage(
   const area: CollageArea = { x: margin, y: gridTop, w: COLLAGE_W - margin * 2, h: gridBottom - gridTop };
 
   await template.drawPhotos(ctx, photos, area);
-  template.drawDecoration?.(ctx, area, theme.accent);
+  await template.drawDecoration?.(ctx, area, theme.accent);
 
   if (accentText.trim()) {
     await loadFontFor(accentText);
