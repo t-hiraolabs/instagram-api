@@ -34,13 +34,12 @@ function LayerContent({ layer, displayScale }: { layer: StoryLayer; displayScale
     return <Image source={{ uri }} style={[size, styles.layerImage]} resizeMode="cover" />;
   }
   if (layer.type === 'frame') {
-    // フレーム素材は正方形に近い柄のため、9:16キャンバス全面に引き伸ばすと
-    // 縦に約5倍伸びて柄が潰れ見えなくなってしまう。横幅いっぱいの装飾バンドとして
-    // 縦横比を保ったまま表示し、位置・大きさはユーザーが指で調整する前提にする。
+    // フレーム素材はストーリーと同じ9:16（1080x1920）比率で用意する前提。
+    // キャンバス全面にフィットさせる（縦横比が一致していればcoverでも見た目は変わらない）
     const uri = 'uri' in layer ? layer.uri : undefined;
     if (!uri) return null;
-    const size = { width: CANVAS_W * displayScale, height: CANVAS_W * 0.85 * displayScale };
-    return <Image source={{ uri }} style={[size, styles.layerImage]} resizeMode="contain" />;
+    const size = { width: CANVAS_W * displayScale, height: CANVAS_H * displayScale };
+    return <Image source={{ uri }} style={[size, styles.layerImage]} resizeMode="cover" />;
   }
   if (layer.type === 'flower' || layer.type === 'decoration') {
     const uri = 'uri' in layer ? layer.uri : undefined;
