@@ -27,12 +27,13 @@ function LayerContent({ layer }: { layer: StoryLayer }) {
     return <Image source={{ uri }} style={[size, styles.layerImage]} resizeMode="cover" />;
   }
   if (layer.type === 'frame') {
-    // フレーム素材は正方形に近い柄が多いため、キャンバス全面に合わせて引き伸ばして
-    // 四辺すべてに柄が届くようにする（縦横比を保つと帯状に浮いてしまうため）
+    // フレーム素材は正方形に近い柄のため、9:16キャンバス全面に引き伸ばすと
+    // 縦に約5倍伸びて柄が潰れ見えなくなってしまう。横幅いっぱいの装飾バンドとして
+    // 縦横比を保ったまま表示し、位置・大きさはユーザーが指で調整する前提にする。
     const uri = 'uri' in layer ? layer.uri : undefined;
     if (!uri) return null;
-    const size = { width: CANVAS_W * DISPLAY_SCALE, height: CANVAS_H * DISPLAY_SCALE };
-    return <Image source={{ uri }} style={[size, styles.layerImage]} resizeMode="stretch" />;
+    const size = { width: CANVAS_W * DISPLAY_SCALE, height: CANVAS_W * 0.85 * DISPLAY_SCALE };
+    return <Image source={{ uri }} style={[size, styles.layerImage]} resizeMode="contain" />;
   }
   if (layer.type === 'flower' || layer.type === 'decoration') {
     const uri = 'uri' in layer ? layer.uri : undefined;

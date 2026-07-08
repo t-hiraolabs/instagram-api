@@ -254,7 +254,7 @@ export default function StoryStudioScreen({ visible, onClose, onFinish }: Props)
         )}
 
         {step === 'recommend' && (
-          <View style={styles.center}>
+          <ScrollView contentContainerStyle={styles.recommendScroll}>
             {recommendLoading ? (
               <>
                 <ActivityIndicator color={COLORS.primary} size="large" />
@@ -273,13 +273,13 @@ export default function StoryStudioScreen({ visible, onClose, onFinish }: Props)
                   <Text style={styles.nextBtnText}>このデザインで編集する</Text>
                 </TouchableOpacity>
                 {rankIndex + 1 < ranked.length && (
-                  <TouchableOpacity onPress={() => selectRankedTemplate(rankIndex + 1)}>
-                    <Text style={styles.otherLink}>他の候補を見る</Text>
+                  <TouchableOpacity onPress={() => selectRankedTemplate(rankIndex + 1)} style={styles.otherLinkBtn}>
+                    <Text style={styles.otherLink}>他の候補を見る（残り{ranked.length - rankIndex - 1}件）</Text>
                   </TouchableOpacity>
                 )}
               </>
             )}
-          </View>
+          </ScrollView>
         )}
 
         {step === 'edit' && (
@@ -346,6 +346,8 @@ const styles = StyleSheet.create({
   cancel: { color: COLORS.textMuted, fontSize: 15 },
   title: { color: COLORS.text, fontSize: 16, fontWeight: '800' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: SPACING.lg },
+  recommendScroll: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: SPACING.lg },
+  otherLinkBtn: { paddingVertical: SPACING.sm, paddingHorizontal: SPACING.md },
   stepTitle: { color: COLORS.text, fontSize: 20, fontWeight: '800', marginBottom: SPACING.xs, textAlign: 'center' },
   stepDesc: { color: COLORS.textSecondary, fontSize: 13, textAlign: 'center', marginBottom: SPACING.lg },
   photoPickBtn: {
