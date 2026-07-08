@@ -829,3 +829,31 @@ export async function composeCollage(
   );
   return { blob, previewUrl: canvas.toDataURL('image/jpeg', 0.9) };
 }
+
+let placeholderPhotoUrl: string | null = null;
+
+// テンプレート選択用のプレビューで、実際の写真の代わりに敷くグレーの正方形
+function getPlaceholderPhoto(): string {
+  if (placeholderPhotoUrl) return placeholderPhotoUrl;
+  const c = document.createElement('canvas');
+  c.width = 40;
+  c.height = 40;
+  const g = c.getContext('2d')!;
+  g.fillStyle = '#B9B9B9';
+  g.fillRect(0, 0, 40, 40);
+  placeholderPhotoUrl = c.toDataURL('image/png');
+  return placeholderPhotoUrl;
+}
+
+/**
+ * テンプレート一覧の選択画面で、実際の写真を選ぶ前に「だいたいの見た目」を
+ * 確認できるよう、グレーのプレースホルダー写真でcomposeCollageと同じ処理を
+ * 走らせてプレビュー画像を作る（実際に写真を入れたときと同じレイアウト・
+ * 色・装飾になる）。
+ */
+export async function composeTemplatePreview(template: CollageTemplate, theme: CollageTheme): Promise<string> {
+  const placeholder = getPlaceholderPhoto();
+  const photos = Array.from({ length: template.photoCount }, () => placeholder);
+  const { previewUrl } = await composeCollage(photos, template, theme, '', '');
+  return previewUrl;
+}

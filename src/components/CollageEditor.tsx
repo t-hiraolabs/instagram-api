@@ -1,38 +1,71 @@
-// コラージュ型ストーリーテンプレート（web専用）: レイアウト・写真・テーマ・文字を選んで1枚の画像に合成する
+// コラージュ型ストーリーテンプレート（web専用）: 見た目をプレビューで選び、写真を入れて加工する
 import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Image, TextInput, ActivityIndicator, Platform, Alert } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, RADIUS, SPACING } from '../utils/theme';
-import { composeCollage, COLLAGE_TEMPLATES, COLLAGE_THEMES } from '../utils/createReel';
+import { composeCollage, composeTemplatePreview, COLLAGE_TEMPLATES, COLLAGE_THEMES } from '../utils/createReel';
 
 interface Props {
   onDone: (dataUrl: string) => void;
 }
 
+type Step = 'select' | 'edit';
+
 export default function CollageEditor({ onDone }: Props) {
-  const [templateIdx, setTemplateIdx] = useState(2); // デフォルトは「2x2グリッド」
-  const template = COLLAGE_TEMPLATES[templateIdx];
-  const [photos, setPhotos] = useState<(string | null)[]>([null, null, null, null]);
+  const [step, setStep] = useState<Step>('select');
+  const [templateIdx, setTemplateIdx] = useState<number | null>(null);
   const [themeIdx, setThemeIdx] = useState(0);
+  const [previews, setPreviews] = useState<(string | null)[]>(() => COLLAGE_TEMPLATES.map(() => null));
+  const [photos, setPhotos] = useState<(string | null)[]>([null, null, null, null]);
   const [accentText, setAccentText] = useState('2026');
   const [caption, setCaption] = useState('');
-  const [preview, setPreview] = useState<string | null>(null);
+  const [finalPreview, setFinalPreview] = useState<string | null>(null);
   const [composing, setComposing] = useState(false);
+
+  const template = templateIdx != null ? COLLAGE_TEMPLATES[templateIdx] : null;
 
   const alertMsg = (msg: string, title = 'お知らせ') => {
     if (Platform.OS === 'web') window.alert(msg);
     else Alert.alert(title, msg);
   };
 
-  // テンプレートを変えたら、使わなくなる枠の写真は捨てる
+  // 選んでいるテーマ色で、各テンプレートの「実際の見た目」プレビューを作る
   useEffect(() => {
+    let alive = true;
+    setPreviews(COLLAGE_TEMPLATES.map(() => null));
+    COLLAGE_TEMPLATES.forEach((t, i) => {
+      composeTemplatePreview(t, COLLAGE_THEMES[themeIdx])
+        .then((url) => {
+          if (!alive) return;
+          setPreviews((p) => {
+            const next = [...p];
+            next[i] = url;
+            return next;
+          });
+        })
+        .catch(() => {});
+    });
+    return () => {
+      alive = false;
+    };
+  }, [themeIdx]);
+
+  // テンプレートを選び直したら、使わなくなる枠の写真は捨てる
+  useEffect(() => {
+    if (!template) return;
     setPhotos((p) => {
       const next = [...p];
       for (let i = template.photoCount; i < next.length; i++) next[i] = null;
       return next;
     });
-  }, [template.photoCount]);
+  }, [template]);
+
+  const selectTemplate = (i: number) => {
+    setTemplateIdx(i);
+    setFinalPreview(null);
+    setStep('edit');
+  };
 
   const pickPhoto = async (slot: number) => {
     if (Platform.OS !== 'web') {
@@ -54,11 +87,11 @@ export default function CollageEditor({ onDone }: Props) {
     });
   };
 
-  const filledCount = photos.slice(0, template.photoCount).filter(Boolean).length;
-  const ready = filledCount === template.photoCount;
+  const filledCount = template ? photos.slice(0, template.photoCount).filter(Boolean).length : 0;
+  const ready = !!template && filledCount === template.photoCount;
 
   const generatePreview = async () => {
-    if (!ready) return;
+    if (!ready || !template) return;
     setComposing(true);
     try {
       const { previewUrl } = await composeCollage(
@@ -68,7 +101,7 @@ export default function CollageEditor({ onDone }: Props) {
         accentText,
         caption
       );
-      setPreview(previewUrl);
+      setFinalPreview(previewUrl);
     } catch (e) {
       alertMsg(e instanceof Error ? e.message : 'コラージュの作成に失敗しました');
     } finally {
@@ -77,24 +110,50 @@ export default function CollageEditor({ onDone }: Props) {
   };
 
   const useThis = () => {
-    if (preview) onDone(preview);
+    if (finalPreview) onDone(finalPreview);
   };
+
+  if (step === 'select' || !template) {
+    return (
+      <View style={styles.wrap}>
+        <Text style={styles.label}>テーマカラー</Text>
+        <View style={styles.row}>
+          {COLLAGE_THEMES.map((t, i) => (
+            <TouchableOpacity
+              key={t.name}
+              style={[styles.themeSwatch, { backgroundColor: t.background, borderColor: t.accent }, themeIdx === i && styles.themeSwatchActive]}
+              onPress={() => setThemeIdx(i)}
+              activeOpacity={0.85}
+            />
+          ))}
+        </View>
+
+        <Text style={styles.label}>テンプレートを選ぶ（実際の見た目のプレビューです）</Text>
+        <View style={styles.templateGrid}>
+          {COLLAGE_TEMPLATES.map((t, i) => (
+            <TouchableOpacity key={t.id} style={styles.templateCard} onPress={() => selectTemplate(i)} activeOpacity={0.85}>
+              <View style={styles.templateThumbWrap}>
+                {previews[i] ? (
+                  <Image source={{ uri: previews[i]! }} style={styles.templateThumb} resizeMode="cover" />
+                ) : (
+                  <ActivityIndicator color={COLORS.textMuted} />
+                )}
+              </View>
+              <Text style={styles.templateName}>{t.name}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.wrap}>
-      <Text style={styles.label}>テンプレート</Text>
-      <View style={styles.templateRow}>
-        {COLLAGE_TEMPLATES.map((t, i) => (
-          <TouchableOpacity
-            key={t.id}
-            style={[styles.chip, templateIdx === i && styles.chipActive]}
-            onPress={() => setTemplateIdx(i)}
-            activeOpacity={0.85}
-          >
-            <Text style={[styles.chipText, templateIdx === i && styles.chipTextActive]}>{t.name}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+      <TouchableOpacity style={styles.backRow} onPress={() => setStep('select')} activeOpacity={0.7}>
+        <Ionicons name="chevron-back" size={16} color={COLORS.textMuted} />
+        <Text style={styles.backText}>テンプレートを選び直す</Text>
+      </TouchableOpacity>
+      <Text style={styles.templateTitle}>{template.name}</Text>
 
       <Text style={styles.label}>写真を選ぶ（{template.photoCount}枚）</Text>
       <View style={styles.photoGrid}>
@@ -106,18 +165,6 @@ export default function CollageEditor({ onDone }: Props) {
               <Ionicons name="image-outline" size={24} color={COLORS.textSecondary} />
             )}
           </TouchableOpacity>
-        ))}
-      </View>
-
-      <Text style={styles.label}>テーマカラー</Text>
-      <View style={styles.row}>
-        {COLLAGE_THEMES.map((t, i) => (
-          <TouchableOpacity
-            key={t.name}
-            style={[styles.themeSwatch, { backgroundColor: t.background, borderColor: t.accent }, themeIdx === i && styles.themeSwatchActive]}
-            onPress={() => setThemeIdx(i)}
-            activeOpacity={0.85}
-          />
         ))}
       </View>
 
@@ -150,9 +197,9 @@ export default function CollageEditor({ onDone }: Props) {
         )}
       </TouchableOpacity>
 
-      {preview && (
+      {finalPreview && (
         <View style={styles.previewWrap}>
-          <Image source={{ uri: preview }} style={styles.previewImg} resizeMode="contain" />
+          <Image source={{ uri: finalPreview }} style={styles.previewImg} resizeMode="contain" />
           <TouchableOpacity style={styles.useBtn} onPress={useThis} activeOpacity={0.85}>
             <Text style={styles.useBtnText}>この内容で進める ›</Text>
           </TouchableOpacity>
@@ -166,18 +213,24 @@ const styles = StyleSheet.create({
   wrap: { paddingBottom: SPACING.xl },
   label: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700', marginTop: SPACING.md, marginBottom: SPACING.xs },
   row: { flexDirection: 'row', gap: SPACING.sm },
-  templateRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm },
-  chip: {
-    paddingVertical: SPACING.xs,
-    paddingHorizontal: SPACING.md,
-    borderRadius: RADIUS.full,
+  backRow: { flexDirection: 'row', alignItems: 'center', gap: 2, marginBottom: SPACING.sm },
+  backText: { color: COLORS.textMuted, fontSize: 13, fontWeight: '600' },
+  templateTitle: { color: COLORS.text, fontSize: 18, fontWeight: '800', marginBottom: SPACING.sm },
+  templateGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.md },
+  templateCard: { width: 140, alignItems: 'center' },
+  templateThumbWrap: {
+    width: 140,
+    height: (140 * 1920) / 1080,
+    borderRadius: RADIUS.md,
     borderWidth: 1,
     borderColor: COLORS.border,
     backgroundColor: COLORS.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
-  chipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  chipText: { color: COLORS.textMuted, fontSize: 13, fontWeight: '700' },
-  chipTextActive: { color: '#fff' },
+  templateThumb: { width: '100%', height: '100%' },
+  templateName: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '700', marginTop: 6, textAlign: 'center' },
   photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm },
   photoSlot: {
     width: 90,
