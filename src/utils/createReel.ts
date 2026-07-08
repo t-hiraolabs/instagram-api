@@ -528,3 +528,176 @@ export async function createReel(
   const blob = new Blob([(data as Uint8Array).buffer], { type: 'video/mp4' });
   return { blob, url: URL.createObjectURL(blob) };
 }
+
+// ===== コラージュ型ストーリーテンプレート =====
+
+export type CollageLayout = 1 | 2 | 4;
+
+export interface CollageTheme {
+  name: string;
+  background: string;
+  accent: string;
+}
+
+// 花やチェーン柄などの独自イラストは使わず、色・丸・線などcanvasで描ける
+// シンプルな図形だけで「テンプレートらしさ」を出す。
+export const COLLAGE_THEMES: CollageTheme[] = [
+  { name: 'ベージュ', background: '#F3E7DC', accent: '#B5651D' },
+  { name: 'ピンク', background: '#FBE4E8', accent: '#D6597A' },
+  { name: 'ミント', background: '#E4F3EC', accent: '#3E8E6E' },
+  { name: 'モノトーン', background: '#EFEFEF', accent: '#333333' },
+];
+
+const COLLAGE_W = 1080;
+const COLLAGE_H = 1920;
+
+// 円のドットを角に散らして「テンプレートらしい」装飾にする（花イラストの簡易代替）
+function drawCornerDots(ctx: CanvasRenderingContext2D, color: string) {
+  const dots: [number, number, number][] = [
+    [70, 90, 14], [110, 60, 8], [40, 140, 6],
+    [COLLAGE_W - 70, COLLAGE_H - 100, 16], [COLLAGE_W - 120, COLLAGE_H - 60, 9], [COLLAGE_W - 40, COLLAGE_H - 150, 7],
+  ];
+  ctx.save();
+  ctx.globalAlpha = 0.5;
+  ctx.fillStyle = color;
+  for (const [x, y, r] of dots) {
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+// 縦の点線区切り（「C」チェーン柄の簡易代替）
+function drawDottedDivider(ctx: CanvasRenderingContext2D, x: number, yTop: number, yBottom: number, color: string) {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 6;
+  ctx.lineCap = 'round';
+  ctx.setLineDash([2, 18]);
+  ctx.beginPath();
+  ctx.moveTo(x, yTop);
+  ctx.lineTo(x, yBottom);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// 写真を白枠付きの角丸カードとして描く（cover fit）
+async function drawPhotoCard(
+  ctx: CanvasRenderingContext2D,
+  uri: string,
+  x: number,
+  y: number,
+  w: number,
+  h: number
+) {
+  const img = await loadImage(uri);
+  const pad = 10;
+  const radius = 18;
+  ctx.save();
+  ctx.fillStyle = '#FFFFFF';
+  ctx.beginPath();
+  if (typeof (ctx as any).roundRect === 'function') {
+    (ctx as any).roundRect(x, y, w, h, radius);
+  } else {
+    ctx.rect(x, y, w, h);
+  }
+  ctx.fill();
+
+  const ix = x + pad;
+  const iy = y + pad;
+  const iw = w - pad * 2;
+  const ih = h - pad * 2;
+  ctx.beginPath();
+  if (typeof (ctx as any).roundRect === 'function') {
+    (ctx as any).roundRect(ix, iy, iw, ih, Math.max(0, radius - pad));
+  } else {
+    ctx.rect(ix, iy, iw, ih);
+  }
+  ctx.clip();
+  const cover = Math.max(iw / img.width, ih / img.height);
+  ctx.drawImage(
+    img,
+    ix + (iw - img.width * cover) / 2,
+    iy + (ih - img.height * cover) / 2,
+    img.width * cover,
+    img.height * cover
+  );
+  ctx.restore();
+}
+
+/**
+ * 1〜4枚の写真を組み合わせたコラージュ風ストーリー画像を作る。
+ * 花やチェーン柄などの独自イラストの代わりに、色・丸・点線などcanvasで
+ * 描けるシンプルな図形で「テンプレートらしさ」を出す。
+ */
+export async function composeCollage(
+  photos: string[],
+  layout: CollageLayout,
+  theme: CollageTheme,
+  accentText: string,
+  caption: string
+): Promise<{ blob: Blob; previewUrl: string }> {
+  const canvas = document.createElement('canvas');
+  canvas.width = COLLAGE_W;
+  canvas.height = COLLAGE_H;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Canvasを利用できません');
+
+  ctx.fillStyle = theme.background;
+  ctx.fillRect(0, 0, COLLAGE_W, COLLAGE_H);
+  drawCornerDots(ctx, theme.accent);
+
+  const margin = 48;
+  const gridTop = 200;
+  const gridBottom = COLLAGE_H - 260;
+  const gridW = COLLAGE_W - margin * 2;
+  const gridH = gridBottom - gridTop;
+  const gap = 24;
+
+  if (layout === 1) {
+    await drawPhotoCard(ctx, photos[0], margin, gridTop, gridW, gridH);
+  } else if (layout === 2) {
+    const cellH = (gridH - gap) / 2;
+    await drawPhotoCard(ctx, photos[0], margin, gridTop, gridW, cellH);
+    await drawPhotoCard(ctx, photos[1], margin, gridTop + cellH + gap, gridW, cellH);
+  } else {
+    const cellW = (gridW - gap) / 2;
+    const cellH = (gridH - gap) / 2;
+    await drawPhotoCard(ctx, photos[0], margin, gridTop, cellW, cellH);
+    await drawPhotoCard(ctx, photos[1], margin + cellW + gap, gridTop, cellW, cellH);
+    await drawPhotoCard(ctx, photos[2], margin, gridTop + cellH + gap, cellW, cellH);
+    await drawPhotoCard(ctx, photos[3], margin + cellW + gap, gridTop + cellH + gap, cellW, cellH);
+    drawDottedDivider(ctx, margin + cellW + gap / 2, gridTop, gridTop + gridH, theme.accent);
+  }
+
+  if (accentText.trim()) {
+    await loadFontFor(accentText);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = theme.accent;
+    ctx.font = `900 96px ${FONT_FAMILY}`;
+    ctx.fillText(accentText.trim(), COLLAGE_W / 2, gridTop - 60);
+  }
+
+  if (caption.trim()) {
+    await loadFontFor(caption);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#2A2A2A';
+    const { lines, lineH } = fitText(ctx, caption.trim(), gridW, 44, 28);
+    let y = gridBottom + 70;
+    for (const line of lines) {
+      ctx.fillText(line, COLLAGE_W / 2, y);
+      y += lineH;
+    }
+  }
+
+  const blob = await new Promise<Blob>((resolve, reject) =>
+    canvas.toBlob(
+      (b) => (b ? resolve(b) : reject(new Error('画像の生成に失敗しました'))),
+      'image/jpeg',
+      0.92
+    )
+  );
+  return { blob, previewUrl: canvas.toDataURL('image/jpeg', 0.9) };
+}

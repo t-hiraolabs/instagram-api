@@ -27,6 +27,7 @@ import {
 } from '../utils/composeStory';
 import FeedCropEditor from '../components/FeedCropEditor';
 import StoryEditor from '../components/StoryEditor';
+import CollageEditor from '../components/CollageEditor';
 import ReelScreen from './ReelScreen';
 import RosterScreen from './RosterScreen';
 import { addTextToVideo, composeImageWithHeadline } from '../utils/createReel';
@@ -357,6 +358,8 @@ export default function ScheduleScreen() {
   const [productTags, setProductTags] = useState<string[]>([]);
   const [newProductTag, setNewProductTag] = useState('');
   const [locationId, setLocationId] = useState('');
+  // コラージュ型ストーリーテンプレート
+  const [collageVisible, setCollageVisible] = useState(false);
   // AI画像生成（チャット）
   const [imgChatVisible, setImgChatVisible] = useState(false);
   const openImageChatFlag = useAppStore((s) => s.openImageChat);
@@ -537,6 +540,31 @@ export default function ScheduleScreen() {
     setCropInitialIndex(0);
     setCropRawImages([dataUrl]);
     setCropVisible(true);
+  };
+
+  // コラージュテンプレートを開く（作成モーダルは隠してz-index競合を防ぐ）
+  const openCollage = async () => {
+    if (!(await ensureLoggedIn('コラージュ作成にはログインが必要です'))) return;
+    setModalVisible(false);
+    setCollageVisible(true);
+  };
+
+  // コラージュで作った画像をアップロードし、ストーリーとして続きの作成画面へ
+  const handleCollageDone = async (dataUrl: string) => {
+    setCollageVisible(false);
+    setComposing(true);
+    try {
+      const blob = await (await fetch(dataUrl)).blob();
+      const publicUrl = await uploadBlob(blob);
+      setImagePreview(dataUrl);
+      setImageUrl(publicUrl);
+      setType('story');
+      setModalVisible(true);
+    } catch (e) {
+      alertMsg(e instanceof Error ? e.message : 'アップロードに失敗しました');
+    } finally {
+      setComposing(false);
+    }
   };
 
   // フィード写真を選んで、そのまま「写真を調整する画面」へ
@@ -1664,6 +1692,10 @@ export default function ScheduleScreen() {
               <Ionicons name="film-outline" size={22} color={COLORS.text} style={styles.createMenuEmoji} />
               <Text style={styles.createMenuLabel}>リール</Text>
             </TouchableOpacity>
+            <TouchableOpacity style={styles.createMenuBtn} onPress={openCollage} activeOpacity={0.85}>
+              <Ionicons name="grid-outline" size={22} color={COLORS.text} style={styles.createMenuEmoji} />
+              <Text style={styles.createMenuLabel}>コラージュ</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -1813,6 +1845,22 @@ export default function ScheduleScreen() {
         onCancel={handleCropCancel}
         onDone={handleCropDone}
       />
+
+      {/* コラージュ型ストーリーテンプレート */}
+      <Modal visible={collageVisible} animationType="slide" presentationStyle="pageSheet">
+        <KeyboardAvoidingView style={styles.modal} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => { setCollageVisible(false); setModalVisible(true); }}>
+              <Text style={styles.modalCancel}>戻る</Text>
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>コラージュを作る</Text>
+            <View style={{ width: 48 }} />
+          </View>
+          <ScrollView style={styles.modalBody} keyboardShouldPersistTaps="handled">
+            <CollageEditor onDone={handleCollageDone} />
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </Modal>
 
       {/* AI画像生成チャット */}
       <ImageGenChat
