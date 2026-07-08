@@ -4,9 +4,16 @@
 import { Image as RNImage } from 'react-native';
 
 // ユーザーが用意した花のイラスト素材（透過PNG）。Canvasに描画するにはURL文字列が
-// 必要なので、Metroのアセット参照をresolveAssetSourceでURIに変換して使う。
-function assetUri(mod: number): string {
-  return RNImage.resolveAssetSource(mod)?.uri ?? '';
+// 必要なので、require()の戻り値をURIに変換して使う。
+// Metroのアセット解決では数値のモジュールIDが返るためresolveAssetSourceで変換するが、
+// バンドラーの設定によっては最初から文字列URLが返ることもあるため両対応にする。
+function assetUri(mod: unknown): string {
+  if (typeof mod === 'string') return mod;
+  try {
+    return RNImage.resolveAssetSource(mod as number)?.uri ?? '';
+  } catch {
+    return '';
+  }
 }
 const FLOWER_CORNER_TL = () => assetUri(require('../assets/collage/corner-tl.png'));
 const FLOWER_CORNER_TR = () => assetUri(require('../assets/collage/corner-tr.png'));
@@ -43,10 +50,17 @@ async function loadFontFor(text: string) {
 
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
+    if (!src) {
+      reject(new Error('画像のURLが空です'));
+      return;
+    }
     const img = new window.Image();
     img.crossOrigin = 'anonymous';
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error('画像の読み込みに失敗しました'));
+    // 素材の解決に失敗してonload/onerrorが発火しないケースでも画面が
+    // 固まらないよう、念のためタイムアウトで打ち切る
+    const timer = setTimeout(() => reject(new Error('画像の読み込みがタイムアウトしました')), 10000);
+    img.onload = () => { clearTimeout(timer); resolve(img); };
+    img.onerror = () => { clearTimeout(timer); reject(new Error('画像の読み込みに失敗しました')); };
     img.src = src;
   });
 }
