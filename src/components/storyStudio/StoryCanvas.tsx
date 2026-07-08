@@ -19,13 +19,25 @@ interface Props {
 }
 
 function LayerContent({ layer }: { layer: StoryLayer }) {
-  if (layer.type === 'photo' || layer.type === 'background' || layer.type === 'frame' || layer.type === 'flower' || layer.type === 'decoration') {
+  if (layer.type === 'photo' || layer.type === 'background') {
+    // 写真・背景はキャンバス全面を隙間なく埋める（コンテインだと黒帯ができてしまうため cover でクロップ）
     const uri = 'uri' in layer ? layer.uri : undefined;
     if (!uri) return null;
-    // 論理サイズはキャンバスと同じ比率で表示（背景/フレームはキャンバス全面、
-    // それ以外の素材はある程度小さい正方形をデフォルトサイズとする）
-    const isFullBleed = layer.type === 'background' || layer.type === 'frame' || layer.type === 'photo';
-    const size = isFullBleed ? { width: CANVAS_W * DISPLAY_SCALE, height: CANVAS_H * DISPLAY_SCALE } : { width: 260 * DISPLAY_SCALE, height: 260 * DISPLAY_SCALE };
+    const size = { width: CANVAS_W * DISPLAY_SCALE, height: CANVAS_H * DISPLAY_SCALE };
+    return <Image source={{ uri }} style={[size, styles.layerImage]} resizeMode="cover" />;
+  }
+  if (layer.type === 'frame') {
+    // フレーム素材は正方形に近い柄が多いため、キャンバス全面に合わせて引き伸ばして
+    // 四辺すべてに柄が届くようにする（縦横比を保つと帯状に浮いてしまうため）
+    const uri = 'uri' in layer ? layer.uri : undefined;
+    if (!uri) return null;
+    const size = { width: CANVAS_W * DISPLAY_SCALE, height: CANVAS_H * DISPLAY_SCALE };
+    return <Image source={{ uri }} style={[size, styles.layerImage]} resizeMode="stretch" />;
+  }
+  if (layer.type === 'flower' || layer.type === 'decoration') {
+    const uri = 'uri' in layer ? layer.uri : undefined;
+    if (!uri) return null;
+    const size = { width: 260 * DISPLAY_SCALE, height: 260 * DISPLAY_SCALE };
     return <Image source={{ uri }} style={[size, styles.layerImage]} resizeMode="contain" />;
   }
   if (layer.type === 'text' || layer.type === 'cta') {
