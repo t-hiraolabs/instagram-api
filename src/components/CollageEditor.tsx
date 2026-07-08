@@ -4,20 +4,15 @@ import { View, Text, TouchableOpacity, StyleSheet, Image, TextInput, ActivityInd
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, RADIUS, SPACING } from '../utils/theme';
-import { composeCollage, CollageLayout, COLLAGE_THEMES } from '../utils/createReel';
+import { composeCollage, COLLAGE_TEMPLATES, COLLAGE_THEMES } from '../utils/createReel';
 
 interface Props {
   onDone: (dataUrl: string) => void;
 }
 
-const LAYOUTS: { key: CollageLayout; label: string }[] = [
-  { key: 1, label: '1枚' },
-  { key: 2, label: '2枚' },
-  { key: 4, label: '4枚' },
-];
-
 export default function CollageEditor({ onDone }: Props) {
-  const [layout, setLayout] = useState<CollageLayout>(4);
+  const [templateIdx, setTemplateIdx] = useState(2); // デフォルトは「2x2グリッド」
+  const template = COLLAGE_TEMPLATES[templateIdx];
   const [photos, setPhotos] = useState<(string | null)[]>([null, null, null, null]);
   const [themeIdx, setThemeIdx] = useState(0);
   const [accentText, setAccentText] = useState('2026');
@@ -30,14 +25,14 @@ export default function CollageEditor({ onDone }: Props) {
     else Alert.alert(title, msg);
   };
 
-  // レイアウトを変えたら、使わなくなる枠の写真は捨てる
+  // テンプレートを変えたら、使わなくなる枠の写真は捨てる
   useEffect(() => {
     setPhotos((p) => {
       const next = [...p];
-      for (let i = layout; i < next.length; i++) next[i] = null;
+      for (let i = template.photoCount; i < next.length; i++) next[i] = null;
       return next;
     });
-  }, [layout]);
+  }, [template.photoCount]);
 
   const pickPhoto = async (slot: number) => {
     if (Platform.OS !== 'web') {
@@ -59,16 +54,16 @@ export default function CollageEditor({ onDone }: Props) {
     });
   };
 
-  const filledCount = photos.slice(0, layout).filter(Boolean).length;
-  const ready = filledCount === layout;
+  const filledCount = photos.slice(0, template.photoCount).filter(Boolean).length;
+  const ready = filledCount === template.photoCount;
 
   const generatePreview = async () => {
     if (!ready) return;
     setComposing(true);
     try {
       const { previewUrl } = await composeCollage(
-        photos.slice(0, layout) as string[],
-        layout,
+        photos.slice(0, template.photoCount) as string[],
+        template,
         COLLAGE_THEMES[themeIdx],
         accentText,
         caption
@@ -87,23 +82,23 @@ export default function CollageEditor({ onDone }: Props) {
 
   return (
     <View style={styles.wrap}>
-      <Text style={styles.label}>写真の枚数</Text>
-      <View style={styles.row}>
-        {LAYOUTS.map((l) => (
+      <Text style={styles.label}>テンプレート</Text>
+      <View style={styles.templateRow}>
+        {COLLAGE_TEMPLATES.map((t, i) => (
           <TouchableOpacity
-            key={l.key}
-            style={[styles.chip, layout === l.key && styles.chipActive]}
-            onPress={() => setLayout(l.key)}
+            key={t.id}
+            style={[styles.chip, templateIdx === i && styles.chipActive]}
+            onPress={() => setTemplateIdx(i)}
             activeOpacity={0.85}
           >
-            <Text style={[styles.chipText, layout === l.key && styles.chipTextActive]}>{l.label}</Text>
+            <Text style={[styles.chipText, templateIdx === i && styles.chipTextActive]}>{t.name}</Text>
           </TouchableOpacity>
         ))}
       </View>
 
-      <Text style={styles.label}>写真を選ぶ</Text>
+      <Text style={styles.label}>写真を選ぶ（{template.photoCount}枚）</Text>
       <View style={styles.photoGrid}>
-        {Array.from({ length: layout }).map((_, i) => (
+        {Array.from({ length: template.photoCount }).map((_, i) => (
           <TouchableOpacity key={i} style={styles.photoSlot} onPress={() => pickPhoto(i)} activeOpacity={0.85}>
             {photos[i] ? (
               <Image source={{ uri: photos[i]! }} style={styles.photoThumb} resizeMode="cover" />
@@ -151,7 +146,7 @@ export default function CollageEditor({ onDone }: Props) {
         activeOpacity={0.85}
       >
         {composing ? <ActivityIndicator color="#fff" /> : (
-          <Text style={styles.genBtnText}>{ready ? 'プレビューを作る' : `あと${layout - filledCount}枚選んでください`}</Text>
+          <Text style={styles.genBtnText}>{ready ? 'プレビューを作る' : `あと${template.photoCount - filledCount}枚選んでください`}</Text>
         )}
       </TouchableOpacity>
 
@@ -171,6 +166,7 @@ const styles = StyleSheet.create({
   wrap: { paddingBottom: SPACING.xl },
   label: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700', marginTop: SPACING.md, marginBottom: SPACING.xs },
   row: { flexDirection: 'row', gap: SPACING.sm },
+  templateRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm },
   chip: {
     paddingVertical: SPACING.xs,
     paddingHorizontal: SPACING.md,

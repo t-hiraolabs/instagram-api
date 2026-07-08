@@ -530,8 +530,10 @@ export async function createReel(
 }
 
 // ===== コラージュ型ストーリーテンプレート =====
-
-export type CollageLayout = 1 | 2 | 4;
+//
+// 画像素材を1枚も持たず、「レイアウト（写真の並べ方）× テーマ（色）」の
+// 組み合わせだけで見た目のバリエーションを作る。テンプレートを増やしたい
+// ときは、下の COLLAGE_TEMPLATES に1件足すだけでよい（テーマは自動で掛け算される）。
 
 export interface CollageTheme {
   name: string;
@@ -550,6 +552,24 @@ export const COLLAGE_THEMES: CollageTheme[] = [
 
 const COLLAGE_W = 1080;
 const COLLAGE_H = 1920;
+
+interface CollageArea {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface CollageTemplate {
+  id: string;
+  name: string;
+  /** この並べ方に必要な写真の枚数 */
+  photoCount: 1 | 2 | 3 | 4;
+  /** グリッド領域内に写真カードを配置する（枚数はphotoCountと一致させる） */
+  drawPhotos: (ctx: CanvasRenderingContext2D, photos: string[], area: CollageArea) => Promise<void>;
+  /** レイアウトごとの装飾（区切り線・フレームなど） */
+  drawDecoration?: (ctx: CanvasRenderingContext2D, area: CollageArea, accent: string) => void;
+}
 
 // 円のドットを角に散らして「テンプレートらしい」装飾にする（花イラストの簡易代替）
 function drawCornerDots(ctx: CanvasRenderingContext2D, color: string) {
@@ -582,38 +602,72 @@ function drawDottedDivider(ctx: CanvasRenderingContext2D, x: number, yTop: numbe
   ctx.restore();
 }
 
-// 写真を白枠付きの角丸カードとして描く（cover fit）
+// 横の実線区切り
+function drawSolidDividerH(ctx: CanvasRenderingContext2D, y: number, xLeft: number, xRight: number, color: string) {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(xLeft, y);
+  ctx.lineTo(xRight, y);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// 領域全体を囲む二重線フレーム
+function drawDoubleFrame(ctx: CanvasRenderingContext2D, area: CollageArea, color: string) {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 3;
+  ctx.strokeRect(area.x - 14, area.y - 14, area.w + 28, area.h + 28);
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(area.x - 22, area.y - 22, area.w + 44, area.h + 44);
+  ctx.restore();
+}
+
+function roundRectPath(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  ctx.beginPath();
+  if (typeof (ctx as any).roundRect === 'function') {
+    (ctx as any).roundRect(x, y, w, h, r);
+  } else {
+    ctx.rect(x, y, w, h);
+  }
+}
+
+// 写真を白枠付きの角丸カードとして描く（cover fit）。rotateDeg指定でポラロイド風に少し傾ける。
 async function drawPhotoCard(
   ctx: CanvasRenderingContext2D,
   uri: string,
   x: number,
   y: number,
   w: number,
-  h: number
+  h: number,
+  rotateDeg = 0
 ) {
   const img = await loadImage(uri);
   const pad = 10;
   const radius = 18;
   ctx.save();
-  ctx.fillStyle = '#FFFFFF';
-  ctx.beginPath();
-  if (typeof (ctx as any).roundRect === 'function') {
-    (ctx as any).roundRect(x, y, w, h, radius);
-  } else {
-    ctx.rect(x, y, w, h);
+  if (rotateDeg !== 0) {
+    const cx = x + w / 2;
+    const cy = y + h / 2;
+    ctx.translate(cx, cy);
+    ctx.rotate((rotateDeg * Math.PI) / 180);
+    ctx.translate(-cx, -cy);
   }
+  ctx.fillStyle = '#FFFFFF';
+  roundRectPath(ctx, x, y, w, h, radius);
+  ctx.shadowColor = 'rgba(0,0,0,0.25)';
+  ctx.shadowBlur = 20;
   ctx.fill();
+  ctx.shadowColor = 'transparent';
+  ctx.shadowBlur = 0;
 
   const ix = x + pad;
   const iy = y + pad;
   const iw = w - pad * 2;
   const ih = h - pad * 2;
-  ctx.beginPath();
-  if (typeof (ctx as any).roundRect === 'function') {
-    (ctx as any).roundRect(ix, iy, iw, ih, Math.max(0, radius - pad));
-  } else {
-    ctx.rect(ix, iy, iw, ih);
-  }
+  roundRectPath(ctx, ix, iy, iw, ih, Math.max(0, radius - pad));
   ctx.clip();
   const cover = Math.max(iw / img.width, ih / img.height);
   ctx.drawImage(
@@ -626,14 +680,104 @@ async function drawPhotoCard(
   ctx.restore();
 }
 
+// ===== 5種類のレイアウト（写真の並べ方）=====
+// テーマ（色）とは独立しているので、テーマ4色 × レイアウト5種 = 20通りの見た目になる。
+export const COLLAGE_TEMPLATES: CollageTemplate[] = [
+  {
+    id: 'simple1',
+    name: 'シンプル1枚',
+    photoCount: 1,
+    drawPhotos: async (ctx, photos, area) => {
+      await drawPhotoCard(ctx, photos[0], area.x, area.y, area.w, area.h);
+    },
+    drawDecoration: (ctx, area, accent) => drawDoubleFrame(ctx, area, accent),
+  },
+  {
+    id: 'stack2',
+    name: '縦2分割',
+    photoCount: 2,
+    drawPhotos: async (ctx, photos, area) => {
+      const gap = 24;
+      const cellH = (area.h - gap) / 2;
+      await drawPhotoCard(ctx, photos[0], area.x, area.y, area.w, cellH);
+      await drawPhotoCard(ctx, photos[1], area.x, area.y + cellH + gap, area.w, cellH);
+    },
+    drawDecoration: (ctx, area, accent) => {
+      const gap = 24;
+      const cellH = (area.h - gap) / 2;
+      drawSolidDividerH(ctx, area.y + cellH + gap / 2, area.x + 30, area.x + area.w - 30, accent);
+    },
+  },
+  {
+    id: 'grid4',
+    name: '2x2グリッド',
+    photoCount: 4,
+    drawPhotos: async (ctx, photos, area) => {
+      const gap = 24;
+      const cellW = (area.w - gap) / 2;
+      const cellH = (area.h - gap) / 2;
+      await drawPhotoCard(ctx, photos[0], area.x, area.y, cellW, cellH);
+      await drawPhotoCard(ctx, photos[1], area.x + cellW + gap, area.y, cellW, cellH);
+      await drawPhotoCard(ctx, photos[2], area.x, area.y + cellH + gap, cellW, cellH);
+      await drawPhotoCard(ctx, photos[3], area.x + cellW + gap, area.y + cellH + gap, cellW, cellH);
+    },
+    drawDecoration: (ctx, area, accent) => {
+      const gap = 24;
+      const cellW = (area.w - gap) / 2;
+      drawDottedDivider(ctx, area.x + cellW + gap / 2, area.y, area.y + area.h, accent);
+      drawCornerDots(ctx, accent);
+    },
+  },
+  {
+    id: 'polaroid',
+    name: 'メイン＋ポラロイド',
+    photoCount: 2,
+    drawPhotos: async (ctx, photos, area) => {
+      await drawPhotoCard(ctx, photos[0], area.x, area.y, area.w, area.h);
+      const subW = area.w * 0.52;
+      const subH = subW * 1.15;
+      await drawPhotoCard(
+        ctx,
+        photos[1],
+        area.x + area.w - subW + 20,
+        area.y + area.h - subH + 20,
+        subW,
+        subH,
+        -6
+      );
+    },
+  },
+  {
+    id: 'heroBottom2',
+    name: '上1枚＋下2枚',
+    photoCount: 3,
+    drawPhotos: async (ctx, photos, area) => {
+      const gap = 24;
+      const topH = area.h * 0.58;
+      const bottomH = area.h - topH - gap;
+      const cellW = (area.w - gap) / 2;
+      await drawPhotoCard(ctx, photos[0], area.x, area.y, area.w, topH);
+      await drawPhotoCard(ctx, photos[1], area.x, area.y + topH + gap, cellW, bottomH);
+      await drawPhotoCard(ctx, photos[2], area.x + cellW + gap, area.y + topH + gap, cellW, bottomH);
+    },
+    drawDecoration: (ctx, area, accent) => {
+      const gap = 24;
+      const topH = area.h * 0.58;
+      const bottomH = area.h - topH - gap;
+      const cellW = (area.w - gap) / 2;
+      drawDottedDivider(ctx, area.x + cellW + gap / 2, area.y + topH + gap, area.y + topH + gap + bottomH, accent);
+    },
+  },
+];
+
 /**
- * 1〜4枚の写真を組み合わせたコラージュ風ストーリー画像を作る。
- * 花やチェーン柄などの独自イラストの代わりに、色・丸・点線などcanvasで
- * 描けるシンプルな図形で「テンプレートらしさ」を出す。
+ * テンプレート（写真の並べ方）とテーマ（色）を組み合わせて、1枚のコラージュ風
+ * ストーリー画像を作る。花やチェーン柄などの独自イラストの代わりに、色・丸・
+ * 点線などcanvasで描けるシンプルな図形で「テンプレートらしさ」を出している。
  */
 export async function composeCollage(
   photos: string[],
-  layout: CollageLayout,
+  template: CollageTemplate,
   theme: CollageTheme,
   accentText: string,
   caption: string
@@ -646,30 +790,14 @@ export async function composeCollage(
 
   ctx.fillStyle = theme.background;
   ctx.fillRect(0, 0, COLLAGE_W, COLLAGE_H);
-  drawCornerDots(ctx, theme.accent);
 
   const margin = 48;
   const gridTop = 200;
   const gridBottom = COLLAGE_H - 260;
-  const gridW = COLLAGE_W - margin * 2;
-  const gridH = gridBottom - gridTop;
-  const gap = 24;
+  const area: CollageArea = { x: margin, y: gridTop, w: COLLAGE_W - margin * 2, h: gridBottom - gridTop };
 
-  if (layout === 1) {
-    await drawPhotoCard(ctx, photos[0], margin, gridTop, gridW, gridH);
-  } else if (layout === 2) {
-    const cellH = (gridH - gap) / 2;
-    await drawPhotoCard(ctx, photos[0], margin, gridTop, gridW, cellH);
-    await drawPhotoCard(ctx, photos[1], margin, gridTop + cellH + gap, gridW, cellH);
-  } else {
-    const cellW = (gridW - gap) / 2;
-    const cellH = (gridH - gap) / 2;
-    await drawPhotoCard(ctx, photos[0], margin, gridTop, cellW, cellH);
-    await drawPhotoCard(ctx, photos[1], margin + cellW + gap, gridTop, cellW, cellH);
-    await drawPhotoCard(ctx, photos[2], margin, gridTop + cellH + gap, cellW, cellH);
-    await drawPhotoCard(ctx, photos[3], margin + cellW + gap, gridTop + cellH + gap, cellW, cellH);
-    drawDottedDivider(ctx, margin + cellW + gap / 2, gridTop, gridTop + gridH, theme.accent);
-  }
+  await template.drawPhotos(ctx, photos, area);
+  template.drawDecoration?.(ctx, area, theme.accent);
 
   if (accentText.trim()) {
     await loadFontFor(accentText);
@@ -684,7 +812,7 @@ export async function composeCollage(
     await loadFontFor(caption);
     ctx.textAlign = 'center';
     ctx.fillStyle = '#2A2A2A';
-    const { lines, lineH } = fitText(ctx, caption.trim(), gridW, 44, 28);
+    const { lines, lineH } = fitText(ctx, caption.trim(), area.w, 44, 28);
     let y = gridBottom + 70;
     for (const line of lines) {
       ctx.fillText(line, COLLAGE_W / 2, y);
