@@ -21,13 +21,15 @@ interface Props {
   rotation: number;
   displayScale: number;
   selected: boolean;
+  /** trueの間はドラッグ・拡大縮小・回転・選択を一切受け付けない（確定前のプレビュー用） */
+  locked?: boolean;
   onSelect: () => void;
   onChange: (patch: { x: number; y: number; scale: number; rotation: number }) => void;
   children: React.ReactNode;
 }
 
 export default function DraggableLayer({
-  x, y, scale, rotation, displayScale, selected, onSelect, onChange, children,
+  x, y, scale, rotation, displayScale, selected, locked, onSelect, onChange, children,
 }: Props) {
   const translateX = useSharedValue(x);
   const translateY = useSharedValue(y);
@@ -50,6 +52,7 @@ export default function DraggableLayer({
   };
 
   const pan = Gesture.Pan()
+    .enabled(!locked)
     .onBegin(() => runOnJS(onSelect)())
     .onUpdate((e) => {
       translateX.value = x + e.translationX / displayScale;
@@ -58,6 +61,7 @@ export default function DraggableLayer({
     .onEnd(() => runOnJS(commit)());
 
   const pinch = Gesture.Pinch()
+    .enabled(!locked)
     .onBegin(() => runOnJS(onSelect)())
     .onUpdate((e) => {
       savedScale.value = Math.min(4, Math.max(0.2, scale * e.scale));
@@ -65,13 +69,14 @@ export default function DraggableLayer({
     .onEnd(() => runOnJS(commit)());
 
   const rotate = Gesture.Rotation()
+    .enabled(!locked)
     .onBegin(() => runOnJS(onSelect)())
     .onUpdate((e) => {
       savedRotation.value = rotation + (e.rotation * 180) / Math.PI;
     })
     .onEnd(() => runOnJS(commit)());
 
-  const tap = Gesture.Tap().onEnd(() => runOnJS(onSelect)());
+  const tap = Gesture.Tap().enabled(!locked).onEnd(() => runOnJS(onSelect)());
 
   const composed = Gesture.Simultaneous(pan, pinch, rotate, tap);
 

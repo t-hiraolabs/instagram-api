@@ -18,7 +18,7 @@ import {
 import { recommendStoryTemplate } from '../../services/aiService';
 import { getMyPlan } from '../../services/scheduleService';
 import { Plan } from '../../utils/plans';
-import StoryCanvas, { DISPLAY_W, DISPLAY_H } from './StoryCanvas';
+import StoryCanvas, { DISPLAY_W, DISPLAY_H, PREVIEW_DISPLAY_W } from './StoryCanvas';
 import LayerListPanel from './LayerListPanel';
 import AssetPickerModal from './AssetPickerModal';
 import TextStyleModal from './TextStyleModal';
@@ -267,8 +267,9 @@ export default function StoryStudioScreen({ visible, onClose, onFinish }: Props)
                 <Text style={styles.stepTitle}>おすすめ #{rankIndex + 1}</Text>
                 {ranked[rankIndex] && <Text style={styles.stepDesc}>{ranked[rankIndex].name}（スコア {ranked[rankIndex].score}）</Text>}
                 <View style={styles.previewWrap}>
-                  <StoryCanvas />
+                  <StoryCanvas displayWidth={PREVIEW_DISPLAY_W} locked />
                 </View>
+                <Text style={styles.previewHint}>確定すると指で編集できるようになります</Text>
                 <TouchableOpacity style={styles.nextBtn} onPress={() => setStep('edit')} activeOpacity={0.85}>
                   <Text style={styles.nextBtnText}>このデザインで編集する</Text>
                 </TouchableOpacity>
@@ -366,7 +367,8 @@ const styles = StyleSheet.create({
   },
   purposeChipText: { color: COLORS.text, fontSize: 14, fontWeight: '700' },
   errorText: { color: COLORS.error, fontSize: 14, textAlign: 'center' },
-  previewWrap: { marginBottom: SPACING.lg },
+  previewWrap: { marginBottom: SPACING.sm },
+  previewHint: { color: COLORS.textMuted, fontSize: 11, textAlign: 'center', marginBottom: SPACING.lg },
   otherLink: { color: COLORS.primary, fontSize: 13, fontWeight: '700', marginTop: SPACING.md, textAlign: 'center' },
   editScroll: { alignItems: 'center', paddingVertical: SPACING.md, paddingBottom: 120 },
   toolbar: { flexDirection: 'row', gap: SPACING.md, marginTop: SPACING.md },
