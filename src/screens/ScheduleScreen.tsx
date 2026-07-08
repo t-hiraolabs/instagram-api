@@ -21,6 +21,7 @@ import { COLORS, SPACING, RADIUS } from '../utils/theme';
 import { uploadPostImage, uploadBlob } from '../services/storage';
 import FeedCropEditor from '../components/FeedCropEditor';
 import CollageEditor from '../components/CollageEditor';
+import StoryStudioScreen from '../components/storyStudio/StoryStudioScreen';
 import RosterScreen from './RosterScreen';
 import { generatePost, generateFromImages, refineCaption } from '../services/aiService';
 import { getTopPostsForGeneration } from '../services/insightsService';
@@ -248,6 +249,7 @@ export default function ScheduleScreen() {
   const [locationId, setLocationId] = useState('');
   // コラージュ型ストーリーテンプレート
   const [collageVisible, setCollageVisible] = useState(false);
+  const [storyStudioVisible, setStoryStudioVisible] = useState(false);
   // AI画像生成（チャット）
   const [imgChatVisible, setImgChatVisible] = useState(false);
   const openImageChatFlag = useAppStore((s) => s.openImageChat);
@@ -379,6 +381,31 @@ export default function ScheduleScreen() {
   // コラージュで作った画像をアップロードし、ストーリーとして続きの作成画面へ
   const handleCollageDone = async (dataUrl: string) => {
     setCollageVisible(false);
+    setComposing(true);
+    try {
+      const blob = await (await fetch(dataUrl)).blob();
+      const publicUrl = await uploadBlob(blob);
+      setImagePreview(dataUrl);
+      setImageUrl(publicUrl);
+      setType('story');
+      setModalVisible(true);
+    } catch (e) {
+      alertMsg(e instanceof Error ? e.message : 'アップロードに失敗しました');
+    } finally {
+      setComposing(false);
+    }
+  };
+
+  // Story Studioを開く（作成モーダルは隠してz-index競合を防ぐ）
+  const openStoryStudio = async () => {
+    if (!(await ensureLoggedIn('ストーリー作成にはログインが必要です'))) return;
+    setModalVisible(false);
+    setStoryStudioVisible(true);
+  };
+
+  // Story Studioで作った画像（PNG dataURL）をアップロードし、ストーリーとして続きの作成画面へ
+  const handleStoryStudioFinish = async (dataUrl: string) => {
+    setStoryStudioVisible(false);
     setComposing(true);
     try {
       const blob = await (await fetch(dataUrl)).blob();
@@ -1229,6 +1256,10 @@ export default function ScheduleScreen() {
               <Ionicons name="grid-outline" size={22} color={COLORS.text} style={styles.createMenuEmoji} />
               <Text style={styles.createMenuLabel}>コラージュ</Text>
             </TouchableOpacity>
+            <TouchableOpacity style={styles.createMenuBtn} onPress={openStoryStudio} activeOpacity={0.85}>
+              <Ionicons name="sparkles-outline" size={22} color={COLORS.text} style={styles.createMenuEmoji} />
+              <Text style={styles.createMenuLabel}>ストーリー</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -1394,6 +1425,13 @@ export default function ScheduleScreen() {
           </ScrollView>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* Story Studio: 写真を選ぶだけでストーリーを完成させる */}
+      <StoryStudioScreen
+        visible={storyStudioVisible}
+        onClose={() => { setStoryStudioVisible(false); setModalVisible(true); }}
+        onFinish={handleStoryStudioFinish}
+      />
 
       {/* AI画像生成チャット */}
       <ImageGenChat

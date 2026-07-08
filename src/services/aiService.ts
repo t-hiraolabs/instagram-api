@@ -846,3 +846,69 @@ function detailError(err: unknown): string {
   }
   return err instanceof Error ? err.message : 'AIの呼び出しに失敗しました';
 }
+
+// ===== Story Studio: テンプレート推薦 =====
+// 画像は生成しない。DB側で絞り込んだ候補（最大20件程度）の中から、
+// ブランド情報・業種・目的・過去利用履歴をもとに最適な1件と、差し替える
+// 素材ID・フォント・色をJSONのみで選ばせる（Haikuの軽量呼び出し）。
+
+export interface StoryRecommendCandidate {
+  id: string;
+  name: string;
+  tags: string[];
+}
+
+export interface StoryRecommendResult {
+  template: string;
+  background?: string;
+  frame?: string;
+  flower?: string;
+  decoration?: string;
+  font?: string;
+  titleColor?: string;
+  reason?: string;
+}
+
+export async function recommendStoryTemplate(input: {
+  candidates: StoryRecommendCandidate[];
+  purpose?: string;
+  recentTemplateIds?: string[];
+}): Promise<StoryRecommendResult> {
+  const headers = await getAuthHeaders();
+  const brandCtx = getBrandContext();
+  const systemPrompt =
+    'あなたはInstagramストーリーのデザイン選定アシスタントです。画像は一切生成しません。' +
+    '与えられたテンプレート候補一覧（id・名前・タグ）の中から、ブランド情報・投稿目的に最も合う1件を選び、' +
+    '差し替えるべき素材（背景・フレーム・花・装飾）のIDやフォント・文字色を判断してください。' +
+    '候補一覧に無いIDは絶対に作らないでください。必ずJSONのみで返答してください。';
+
+  const prompt = `以下のテンプレート候補から、最適な1件を選んでください。${brandCtx}
+${input.purpose ? `\n投稿目的: ${input.purpose}` : ''}
+${input.recentTemplateIds?.length ? `\n過去に使ったテンプレートID（マンネリ防止のため、なるべく避ける）: ${input.recentTemplateIds.join(', ')}` : ''}
+
+【候補一覧】
+${input.candidates.map((c) => `- id: ${c.id} / 名前: ${c.name} / タグ: ${c.tags.join('、')}`).join('\n')}
+
+以下のJSON形式で返してください（候補一覧に実在するIDのみ使用すること）:
+{
+  "template": "候補のid",
+  "font": "luxury など",
+  "titleColor": "#FFFFFF",
+  "reason": "選んだ理由（1文）"
+}`;
+
+  const res = await axios.post(
+    CLAUDE_API_URL,
+    { model: MODEL, system: systemPrompt, messages: [{ role: 'user', content: prompt }], max_tokens: 400, chat: true },
+    { headers }
+  );
+  const raw: string = res.data?.content?.[0]?.text ?? res.data?.text ?? '';
+  const clean = raw.replace(/```json|```/g, '').trim();
+  const match = clean.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error('AIの応答を解釈できませんでした');
+  const parsed = JSON.parse(match[0]);
+  if (!input.candidates.some((c) => c.id === parsed.template)) {
+    throw new Error('AIが候補にないテンプレートを選択しました');
+  }
+  return parsed as StoryRecommendResult;
+}
