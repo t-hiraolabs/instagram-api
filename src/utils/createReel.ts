@@ -147,21 +147,37 @@ export interface CollageTemplate {
   drawDecoration?: (ctx: CanvasRenderingContext2D, area: CollageArea, accent: string) => void;
 }
 
-// 円のドットを角に散らして「テンプレートらしい」装飾にする（花イラストの簡易代替）
-function drawCornerDots(ctx: CanvasRenderingContext2D, color: string) {
-  const dots: [number, number, number][] = [
-    [70, 90, 14], [110, 60, 8], [40, 140, 6],
-    [COLLAGE_W - 70, COLLAGE_H - 100, 16], [COLLAGE_W - 120, COLLAGE_H - 60, 9], [COLLAGE_W - 40, COLLAGE_H - 150, 7],
-  ];
+// 花びらを円弧で並べただけのシンプルな花（特定のイラストを模したものではなく、
+// 円形図形の組み合わせで表現するオリジナルの簡易的な花マーク）
+function drawSimpleFlower(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number, color: string, alpha = 0.55) {
+  const petalCount = 5;
+  const petalR = size * 0.42;
+  const dist = size * 0.42;
   ctx.save();
-  ctx.globalAlpha = 0.5;
+  ctx.globalAlpha = alpha;
   ctx.fillStyle = color;
-  for (const [x, y, r] of dots) {
+  for (let i = 0; i < petalCount; i++) {
+    const angle = (Math.PI * 2 * i) / petalCount - Math.PI / 2;
+    const px = cx + Math.cos(angle) * dist;
+    const py = cy + Math.sin(angle) * dist;
     ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.ellipse(px, py, petalR, petalR * 0.72, angle, 0, Math.PI * 2);
     ctx.fill();
   }
+  ctx.globalAlpha = Math.min(1, alpha + 0.35);
+  ctx.beginPath();
+  ctx.arc(cx, cy, size * 0.24, 0, Math.PI * 2);
+  ctx.fill();
   ctx.restore();
+}
+
+// 花を角に数輪散らして「テンプレートらしい」装飾にする
+function drawCornerFlowers(ctx: CanvasRenderingContext2D, color: string) {
+  const flowers: [number, number, number][] = [
+    [86, 110, 46], [150, 66, 26],
+    [COLLAGE_W - 90, COLLAGE_H - 120, 50], [COLLAGE_W - 150, COLLAGE_H - 70, 28],
+  ];
+  for (const [x, y, size] of flowers) drawSimpleFlower(ctx, x, y, size, color);
 }
 
 // 縦の点線区切り（「C」チェーン柄の簡易代替）
@@ -316,7 +332,10 @@ export const COLLAGE_TEMPLATES: CollageTemplate[] = [
     drawPhotos: async (ctx, photos, area) => {
       await drawPhotoCard(ctx, photos[0], area.x, area.y, area.w, area.h);
     },
-    drawDecoration: (ctx, area, accent) => drawDoubleFrame(ctx, area, accent),
+    drawDecoration: (ctx, area, accent) => {
+      drawDoubleFrame(ctx, area, accent);
+      drawCornerFlowers(ctx, accent);
+    },
   },
   {
     id: 'stack2',
@@ -351,7 +370,7 @@ export const COLLAGE_TEMPLATES: CollageTemplate[] = [
       const gap = 24;
       const cellW = (area.w - gap) / 2;
       drawDottedDivider(ctx, area.x + cellW + gap / 2, area.y, area.y + area.h, accent);
-      drawCornerDots(ctx, accent);
+      drawCornerFlowers(ctx, accent);
     },
   },
   {
@@ -371,6 +390,9 @@ export const COLLAGE_TEMPLATES: CollageTemplate[] = [
         subH,
         -6
       );
+    },
+    drawDecoration: (ctx, area, accent) => {
+      drawSimpleFlower(ctx, area.x - 8, area.y - 8, 40, accent, 0.7);
     },
   },
   {
