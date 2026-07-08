@@ -98,23 +98,6 @@ interface GeneratedPost {
   suggestions: string[];
 }
 
-interface GenerateStoryInput {
-  theme: string;
-  type: 'poll' | 'countdown' | 'quiz' | 'announcement' | 'promotion';
-  brandName?: string;
-  details: string;
-  topPosts?: TopPost[];
-}
-
-interface GeneratedStory {
-  title: string;
-  bodyText: string;
-  cta: string;
-  backgroundColor: string;
-  textColor: string;
-  suggestions: string[];
-}
-
 async function callClaude(prompt: string, systemPrompt: string): Promise<string> {
   try {
     const response = await axios.post(
@@ -215,78 +198,6 @@ ${seoInstructions()}
   const raw = await callClaude(prompt, systemPrompt);
   const clean = raw.replace(/```json|```/g, '').trim();
   return JSON.parse(clean) as GeneratedPost;
-}
-
-export async function generateStory(input: GenerateStoryInput): Promise<GeneratedStory> {
-  const brandCtx = getBrandContext();
-  const systemPrompt = `あなたはInstagramストーリーのプロデザイナー兼コピーライターです。
-日本のユーザーが好む、インパクトのある短いストーリーコンテンツを生成します。
-必ずJSONフォーマットだけで返答してください。`;
-
-  const typeMap: Record<string, string> = {
-    poll: 'アンケート',
-    countdown: 'カウントダウン',
-    quiz: 'クイズ',
-    announcement: 'お知らせ',
-    promotion: 'プロモーション',
-  };
-
-  const prompt = `以下の条件でInstagramストーリーのコンテンツを生成してください。${brandCtx}${topPostsContext(input.topPosts)}
-
-タイプ: ${typeMap[input.type]}
-テーマ: ${input.theme}
-ブランド名: ${input.brandName || '未設定'}
-詳細: ${input.details}
-
-以下のJSONフォーマットで返してください:
-{
-  "title": "タイトル（10文字以内、インパクト重視）",
-  "bodyText": "本文（40〜60文字、行動を促す内容）",
-  "cta": "アクションボタンのテキスト（8文字以内）",
-  "backgroundColor": "#HEX色コード（鮮やかで目を引く色）",
-  "textColor": "#FFFFFF または #000000",
-  "suggestions": ["追加提案1", "追加提案2", "追加提案3"]
-}`;
-
-  const raw = await callClaude(prompt, systemPrompt);
-  const clean = raw.replace(/```json|```/g, '').trim();
-  return JSON.parse(clean) as GeneratedStory;
-}
-
-/** リール用：テーマから、各スライドにのせる短いキャプションを生成 */
-export async function generateReelCaptions(input: {
-  theme: string;
-  count: number;
-  industry?: string;
-  toneHint?: string;
-  topPosts?: TopPost[];
-}): Promise<string[]> {
-  const brandCtx = getBrandContext();
-  const systemPrompt = `あなたはInstagramリールの構成作家です。
-日本の個人事業主・中小企業向けに、写真スライドにのせる短いキャプションを作ります。
-必ずJSONフォーマットだけで返答してください。`;
-
-  const prompt = `テーマ「${input.theme}」のInstagramリール用に、スライド${input.count}枚分の短いキャプションを作ってください。${brandCtx}${topPostsContext(input.topPosts)}
-${input.industry ? `業種: ${input.industry}` : ''}
-${input.toneHint ? `トーン: ${input.toneHint}` : ''}
-
-条件:
-- 各スライドに1つずつ、合計${input.count}個
-- 1つ8〜16文字程度、短く端的に（写真の上にのせる前提）
-- 1枚目は引きつけるフック、最後の1枚は行動を促す一言（来店・予約・チェックなど）
-- 自然で等身大の日本語。キザ・大げさ・ポエム調・中二っぽい言い回しは避ける
-- 読点「、」や句点「。」は使わない（短いので不要）
-
-以下のJSONで返してください:
-{"captions": ["1枚目の文字", "2枚目の文字", ...]}`;
-
-  const raw = await callClaude(prompt, systemPrompt);
-  const clean = raw.replace(/```json|```/g, '').trim();
-  const parsed = JSON.parse(clean);
-  // 念のため読点・句点を除去
-  return (parsed.captions as string[])
-    .slice(0, input.count)
-    .map((c) => c.replace(/[、。]/g, '').trim());
 }
 
 export async function improveCaption(originalCaption: string): Promise<string[]> {

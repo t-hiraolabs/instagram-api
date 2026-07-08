@@ -12,7 +12,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   Image,
-  PanResponder,
   Dimensions,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -20,18 +19,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
 import { uploadPostImage, uploadBlob } from '../services/storage';
-import {
-  composeStoryImage,
-  StoryTransform,
-  DEFAULT_TRANSFORM,
-} from '../utils/composeStory';
 import FeedCropEditor from '../components/FeedCropEditor';
-import StoryEditor from '../components/StoryEditor';
 import CollageEditor from '../components/CollageEditor';
-import ReelScreen from './ReelScreen';
 import RosterScreen from './RosterScreen';
-import { addTextToVideo, composeImageWithHeadline } from '../utils/createReel';
-import { generateStory, generatePost, generateFromImage, generateFromImages, refineCaption } from '../services/aiService';
+import { generatePost, generateFromImages, refineCaption } from '../services/aiService';
 import { getTopPostsForGeneration } from '../services/insightsService';
 import {
   getTemplates,
@@ -39,35 +30,6 @@ import {
   deleteTemplate,
   PostTemplate,
 } from '../services/templateService';
-
-// 動画の1フレームを取り出してbase64画像にする（AI見出し生成用・web）
-function extractVideoFrame(blob: Blob): Promise<{ base64: string; mime: string }> {
-  return new Promise((resolve, reject) => {
-    const video = document.createElement('video');
-    video.muted = true;
-    (video as any).playsInline = true;
-    video.src = URL.createObjectURL(blob);
-    video.onloadeddata = () => {
-      try {
-        video.currentTime = Math.min(1, (video.duration || 2) / 2);
-      } catch (_e) {
-        // noop
-      }
-    };
-    video.onseeked = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = video.videoWidth || 720;
-      canvas.height = video.videoHeight || 1280;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return reject(new Error('Canvasを利用できません'));
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-      URL.revokeObjectURL(video.src);
-      resolve({ base64: dataUrl.split(',')[1] ?? '', mime: 'image/jpeg' });
-    };
-    video.onerror = () => reject(new Error('動画の読み込みに失敗しました'));
-  });
-}
 
 // 画像URI（web/ネイティブ）をbase64に変換（ImagePickerのbase64がwebで取れない対策）
 async function uriToBase64(uri: string): Promise<{ base64: string; mime: string }> {
@@ -239,7 +201,7 @@ export default function ScheduleScreen() {
   const editingDraftId = useRef<string | null>(null); // 結果画面で既存の下書きを編集中ならそのID
   const draftOriginalRef = useRef<string | null>(null); // 編集開始時の内容スナップショット（変更検知用）
   const [plan, setPlan] = useState<Plan>('free');
-  const [nowSub, setNowSub] = useState<'menu' | 'reel' | 'roster'>('menu'); // 投稿タブ内の表示
+  const [nowSub, setNowSub] = useState<'menu' | 'roster'>('menu'); // 投稿タブ内の表示
 
   // テンプレート（ひな形）: この端末だけに保存して再利用する
   const [templates, setTemplates] = useState<PostTemplate[]>([]);
@@ -277,80 +239,6 @@ export default function ScheduleScreen() {
   const [editRepeat, setEditRepeat] = useState<RepeatOption>('none');
   const [editSaving, setEditSaving] = useState(false);
 
-  // ストーリー用：合成前の元写真と、画像に載せる文字
-  const [storyRawUri, setStoryRawUri] = useState('');
-  const [storyMode, setStoryMode] = useState<'image' | 'video'>('image'); // ストーリー: 写真+文字 / 動画
-  const [storyVideoUri, setStoryVideoUri] = useState('');
-  const [storyVideoBlob, setStoryVideoBlob] = useState<Blob | null>(null);
-  const [storyMediaType, setStoryMediaType] = useState<'' | 'image' | 'video'>('');
-  const [storyImageUri, setStoryImageUri] = useState('');
-  const [storyVideoText, setStoryVideoText] = useState('');
-  const [storyVideoTheme, setStoryVideoTheme] = useState('');
-  const [storyVideoTextXY, setStoryVideoTextXY] = useState({ x: 0.5, y: 0.85 });
-  const [storyVideoTextScale, setStoryVideoTextScale] = useState(1);
-  const [storyTextSize, setStoryTextSize] = useState({ w: 0, h: 0 });
-  const [storyDragging, setStoryDragging] = useState(false);
-  const storyVideoHostRef = useRef<any>(null);
-  const xyRef = useRef({ x: 0.5, y: 0.85 });
-  xyRef.current = storyVideoTextXY;
-  const scaleRef = useRef(1);
-  scaleRef.current = storyVideoTextScale;
-  const dragStart = useRef({ x: 0.5, y: 0.85 });
-  const pinchRef = useRef({ active: false, startDist: 0, startScale: 1 });
-  const wasPinchRef = useRef(false);
-  const PREVIEW_W = 200;
-  const PREVIEW_H = 356;
-  const clamp01 = (v: number, lo = 0.06, hi = 0.94) => Math.max(lo, Math.min(hi, v));
-  const storyTextPan = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: () => {
-        dragStart.current = { ...xyRef.current };
-        pinchRef.current = { active: false, startDist: 0, startScale: scaleRef.current };
-        wasPinchRef.current = false;
-        setStoryDragging(true);
-      },
-      onPanResponderMove: (e, g) => {
-        // 二本指：ピンチで拡大縮小
-        if (g.numberActiveTouches >= 2) {
-          const t: any[] = (e.nativeEvent as any).touches || [];
-          if (t.length >= 2) {
-            wasPinchRef.current = true;
-            const dist = Math.hypot(t[0].pageX - t[1].pageX, t[0].pageY - t[1].pageY);
-            if (!pinchRef.current.active) {
-              pinchRef.current = { active: true, startDist: dist, startScale: scaleRef.current };
-            } else if (pinchRef.current.startDist > 0) {
-              const next = Math.max(
-                0.5,
-                Math.min(2.5, pinchRef.current.startScale * (dist / pinchRef.current.startDist))
-              );
-              setStoryVideoTextScale(+next.toFixed(2));
-            }
-          }
-          return;
-        }
-        // 一本指：ドラッグで移動（ピンチ後は誤動作防止でスキップ）
-        pinchRef.current.active = false;
-        if (wasPinchRef.current) return;
-        setStoryVideoTextXY({
-          x: clamp01(dragStart.current.x + g.dx / PREVIEW_W),
-          y: clamp01(dragStart.current.y + g.dy / PREVIEW_H),
-        });
-      },
-      onPanResponderRelease: () => setStoryDragging(false),
-      onPanResponderTerminate: () => setStoryDragging(false),
-    })
-  ).current;
-  const [storyTheme, setStoryTheme] = useState('');
-  const [storyDetails, setStoryDetails] = useState('');
-  const [storyTitle, setStoryTitle] = useState('');
-  const [storyBody, setStoryBody] = useState('');
-  const [storyCta, setStoryCta] = useState('');
-  const [storyTextColor, setStoryTextColor] = useState('#FFFFFF');
-  const [storyTransform, setStoryTransform] = useState<StoryTransform>({
-    ...DEFAULT_TRANSFORM,
-  });
   const [feedTheme, setFeedTheme] = useState('');
   // タグ・場所
   const [userTags, setUserTags] = useState<string[]>([]);
@@ -406,35 +294,6 @@ export default function ScheduleScreen() {
     getTemplates().then(setTemplates).catch(() => {});
   }, [fetchPosts]);
 
-  // 動画ストーリーのプレビュー：選んだ動画を<video>で表示
-  useEffect(() => {
-    if (typeof document === 'undefined') return;
-    const host = storyVideoHostRef.current as HTMLElement | null;
-    if (!host) return;
-    host.innerHTML = '';
-    if (!storyVideoUri) return;
-    const v = document.createElement('video');
-    v.src = storyVideoUri;
-    v.controls = false; // コントロール非表示（ピンチで全画面化するのを防ぐ）
-    v.autoplay = true;
-    v.muted = true;
-    v.loop = true;
-    v.playsInline = true;
-    (v as any).disablePictureInPicture = true;
-    Object.assign(v.style, {
-      width: '200px',
-      height: '356px',
-      borderRadius: '12px',
-      backgroundColor: '#000',
-      display: 'block',
-      objectFit: 'cover',
-      pointerEvents: 'none', // 動画はタッチを受け取らない（操作は上の枠で受ける）
-      touchAction: 'none',
-    } as Partial<CSSStyleDeclaration>);
-    v.play?.().catch(() => {});
-    host.appendChild(v);
-  }, [storyVideoUri, storyMediaType, modalVisible]);
-
   const openModal = () => {
     setCaption(draft.caption || '');
     setHashtagsText(draft.hashtags.join(' ') || '');
@@ -444,25 +303,8 @@ export default function ScheduleScreen() {
     setFeedPreviews([]);
     setImagePreview('');
     setDateText('');
-    setStoryRawUri('');
-    setStoryMode('image');
-    setStoryMediaType('');
-    setStoryImageUri('');
-    setStoryVideoUri('');
-    setStoryVideoBlob(null);
-    setStoryVideoText('');
-    setStoryVideoTheme('');
-    setStoryVideoTextXY({ x: 0.5, y: 0.85 });
-    setStoryVideoTextScale(1);
-    setStoryTheme('');
     setFeedTheme('');
     setAiInstruction('');
-    setStoryDetails('');
-    setStoryTitle('');
-    setStoryBody('');
-    setStoryCta('');
-    setStoryTextColor('#FFFFFF');
-    setStoryTransform({ ...DEFAULT_TRANSFORM });
     setRepeat('none');
     setUserTags([]);
     setNewUserTag('');
@@ -505,21 +347,6 @@ export default function ScheduleScreen() {
         return;
       }
     }
-    if (type === 'story') {
-      const res = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [9, 16],
-        quality: 0.9,
-      });
-      if (res.canceled) return;
-      // ストーリーは文字を合成してから投稿するので、ここではアップロードしない
-      setStoryRawUri(res.assets[0].uri);
-      setImagePreview(res.assets[0].uri);
-      setImageUrl('');
-      return;
-    }
-
     // フィードは複数選択OK（カルーセル投稿）→ まずトリミング編集へ
     await pickFeedImages();
   };
@@ -590,186 +417,6 @@ export default function ScheduleScreen() {
     setModalVisible(false); // 下のモーダルと重なってz-indexで隠れるのを防ぐ
     setCropRawImages(res.assets.map((a) => a.uri));
     setCropVisible(true);
-  };
-
-  // ストーリー用のメディア（写真 または 動画）を選ぶ
-  const pickStoryMedia = async () => {
-    const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.All,
-      quality: 1,
-    });
-    if (res.canceled) return;
-    const a = res.assets[0];
-    if (a.type === 'video') {
-      try {
-        const r = await fetch(a.uri);
-        const b = await r.blob();
-        setStoryMediaType('video');
-        setStoryVideoBlob(b);
-        setStoryVideoUri(URL.createObjectURL(b));
-        setStoryImageUri('');
-      } catch (e) {
-        alertMsg(e instanceof Error ? e.message : '動画の読み込みに失敗しました');
-      }
-    } else {
-      setStoryMediaType('image');
-      setStoryImageUri(a.uri);
-      setStoryVideoBlob(null);
-      setStoryVideoUri('');
-    }
-  };
-
-  // 統合ストーリーのメディアを合成・アップロードしてURLと種別を返す
-  const uploadStoryMedia = async (): Promise<{ url: string; isVideo: boolean }> => {
-    if (storyMediaType === 'video') {
-      let blob = storyVideoBlob!;
-      if (storyVideoText.trim()) {
-        const c = await addTextToVideo(
-          storyVideoBlob!,
-          storyVideoText.trim(),
-          storyVideoTextXY.x,
-          storyVideoTextXY.y,
-          storyVideoTextScale
-        );
-        blob = c.blob;
-      }
-      return { url: await uploadBlob(blob), isVideo: true };
-    }
-    // 写真：見出しを合成
-    const c = await composeImageWithHeadline(
-      storyImageUri,
-      storyVideoText.trim(),
-      storyVideoTextXY.x,
-      storyVideoTextXY.y,
-      storyVideoTextScale
-    );
-    return { url: await uploadBlob(c.blob), isVideo: false };
-  };
-
-  // 見出しを指示で書き直す
-  const handleRefineHeadline = async () => {
-    if (!storyVideoText.trim()) {
-      alertMsg('先に見出しを作成（または入力）してください');
-      return;
-    }
-    if (!aiInstruction.trim()) {
-      alertMsg('指示を入力してください（例: もっと短く / 絵文字を入れて）');
-      return;
-    }
-    if (!(await ensureLoggedIn('AI生成を使うにはログインが必要です'))) return;
-    setAiLoading(true);
-    try {
-      const r = await refineCaption(storyVideoText.trim(), aiInstruction.trim());
-      setStoryVideoText((r || '').replace(/[\n#]/g, ' ').trim().slice(0, 24));
-    } catch (e) {
-      alertMsg(e instanceof Error ? e.message : '書き直しに失敗しました');
-    } finally {
-      setAiLoading(false);
-    }
-  };
-
-  // 写真/動画から見出しをAIで作る
-  const handleGenerateHeadlineFromMedia = async () => {
-    if (!storyMediaType) {
-      alertMsg('先に写真または動画を選んでください');
-      return;
-    }
-    if (!(await ensureLoggedIn('AI生成を使うにはログインが必要です'))) return;
-    setAiLoading(true);
-    try {
-      let base64 = '';
-      let mime = 'image/jpeg';
-      if (storyMediaType === 'video') {
-        const f = await extractVideoFrame(storyVideoBlob!);
-        base64 = f.base64;
-        mime = f.mime;
-      } else {
-        const f = await uriToBase64(storyImageUri);
-        base64 = f.base64;
-        mime = f.mime;
-      }
-      if (!base64) {
-        alertMsg('読み込みに失敗しました');
-        return;
-      }
-      const allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-      const topPosts = await getTopPostsForGeneration();
-      const g = await generateFromImage({
-        imageBase64: base64,
-        mimeType: (allowed.includes(mime) ? mime : 'image/jpeg') as 'image/jpeg',
-        contentType: 'story',
-        tone: brandSettings.tone || '明るい・ポジティブ',
-        industry: brandSettings.industry,
-        instruction:
-          'ストーリーにのせる短い見出しを1つだけ。8〜14文字、記号や改行・ハッシュタグなし。' +
-          (aiInstruction.trim() ? ` ${aiInstruction.trim()}` : ''),
-        topPosts,
-      });
-      setStoryVideoText((g.caption || '').replace(/[\n#]/g, ' ').trim().slice(0, 24));
-    } catch (e) {
-      alertMsg(e instanceof Error ? e.message : 'AI生成に失敗しました');
-    } finally {
-      setAiLoading(false);
-    }
-  };
-
-  // テーマから見出しをAIで作る
-  const handleGenerateVideoHeadlineFromTheme = async () => {
-    if (!storyVideoTheme.trim()) {
-      alertMsg('テーマを入力してください（例: 本日OPEN）');
-      return;
-    }
-    if (!(await ensureLoggedIn('AI生成を使うにはログインが必要です'))) return;
-    setAiLoading(true);
-    try {
-      const topPosts = await getTopPostsForGeneration();
-      const g = await generateStory({
-        theme: storyVideoTheme.trim(),
-        type: 'announcement',
-        details:
-          storyVideoTheme.trim() + (aiInstruction.trim() ? ` 指示:${aiInstruction.trim()}` : ''),
-        topPosts,
-      });
-      setStoryVideoText((g.title || g.bodyText || '').replace(/[\n#]/g, ' ').trim().slice(0, 24));
-    } catch (e) {
-      alertMsg(e instanceof Error ? e.message : 'AI生成に失敗しました');
-    } finally {
-      setAiLoading(false);
-    }
-  };
-
-  // 動画から見出しをAIで作る（1フレームを抽出してAIに渡す）
-  const handleGenerateVideoHeadline = async () => {
-    if (!storyVideoBlob) {
-      alertMsg('先に動画を選んでください');
-      return;
-    }
-    if (!(await ensureLoggedIn('AI生成を使うにはログインが必要です'))) return;
-    setAiLoading(true);
-    try {
-      const { base64, mime } = await extractVideoFrame(storyVideoBlob);
-      if (!base64) {
-        alertMsg('動画の読み込みに失敗しました');
-        return;
-      }
-      const topPosts = await getTopPostsForGeneration();
-      const g = await generateFromImage({
-        imageBase64: base64,
-        mimeType: mime as 'image/jpeg',
-        contentType: 'story',
-        tone: brandSettings.tone || '明るい・ポジティブ',
-        industry: brandSettings.industry,
-        instruction:
-          '動画にのせる短い見出しを1つだけ。8〜14文字、記号や改行・ハッシュタグなし。' +
-          (aiInstruction.trim() ? ` ${aiInstruction.trim()}` : ''),
-        topPosts,
-      });
-      setStoryVideoText((g.caption || '').replace(/[\n#]/g, ' ').trim().slice(0, 24));
-    } catch (e) {
-      alertMsg(e instanceof Error ? e.message : 'AI生成に失敗しました');
-    } finally {
-      setAiLoading(false);
-    }
   };
 
   // フィードのキャプション・ハッシュタグをAI生成
@@ -865,66 +512,6 @@ export default function ScheduleScreen() {
       alertMsg(e instanceof Error ? e.message : '書き直しに失敗しました');
     } finally {
       setAiLoading(false);
-    }
-  };
-
-  const handleGenerateStoryText = async () => {
-    if (!storyTheme.trim() && !storyDetails.trim()) {
-      alertMsg('テーマか内容を入力してください');
-      return;
-    }
-    if (!(await ensureLoggedIn('AI生成を使うにはログインが必要です'))) return;
-    setAiLoading(true);
-    try {
-      const topPosts = await getTopPostsForGeneration();
-      const g = await generateStory({
-        theme: storyTheme.trim() || storyDetails.trim().slice(0, 20),
-        type: 'announcement',
-        details: storyDetails.trim() || storyTheme.trim(),
-        topPosts,
-      });
-      setStoryTitle(g.title);
-      setStoryBody(g.bodyText);
-      setStoryCta(g.cta);
-      if (g.textColor) setStoryTextColor(g.textColor);
-      // 文字が変わったので合成済み画像は作り直しが必要
-      setImageUrl('');
-    } catch {
-      alertMsg('AI生成に失敗しました。プロフィール画面でAPIキーを設定してください。');
-    } finally {
-      setAiLoading(false);
-    }
-  };
-
-  // 元写真＋文字を合成してプレビューを作り、アップロードまで行う
-  const handleComposeStory = async () => {
-    if (!storyRawUri) {
-      alertMsg('先に写真を選んでください');
-      return;
-    }
-    if (!storyTitle.trim() && !storyBody.trim() && !storyCta.trim()) {
-      alertMsg('画像に載せる文字（タイトル・本文・CTAのいずれか）を入力してください');
-      return;
-    }
-    setComposing(true);
-    try {
-      const { blob, previewUrl } = await composeStoryImage(
-        storyRawUri,
-        {
-          title: storyTitle.trim(),
-          bodyText: storyBody.trim(),
-          cta: storyCta.trim(),
-          textColor: storyTextColor,
-        },
-        storyTransform
-      );
-      setImagePreview(previewUrl);
-      const publicUrl = await uploadBlob(blob);
-      setImageUrl(publicUrl);
-    } catch (e) {
-      alertMsg(e instanceof Error ? e.message : '合成に失敗しました');
-    } finally {
-      setComposing(false);
     }
   };
 
@@ -1084,17 +671,11 @@ export default function ScheduleScreen() {
 
   // 今すぐInstagramに投稿（テスト/手動投稿）
   const handlePublishNow = async () => {
-    const isStory = type === 'story';
     if (type === 'feed' && !caption.trim()) {
       alertMsg('キャプションを入力してください', '入力に不備があります');
       return;
     }
-    if (isStory) {
-      if (!storyMediaType) {
-        alertMsg('写真または動画を選んでください', 'メディアが必要です');
-        return;
-      }
-    } else if (!imageUrl.trim()) {
+    if (!imageUrl.trim()) {
       alertMsg('写真を選んでください', '画像が必要です');
       return;
     }
@@ -1109,13 +690,11 @@ export default function ScheduleScreen() {
 
     setPublishing(true);
     try {
-      const storyMedia = isStory ? await uploadStoryMedia() : null;
       const result = await publishNow({
         caption: caption.trim(),
         hashtags: buildHashtags(),
-        image_url: isStory ? (storyMedia!.isVideo ? undefined : storyMedia!.url) : imageUrl.trim(),
+        image_url: imageUrl.trim(),
         image_urls: type === 'feed' && imageUrls.length > 1 ? imageUrls : undefined,
-        video_url: isStory && storyMedia!.isVideo ? storyMedia!.url : undefined,
         type,
         instagram_user_id: instagramCredentials.userId,
         access_token: instagramCredentials.accessToken,
@@ -1128,9 +707,8 @@ export default function ScheduleScreen() {
         await createScheduledPost({
           caption: caption.trim(),
           hashtags: buildHashtags(),
-          image_url: isStory
-            ? storyMedia!.url
-            : type === 'feed' && imageUrls.length > 1
+          image_url:
+            type === 'feed' && imageUrls.length > 1
               ? imageUrls.join('\n')
               : imageUrl.trim() || undefined,
           scheduled_at: new Date(),
@@ -1161,17 +739,11 @@ export default function ScheduleScreen() {
   };
 
   const handleSave = async () => {
-    const isStory = type === 'story';
     if (type === 'feed' && !caption.trim()) {
       alertMsg('キャプションを入力してください', '入力に不備があります');
       return;
     }
-    if (isStory) {
-      if (!storyMediaType) {
-        alertMsg('写真または動画を選んでください', 'メディアが必要です');
-        return;
-      }
-    } else if (!imageUrl.trim()) {
+    if (!imageUrl.trim()) {
       alertMsg('写真を選んでください', '画像が必要です');
       return;
     }
@@ -1192,15 +764,12 @@ export default function ScheduleScreen() {
 
     setSaving(true);
     try {
-      // ストーリーは合成して image_url に保存（動画URLでも可、Edge側で判定）
-      const storyMedia = isStory ? await uploadStoryMedia() : null;
       await createScheduledPost({
         caption: caption.trim(),
         hashtags: buildHashtags(),
         // フィードで複数枚なら改行区切りで保存（カルーセル）
-        image_url: isStory
-          ? storyMedia!.url
-          : type === 'feed' && imageUrls.length > 1
+        image_url:
+          type === 'feed' && imageUrls.length > 1
             ? imageUrls.join('\n')
             : imageUrl.trim() || undefined,
         scheduled_at: scheduledDate,
@@ -1234,13 +803,7 @@ export default function ScheduleScreen() {
   // 下書き保存：日時を決めずに内容だけ保存しておく（自動投稿の対象外）
   // 下書きはキャプション未入力でも保存OK（写真だけ先に保存しておける）
   const handleSaveDraft = async () => {
-    const isStory = type === 'story';
-    if (isStory) {
-      if (!storyMediaType) {
-        alertMsg('写真または動画を選んでください', 'メディアが必要です');
-        return;
-      }
-    } else if (!imageUrl.trim()) {
+    if (!imageUrl.trim()) {
       alertMsg('写真を選んでください', '画像が必要です');
       return;
     }
@@ -1248,13 +811,11 @@ export default function ScheduleScreen() {
 
     setSavingDraft(true);
     try {
-      const storyMedia = isStory ? await uploadStoryMedia() : null;
       await createScheduledPost({
         caption: caption.trim(),
         hashtags: buildHashtags(),
-        image_url: isStory
-          ? storyMedia!.url
-          : type === 'feed' && imageUrls.length > 1
+        image_url:
+          type === 'feed' && imageUrls.length > 1
             ? imageUrls.join('\n')
             : imageUrl.trim() || undefined,
         scheduled_at: new Date(), // 仮の日時（下書きなので投稿はされない）
@@ -1462,25 +1023,8 @@ export default function ScheduleScreen() {
     setFeedPreviews(urls);
     setImagePreview(urls[0] ?? '');
     setDateText('');
-    setStoryRawUri('');
-    setStoryMode('image');
-    setStoryMediaType('');
-    setStoryImageUri('');
-    setStoryVideoUri('');
-    setStoryVideoBlob(null);
-    setStoryVideoText('');
-    setStoryVideoTheme('');
-    setStoryVideoTextXY({ x: 0.5, y: 0.85 });
-    setStoryVideoTextScale(1);
-    setStoryTheme('');
     setFeedTheme('');
     setAiInstruction('');
-    setStoryDetails('');
-    setStoryTitle('');
-    setStoryBody('');
-    setStoryCta('');
-    setStoryTextColor('#FFFFFF');
-    setStoryTransform({ ...DEFAULT_TRANSFORM });
     setRepeat('none');
     setScheduleModalVisible(false);
     if (scheduleFromResult.current) {
@@ -1658,10 +1202,7 @@ export default function ScheduleScreen() {
     </TouchableOpacity>
   );
 
-  // 投稿タブのサブ画面（リール／本日の出勤）
-  if (nowSub === 'reel') {
-    return <ReelScreen onBack={() => setNowSub('menu')} />;
-  }
+  // 投稿タブのサブ画面（本日の出勤）
   if (nowSub === 'roster') {
     return <RosterScreen onBack={() => setNowSub('menu')} />;
   }
@@ -1683,14 +1224,6 @@ export default function ScheduleScreen() {
             <TouchableOpacity style={styles.createMenuBtn} onPress={openModal} activeOpacity={0.85}>
               <Ionicons name="image-outline" size={22} color={COLORS.text} style={styles.createMenuEmoji} />
               <Text style={styles.createMenuLabel}>フィード・ストーリー</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.createMenuBtn}
-              onPress={() => setNowSub('reel')}
-              activeOpacity={0.85}
-            >
-              <Ionicons name="film-outline" size={22} color={COLORS.text} style={styles.createMenuEmoji} />
-              <Text style={styles.createMenuLabel}>リール</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.createMenuBtn} onPress={openCollage} activeOpacity={0.85}>
               <Ionicons name="grid-outline" size={22} color={COLORS.text} style={styles.createMenuEmoji} />
@@ -2338,7 +1871,6 @@ export default function ScheduleScreen() {
           <ScrollView
             style={styles.modalBody}
             keyboardShouldPersistTaps="handled"
-            scrollEnabled={!storyDragging}
           >
             {templates.length > 0 && (
               <TouchableOpacity
@@ -2351,21 +1883,6 @@ export default function ScheduleScreen() {
                 </Text>
               </TouchableOpacity>
             )}
-
-            <Text style={styles.fieldLabel}>投稿タイプ</Text>
-            <View style={styles.typeRow}>
-              {(['feed', 'story'] as const).map((t) => (
-                <TouchableOpacity
-                  key={t}
-                  style={[styles.typeBtn, type === t && styles.typeBtnActive]}
-                  onPress={() => setType(t)}
-                >
-                  <Text style={[styles.typeBtnText, type === t && styles.typeBtnTextActive]}>
-                    {t === 'feed' ? 'フィード' : 'ストーリー'}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
 
             {type === 'feed' ? (
               <>
@@ -2419,164 +1936,7 @@ export default function ScheduleScreen() {
                   <Text style={styles.aiBtnText}>AIで画像を作る（チャット）</Text>
                 </TouchableOpacity>
               </>
-            ) : (
-              <>
-                {/* 統合ストーリー：写真でも動画でも同じ流れ */}
-                <Text style={styles.fieldLabel}>メディア（写真 または 動画）</Text>
-                <TouchableOpacity style={styles.imagePickerBox} onPress={pickStoryMedia} activeOpacity={0.85}>
-                  {storyMediaType ? (
-                    <Text style={styles.imageReadyText}>
-                      {storyMediaType === 'video' ? '動画' : '写真'}を選びました（タップで変更）
-                    </Text>
-                  ) : (
-                    <View style={styles.imagePlaceholder}>
-                      <Ionicons name="image-outline" size={28} color={COLORS.textSecondary} />
-                      <Text style={styles.imagePlaceholderText}>タップして写真/動画を選ぶ</Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
-
-                {/* AI生成カード（フィードと同じ構成） */}
-                <View style={styles.aiCard}>
-                  <Text style={styles.aiCardTitle}>AIで見出しを作る</Text>
-
-                  <Text style={styles.fieldLabel}>AIへの指示（任意・どちらにも反映）</Text>
-                  <TextInput
-                    style={[styles.input, styles.aiInstructionInput]}
-                    value={aiInstruction}
-                    onChangeText={setAiInstruction}
-                    placeholder="例: もっと短く / 絵文字を入れて"
-                    placeholderTextColor={COLORS.textMuted}
-                    multiline
-                  />
-                  {storyVideoText.trim() ? (
-                    <TouchableOpacity
-                      style={[styles.aiBtnGhost, aiLoading && styles.publishNowBtnDisabled]}
-                      onPress={handleRefineHeadline}
-                      disabled={aiLoading}
-                      activeOpacity={0.85}
-                    >
-                      {aiLoading ? (
-                        <ActivityIndicator color={COLORS.secondary} />
-                      ) : (
-                        <Text style={styles.aiBtnGhostText}>今の見出しを指示で書き直す</Text>
-                      )}
-                    </TouchableOpacity>
-                  ) : null}
-
-                  <View style={styles.aiMethod}>
-                    <Text style={styles.aiMethodTitle}>テーマから作る</Text>
-                    <TextInput
-                      style={styles.input}
-                      value={storyVideoTheme}
-                      onChangeText={setStoryVideoTheme}
-                      placeholder="例: 本日OPEN / 週末セール"
-                      placeholderTextColor={COLORS.textMuted}
-                    />
-                    <TouchableOpacity
-                      style={[styles.aiBtn, { marginTop: SPACING.sm }, aiLoading && styles.publishNowBtnDisabled]}
-                      onPress={handleGenerateVideoHeadlineFromTheme}
-                      disabled={aiLoading}
-                      activeOpacity={0.85}
-                    >
-                      {aiLoading ? (
-                        <ActivityIndicator color="#fff" />
-                      ) : (
-                        <Text style={styles.aiBtnText}>テーマから作る</Text>
-                      )}
-                    </TouchableOpacity>
-                  </View>
-
-                  <View style={styles.aiMethod}>
-                    <Text style={styles.aiMethodTitle}>写真/動画から作る</Text>
-                    <Text style={styles.aiHintText}>選んだメディアを見て見出しを作ります</Text>
-                    <TouchableOpacity
-                      style={[styles.aiBtn, aiLoading && styles.publishNowBtnDisabled]}
-                      onPress={handleGenerateHeadlineFromMedia}
-                      disabled={aiLoading}
-                      activeOpacity={0.85}
-                    >
-                      <Text style={styles.aiBtnText}>選んだメディアから作る</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-
-                <Text style={styles.sectionDivider}>のせる見出し</Text>
-                <TextInput
-                  style={styles.input}
-                  value={storyVideoText}
-                  onChangeText={setStoryVideoText}
-                  placeholder="例: 本日OPEN / 新作入荷（任意）"
-                  placeholderTextColor={COLORS.textMuted}
-                />
-
-                {storyMediaType ? (
-                  <>
-                    <View
-                      {...(storyVideoText.trim() ? storyTextPan.panHandlers : {})}
-                      style={[styles.videoPreviewWrap, { touchAction: 'none' } as any]}
-                    >
-                      {storyMediaType === 'video' ? (
-                        <View ref={storyVideoHostRef} style={styles.videoPreviewHost} pointerEvents="none" />
-                      ) : (
-                        <Image
-                          source={{ uri: storyImageUri }}
-                          style={[styles.videoPreviewHost, { pointerEvents: 'none' }] as any}
-                          resizeMode="cover"
-                        />
-                      )}
-                      {storyVideoText.trim() ? (
-                        <View
-                          pointerEvents="none"
-                          onLayout={(e) =>
-                            setStoryTextSize({
-                              w: e.nativeEvent.layout.width,
-                              h: e.nativeEvent.layout.height,
-                            })
-                          }
-                          style={[
-                            styles.videoOverlayBox,
-                            {
-                              left: storyVideoTextXY.x * 200 - storyTextSize.w / 2,
-                              top: storyVideoTextXY.y * 356 - storyTextSize.h / 2,
-                            },
-                          ]}
-                        >
-                          <Text style={[styles.videoOverlayText, { fontSize: 20 * storyVideoTextScale }]}>
-                            {storyVideoText.trim()}
-                          </Text>
-                        </View>
-                      ) : null}
-                    </View>
-                    {storyVideoText.trim() ? (
-                      <>
-                        <Text style={styles.aiHintText}>
-                          文字をドラッグで移動 ／ 二本指(または＋−)で拡大縮小
-                        </Text>
-                        <View style={styles.typeRow}>
-                          <TouchableOpacity
-                            style={styles.typeBtn}
-                            onPress={() => setStoryVideoTextScale((s) => Math.max(0.5, +(s - 0.1).toFixed(2)))}
-                          >
-                            <Text style={styles.typeBtnText}>－ 小さく</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={styles.typeBtn}
-                            onPress={() => setStoryVideoTextScale((s) => Math.min(2.5, +(s + 0.1).toFixed(2)))}
-                          >
-                            <Text style={styles.typeBtnText}>＋ 大きく</Text>
-                          </TouchableOpacity>
-                        </View>
-                      </>
-                    ) : null}
-                  </>
-                ) : null}
-
-                <Text style={styles.publishNowHint}>
-                  ※ 縦長(9:16)推奨。動画は見出しを焼き込みます（少し時間がかかります）。音楽はInstagramで付けられます
-                </Text>
-              </>
-            )}
+            ) : null}
 
             {type === 'feed' ? (
               <>
