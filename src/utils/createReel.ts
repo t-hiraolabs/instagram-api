@@ -1,24 +1,14 @@
 // コラージュ型ストーリー画像の合成（composeCollage/composeTemplatePreview）で使う
 // canvas描画ヘルパー群。
 
-import { Image as RNImage } from 'react-native';
-
-// ユーザーが用意した花のイラスト素材（透過PNG）。Canvasに描画するにはURL文字列が
-// 必要なので、require()の戻り値をURIに変換して使う。
-// Metroのアセット解決では数値のモジュールIDが返るためresolveAssetSourceで変換するが、
-// バンドラーの設定によっては最初から文字列URLが返ることもあるため両対応にする。
-function assetUri(mod: unknown): string {
-  if (typeof mod === 'string') return mod;
-  try {
-    return RNImage.resolveAssetSource(mod as number)?.uri ?? '';
-  } catch {
-    return '';
-  }
-}
-const FLOWER_CORNER_TL = () => assetUri(require('../assets/collage/corner-tl.png'));
-const FLOWER_CORNER_TR = () => assetUri(require('../assets/collage/corner-tr.png'));
-const FLOWER_FRAME_BORDER = () => assetUri(require('../assets/collage/frame-border.png'));
-const FLOWER_CLUSTER = () => assetUri(require('../assets/collage/flower-cluster.png'));
+// 花のイラスト素材（base64データURLとして埋め込み済み。require()経由のアセット
+// 解決だとWeb上でURIが正しく解決されず花が表示されない不具合があったため）
+import {
+  FLOWER_CORNER_TL,
+  FLOWER_CORNER_TR,
+  FLOWER_FRAME_BORDER,
+  FLOWER_CLUSTER,
+} from './collageAssets';
 
 // おしゃれな日本語フォント（極太）をWebフォントとして読み込んで使う
 const FONT_NAME = 'Zen Kaku Gothic New';
@@ -173,11 +163,10 @@ export interface CollageTemplate {
   drawDecoration?: (ctx: CanvasRenderingContext2D, area: CollageArea, accent: string) => void | Promise<void>;
 }
 
-// 花のイラスト素材（透過PNG）を指定位置に描く
-async function drawFlowerAsset(ctx: CanvasRenderingContext2D, uriGetter: () => string, x: number, y: number, w: number, h: number) {
-  const uri = uriGetter();
-  if (!uri) return;
-  const img = await loadImage(uri);
+// 花のイラスト素材（透過PNG／base64データURL）を指定位置に描く
+async function drawFlowerAsset(ctx: CanvasRenderingContext2D, dataUrl: string, x: number, y: number, w: number, h: number) {
+  if (!dataUrl) return;
+  const img = await loadImage(dataUrl);
   ctx.drawImage(img, x, y, w, h);
 }
 
