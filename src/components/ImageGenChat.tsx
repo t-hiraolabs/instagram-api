@@ -81,6 +81,7 @@ function ImageGenChat(
 ) {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
+  const [viewerUri, setViewerUri] = useState<string | null>(null);
   const [input, setInput] = useState('');
   const [chatting, setChatting] = useState(false);
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -415,13 +416,17 @@ function ImageGenChat(
             );
             if (m.role === 'user_image') return (
               <View key={i} style={styles.userRow}>
-                <Image source={{ uri: m.uri }} style={styles.attachThumb} resizeMode="cover" />
+                <TouchableOpacity onPress={() => setViewerUri(m.uri)} activeOpacity={0.85}>
+                  <Image source={{ uri: m.uri }} style={styles.attachThumb} resizeMode="cover" />
+                </TouchableOpacity>
               </View>
             );
             return (
               <View key={i} style={styles.aiRow}>
                 <View style={styles.imageBubble}>
-                  <Image source={{ uri: m.uri }} style={styles.genImage} resizeMode="cover" />
+                  <TouchableOpacity onPress={() => setViewerUri(m.uri)} activeOpacity={0.85}>
+                    <Image source={{ uri: m.uri }} style={styles.genImage} resizeMode="cover" />
+                  </TouchableOpacity>
                   <TouchableOpacity style={styles.useBtn} onPress={() => onUseImage(m.uri)} activeOpacity={0.85}>
                     <Text style={styles.useBtnText}>この画像で投稿を作る ›</Text>
                   </TouchableOpacity>
@@ -588,6 +593,22 @@ function ImageGenChat(
             </View>
           );
         })()}
+
+        {/* 画像の拡大表示 */}
+        <Modal visible={!!viewerUri} transparent animationType="fade" onRequestClose={() => setViewerUri(null)}>
+          <TouchableOpacity
+            style={styles.viewerBackdrop}
+            activeOpacity={1}
+            onPress={() => setViewerUri(null)}
+          >
+            {viewerUri && (
+              <Image source={{ uri: viewerUri }} style={styles.viewerImage} resizeMode="contain" />
+            )}
+            <TouchableOpacity style={styles.viewerCloseBtn} onPress={() => setViewerUri(null)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Ionicons name="close" size={26} color="#fff" />
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </Modal>
       </KeyboardAvoidingView>
   );
 
@@ -713,6 +734,9 @@ const styles = StyleSheet.create({
     color: COLORS.text, fontSize: 15, borderWidth: 1, borderColor: COLORS.border,
   },
   attachThumb: { width: 160, height: 160, borderRadius: RADIUS.md },
+  viewerBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', alignItems: 'center', justifyContent: 'center' },
+  viewerImage: { width: '100%', height: '80%' },
+  viewerCloseBtn: { position: 'absolute', top: 50, right: 20, padding: SPACING.sm },
   attachPreviewRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, paddingHorizontal: SPACING.md, paddingTop: SPACING.sm },
   attachPreview: { width: 40, height: 40, borderRadius: RADIUS.sm },
   attachPreviewText: { flex: 1, color: COLORS.textSecondary, fontSize: 13 },
