@@ -1,4 +1,4 @@
-// コラージュ型ストーリーテンプレート（web専用）: 見た目をプレビューで選び、写真を入れて加工する
+// コラージュ型ストーリーテンプレート（web専用）: 枚数→テンプレート→色→写真の順に選んで加工する
 import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Image, TextInput, ActivityIndicator, Platform, Alert } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -10,13 +10,17 @@ interface Props {
   onDone: (dataUrl: string) => void;
 }
 
-type Step = 'select' | 'edit';
+type Step = 'count' | 'template' | 'color' | 'edit';
+
+const PHOTO_COUNTS = Array.from(new Set(COLLAGE_TEMPLATES.map((t) => t.photoCount))).sort((a, b) => a - b);
 
 export default function CollageEditor({ onDone }: Props) {
-  const [step, setStep] = useState<Step>('select');
+  const [step, setStep] = useState<Step>('count');
+  const [count, setCount] = useState<number | null>(null);
   const [templateIdx, setTemplateIdx] = useState<number | null>(null);
-  const [themeIdx, setThemeIdx] = useState(0);
-  const [previews, setPreviews] = useState<(string | null)[]>(() => COLLAGE_TEMPLATES.map(() => null));
+  const [themeIdx, setThemeIdx] = useState<number | null>(null);
+  const [countPreviews, setCountPreviews] = useState<Record<number, string | null>>({});
+  const [themePreviews, setThemePreviews] = useState<(string | null)[]>(() => COLLAGE_THEMES.map(() => null));
   const [photos, setPhotos] = useState<(string | null)[]>([null, null, null, null]);
   const [accentText, setAccentText] = useState('2026');
   const [caption, setCaption] = useState('');
@@ -24,21 +28,39 @@ export default function CollageEditor({ onDone }: Props) {
   const [composing, setComposing] = useState(false);
 
   const template = templateIdx != null ? COLLAGE_TEMPLATES[templateIdx] : null;
+  const templatesInCount = count != null ? COLLAGE_TEMPLATES.filter((t) => t.photoCount === count) : [];
 
   const alertMsg = (msg: string, title = 'お知らせ') => {
     if (Platform.OS === 'web') window.alert(msg);
     else Alert.alert(title, msg);
   };
 
-  // 選んでいるテーマ色で、各テンプレートの「実際の見た目」プレビューを作る
+  // 枚数選択画面：各テンプレートの代表色（1色目）でプレビューを作る
   useEffect(() => {
     let alive = true;
-    setPreviews(COLLAGE_TEMPLATES.map(() => null));
     COLLAGE_TEMPLATES.forEach((t, i) => {
-      composeTemplatePreview(t, COLLAGE_THEMES[themeIdx])
+      composeTemplatePreview(t, COLLAGE_THEMES[0])
         .then((url) => {
           if (!alive) return;
-          setPreviews((p) => {
+          setCountPreviews((p) => ({ ...p, [i]: url }));
+        })
+        .catch(() => {});
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // テンプレートを選んだら、色ごとのプレビューを作る
+  useEffect(() => {
+    if (!template) return;
+    let alive = true;
+    setThemePreviews(COLLAGE_THEMES.map(() => null));
+    COLLAGE_THEMES.forEach((theme, i) => {
+      composeTemplatePreview(template, theme)
+        .then((url) => {
+          if (!alive) return;
+          setThemePreviews((p) => {
             const next = [...p];
             next[i] = url;
             return next;
@@ -49,7 +71,7 @@ export default function CollageEditor({ onDone }: Props) {
     return () => {
       alive = false;
     };
-  }, [themeIdx]);
+  }, [template]);
 
   // テンプレートを選び直したら、使わなくなる枠の写真は捨てる
   useEffect(() => {
@@ -61,8 +83,19 @@ export default function CollageEditor({ onDone }: Props) {
     });
   }, [template]);
 
-  const selectTemplate = (i: number) => {
-    setTemplateIdx(i);
+  const selectCount = (c: number) => {
+    setCount(c);
+    setStep('template');
+  };
+
+  const selectTemplate = (idxInAll: number) => {
+    setTemplateIdx(idxInAll);
+    setThemeIdx(null);
+    setStep('color');
+  };
+
+  const selectTheme = (i: number) => {
+    setThemeIdx(i);
     setFinalPreview(null);
     setStep('edit');
   };
@@ -91,7 +124,7 @@ export default function CollageEditor({ onDone }: Props) {
   const ready = !!template && filledCount === template.photoCount;
 
   const generatePreview = async () => {
-    if (!ready || !template) return;
+    if (!ready || !template || themeIdx == null) return;
     setComposing(true);
     try {
       const { previewUrl } = await composeCollage(
@@ -113,28 +146,66 @@ export default function CollageEditor({ onDone }: Props) {
     if (finalPreview) onDone(finalPreview);
   };
 
-  if (step === 'select' || !template) {
+  const BackRow = ({ label, onPress }: { label: string; onPress: () => void }) => (
+    <TouchableOpacity style={styles.backRow} onPress={onPress} activeOpacity={0.7}>
+      <Ionicons name="chevron-back" size={16} color={COLORS.textMuted} />
+      <Text style={styles.backText}>{label}</Text>
+    </TouchableOpacity>
+  );
+
+  if (step === 'count') {
     return (
       <View style={styles.wrap}>
-        <Text style={styles.label}>テーマカラー</Text>
-        <View style={styles.row}>
-          {COLLAGE_THEMES.map((t, i) => (
-            <TouchableOpacity
-              key={t.name}
-              style={[styles.themeSwatch, { backgroundColor: t.background, borderColor: t.accent }, themeIdx === i && styles.themeSwatchActive]}
-              onPress={() => setThemeIdx(i)}
-              activeOpacity={0.85}
-            />
+        <Text style={styles.label}>写真の枚数を選ぶ</Text>
+        <View style={styles.countRow}>
+          {PHOTO_COUNTS.map((c) => (
+            <TouchableOpacity key={c} style={styles.countChip} onPress={() => selectCount(c)} activeOpacity={0.85}>
+              <Text style={styles.countChipText}>{c}枚</Text>
+            </TouchableOpacity>
           ))}
         </View>
+      </View>
+    );
+  }
 
-        <Text style={styles.label}>テンプレートを選ぶ（実際の見た目のプレビューです）</Text>
+  if (step === 'template') {
+    return (
+      <View style={styles.wrap}>
+        <BackRow label="枚数を選び直す" onPress={() => setStep('count')} />
+        <Text style={styles.label}>{count}枚のテンプレートを選ぶ</Text>
         <View style={styles.templateGrid}>
-          {COLLAGE_TEMPLATES.map((t, i) => (
-            <TouchableOpacity key={t.id} style={styles.templateCard} onPress={() => selectTemplate(i)} activeOpacity={0.85}>
+          {COLLAGE_TEMPLATES.map((t, i) => {
+            if (t.photoCount !== count) return null;
+            return (
+              <TouchableOpacity key={t.id} style={styles.templateCard} onPress={() => selectTemplate(i)} activeOpacity={0.85}>
+                <View style={styles.templateThumbWrap}>
+                  {countPreviews[i] ? (
+                    <Image source={{ uri: countPreviews[i]! }} style={styles.templateThumb} resizeMode="cover" />
+                  ) : (
+                    <ActivityIndicator color={COLORS.textMuted} />
+                  )}
+                </View>
+                <Text style={styles.templateName}>{t.name}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </View>
+    );
+  }
+
+  if (step === 'color' && template) {
+    return (
+      <View style={styles.wrap}>
+        <BackRow label="テンプレートを選び直す" onPress={() => setStep('template')} />
+        <Text style={styles.templateTitle}>{template.name}</Text>
+        <Text style={styles.label}>色を選ぶ（実際の見た目のプレビューです）</Text>
+        <View style={styles.templateGrid}>
+          {COLLAGE_THEMES.map((t, i) => (
+            <TouchableOpacity key={t.name} style={styles.templateCard} onPress={() => selectTheme(i)} activeOpacity={0.85}>
               <View style={styles.templateThumbWrap}>
-                {previews[i] ? (
-                  <Image source={{ uri: previews[i]! }} style={styles.templateThumb} resizeMode="cover" />
+                {themePreviews[i] ? (
+                  <Image source={{ uri: themePreviews[i]! }} style={styles.templateThumb} resizeMode="cover" />
                 ) : (
                   <ActivityIndicator color={COLORS.textMuted} />
                 )}
@@ -147,13 +218,12 @@ export default function CollageEditor({ onDone }: Props) {
     );
   }
 
+  if (!template || themeIdx == null) return null;
+
   return (
     <View style={styles.wrap}>
-      <TouchableOpacity style={styles.backRow} onPress={() => setStep('select')} activeOpacity={0.7}>
-        <Ionicons name="chevron-back" size={16} color={COLORS.textMuted} />
-        <Text style={styles.backText}>テンプレートを選び直す</Text>
-      </TouchableOpacity>
-      <Text style={styles.templateTitle}>{template.name}</Text>
+      <BackRow label="色を選び直す" onPress={() => setStep('color')} />
+      <Text style={styles.templateTitle}>{template.name}（{COLLAGE_THEMES[themeIdx].name}）</Text>
 
       <Text style={styles.label}>写真を選ぶ（{template.photoCount}枚）</Text>
       <View style={styles.photoGrid}>
@@ -212,10 +282,19 @@ export default function CollageEditor({ onDone }: Props) {
 const styles = StyleSheet.create({
   wrap: { paddingBottom: SPACING.xl },
   label: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700', marginTop: SPACING.md, marginBottom: SPACING.xs },
-  row: { flexDirection: 'row', gap: SPACING.sm },
   backRow: { flexDirection: 'row', alignItems: 'center', gap: 2, marginBottom: SPACING.sm },
   backText: { color: COLORS.textMuted, fontSize: 13, fontWeight: '600' },
   templateTitle: { color: COLORS.text, fontSize: 18, fontWeight: '800', marginBottom: SPACING.sm },
+  countRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm },
+  countChip: {
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    borderRadius: RADIUS.full,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+  },
+  countChipText: { color: COLORS.text, fontSize: 16, fontWeight: '800' },
   templateGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.md },
   templateCard: { width: 140, alignItems: 'center' },
   templateThumbWrap: {
@@ -244,8 +323,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   photoThumb: { width: '100%', height: '100%' },
-  themeSwatch: { width: 36, height: 36, borderRadius: 18, borderWidth: 2 },
-  themeSwatchActive: { borderWidth: 3 },
   input: {
     borderWidth: 1,
     borderColor: COLORS.border,
