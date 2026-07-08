@@ -100,6 +100,6 @@ export default function DraggableLayer({
 }
 
 const styles = StyleSheet.create({
-  wrap: { position: 'absolute' },
+  wrap: { position: 'absolute', top: 0, left: 0 },
   selected: { borderWidth: 1.5, borderColor: '#4A90D9', borderStyle: 'dashed' },
 });
