@@ -1646,9 +1646,6 @@ export default function ScheduleScreen() {
       >
         <View style={styles.header}>
           <Text style={styles.title}>投稿</Text>
-          <TouchableOpacity style={styles.addBtn} onPress={startNewPost}>
-            <Text style={styles.addBtnText}>＋ 投稿を作成</Text>
-          </TouchableOpacity>
         </View>
 
         {/* 何を作るか選ぶ */}
@@ -2978,13 +2975,6 @@ const styles = StyleSheet.create({
     paddingRight: 52, // 右上のアカウントアイコンと重ならないように
   },
   title: { color: COLORS.text, fontSize: 28, fontWeight: '800' },
-  addBtn: {
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    borderRadius: RADIUS.full,
-  },
-  addBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
   hintCard: {
     backgroundColor: COLORS.secondary + '18',
     borderRadius: RADIUS.md,
