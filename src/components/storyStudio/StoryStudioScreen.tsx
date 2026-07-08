@@ -10,7 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import ViewShot from 'react-native-view-shot';
 import { COLORS, SPACING, RADIUS } from '../../utils/theme';
 import { useAppStore } from '../../store/appStore';
-import { useStoryEditorStore, TextLayer, serializeLayers } from '../../store/storyEditorStore';
+import { useStoryEditorStore, TextLayer, StoryLayer, serializeLayers } from '../../store/storyEditorStore';
 import {
   rankTemplatesByTags, getAssetsByIds, recordRecentTemplate, getRecentTemplateIds,
   saveStoryDraft, StoryTemplate,
@@ -27,6 +27,8 @@ import { buildLayersFromTemplate } from './storyLayerBuilder';
 type Step = 'photo' | 'purpose' | 'recommend' | 'edit';
 
 const PURPOSES = ['集客', '告知・お知らせ', '商品紹介', '空席・在庫状況', 'シンプルに紹介'];
+// 候補一覧では複数枚を一度に見比べられるよう、通常のプレビューよりさらに小さいサムネイルにする
+const CANDIDATE_THUMB_W = 100;
 
 interface Props {
   visible: boolean;
@@ -41,6 +43,8 @@ export default function StoryStudioScreen({ visible, onClose, onFinish }: Props)
   const [purpose, setPurpose] = useState<string | null>(null);
   const [ranked, setRanked] = useState<StoryTemplate[]>([]);
   const [rankIndex, setRankIndex] = useState(0);
+  const [previewLayersMap, setPreviewLayersMap] = useState<Record<string, StoryLayer[]>>({});
+  const [candidateListVisible, setCandidateListVisible] = useState(false);
   const [recommendLoading, setRecommendLoading] = useState(false);
   const [recommendError, setRecommendError] = useState<string | null>(null);
   const [assetPickerVisible, setAssetPickerVisible] = useState(false);
@@ -73,6 +77,8 @@ export default function StoryStudioScreen({ visible, onClose, onFinish }: Props)
     setPurpose(null);
     setRanked([]);
     setRankIndex(0);
+    setPreviewLayersMap({});
+    setCandidateListVisible(false);
     onClose();
   };
 
@@ -126,7 +132,24 @@ export default function StoryStudioScreen({ visible, onClose, onFinish }: Props)
       const reordered = [chosen, ...candidates.filter((c) => c.id !== chosen.id)];
       setRanked(reordered);
       setRankIndex(0);
-      await applyTemplate(reordered[0], fontOverride, colorOverride);
+
+      // 候補一覧をまとめて表示できるよう、全候補分の素材を一括取得してプレビュー用レイヤーを作っておく
+      const allIds = Array.from(new Set(reordered.flatMap((t) => [
+        t.layerDefaults.background?.assetId,
+        t.layerDefaults.frame?.assetId,
+        t.layerDefaults.flower?.assetId,
+        t.layerDefaults.decoration?.assetId,
+      ].filter(Boolean) as string[])));
+      const assetsById = await getAssetsByIds(allIds);
+      const map: Record<string, StoryLayer[]> = {};
+      reordered.forEach((t) => {
+        map[t.id] = buildLayersFromTemplate(
+          t, assetsById, photoUris,
+          t.id === chosen.id ? { font: fontOverride, titleColor: colorOverride } : undefined
+        );
+      });
+      setPreviewLayersMap(map);
+      loadLayers(reordered[0].id, map[reordered[0].id]);
       recordRecentTemplate(chosen.id).catch(() => {});
     } catch (e) {
       setRecommendError(e instanceof Error ? e.message : 'おすすめの取得に失敗しました');
@@ -135,21 +158,12 @@ export default function StoryStudioScreen({ visible, onClose, onFinish }: Props)
     }
   };
 
-  const applyTemplate = async (template: StoryTemplate, font?: string, titleColor?: string) => {
-    const ids = [
-      template.layerDefaults.background?.assetId,
-      template.layerDefaults.frame?.assetId,
-      template.layerDefaults.flower?.assetId,
-      template.layerDefaults.decoration?.assetId,
-    ].filter(Boolean) as string[];
-    const assetsById = await getAssetsByIds(ids);
-    const built = buildLayersFromTemplate(template, assetsById, photoUris, { font, titleColor });
-    loadLayers(template.id, built);
-  };
-
-  const selectRankedTemplate = async (index: number) => {
+  const selectRankedTemplate = (index: number) => {
     setRankIndex(index);
-    await applyTemplate(ranked[index]);
+    const template = ranked[index];
+    const built = previewLayersMap[template.id];
+    if (built) loadLayers(template.id, built);
+    setCandidateListVisible(false);
   };
 
   const selectedTextLayer = layers.find((l) => l.id === selectedLayerId && (l.type === 'text' || l.type === 'cta')) as TextLayer | undefined;
@@ -273,15 +287,39 @@ export default function StoryStudioScreen({ visible, onClose, onFinish }: Props)
                 <TouchableOpacity style={styles.nextBtn} onPress={() => setStep('edit')} activeOpacity={0.85}>
                   <Text style={styles.nextBtnText}>このデザインで編集する</Text>
                 </TouchableOpacity>
-                {rankIndex + 1 < ranked.length && (
-                  <TouchableOpacity onPress={() => selectRankedTemplate(rankIndex + 1)} style={styles.otherLinkBtn}>
-                    <Text style={styles.otherLink}>他の候補を見る（残り{ranked.length - rankIndex - 1}件）</Text>
+                {ranked.length > 1 && (
+                  <TouchableOpacity onPress={() => setCandidateListVisible(true)} style={styles.otherLinkBtn}>
+                    <Text style={styles.otherLink}>他の候補を見る（他{ranked.length - 1}件）</Text>
                   </TouchableOpacity>
                 )}
               </>
             )}
           </ScrollView>
         )}
+
+        <Modal visible={candidateListVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setCandidateListVisible(false)}>
+          <View style={styles.modal}>
+            <View style={styles.header}>
+              <TouchableOpacity onPress={() => setCandidateListVisible(false)}><Text style={styles.cancel}>閉じる</Text></TouchableOpacity>
+              <Text style={styles.title}>候補一覧</Text>
+              <View style={{ width: 48 }} />
+            </View>
+            <ScrollView contentContainerStyle={styles.candidateGrid}>
+              {ranked.map((t, i) => (
+                <TouchableOpacity
+                  key={t.id}
+                  style={[styles.candidateCard, i === rankIndex && styles.candidateCardActive]}
+                  onPress={() => selectRankedTemplate(i)}
+                  activeOpacity={0.85}
+                >
+                  <StoryCanvas displayWidth={CANDIDATE_THUMB_W} locked layers={previewLayersMap[t.id] ?? []} />
+                  <Text style={styles.candidateName} numberOfLines={1}>{t.name}</Text>
+                  <Text style={styles.candidateScore}>スコア {t.score}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </Modal>
 
         {step === 'edit' && (
           <View style={{ flex: 1 }}>
@@ -370,6 +408,16 @@ const styles = StyleSheet.create({
   previewWrap: { marginBottom: SPACING.sm },
   previewHint: { color: COLORS.textMuted, fontSize: 11, textAlign: 'center', marginBottom: SPACING.lg },
   otherLink: { color: COLORS.primary, fontSize: 13, fontWeight: '700', marginTop: SPACING.md, textAlign: 'center' },
+  candidateGrid: {
+    flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.md, padding: SPACING.lg, justifyContent: 'center',
+  },
+  candidateCard: {
+    width: CANDIDATE_THUMB_W + SPACING.md, alignItems: 'center', padding: SPACING.xs,
+    borderRadius: RADIUS.md, borderWidth: 1, borderColor: 'transparent',
+  },
+  candidateCardActive: { borderColor: COLORS.primary, backgroundColor: COLORS.surface },
+  candidateName: { color: COLORS.text, fontSize: 11, fontWeight: '700', marginTop: SPACING.xs, textAlign: 'center' },
+  candidateScore: { color: COLORS.textMuted, fontSize: 10, textAlign: 'center' },
   editScroll: { alignItems: 'center', paddingVertical: SPACING.md, paddingBottom: 120 },
   toolbar: { flexDirection: 'row', gap: SPACING.md, marginTop: SPACING.md },
   toolBtn: { alignItems: 'center', gap: 2 },

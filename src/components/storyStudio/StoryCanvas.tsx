@@ -23,6 +23,9 @@ interface Props {
   displayWidth?: number;
   /** trueの間はドラッグ・拡大縮小・回転などの操作を受け付けない（確定前のプレビュー用） */
   locked?: boolean;
+  /** 指定した場合、編集中のストア（useStoryEditorStore）ではなくこのレイヤー配列を描画する
+   * （候補一覧をまとめて表示するときの、編集対象ではない静的プレビュー用） */
+  layers?: StoryLayer[];
 }
 
 function LayerContent({ layer, displayScale }: { layer: StoryLayer; displayScale: number }) {
@@ -57,11 +60,14 @@ function LayerContent({ layer, displayScale }: { layer: StoryLayer; displayScale
   return null;
 }
 
-export default function StoryCanvas({ canvasRef, displayWidth, locked }: Props) {
-  const layers = useStoryEditorStore((s) => s.layers);
+export default function StoryCanvas({ canvasRef, displayWidth, locked, layers: staticLayers }: Props) {
+  const storeLayers = useStoryEditorStore((s) => s.layers);
   const selectedLayerId = useStoryEditorStore((s) => s.selectedLayerId);
   const selectLayer = useStoryEditorStore((s) => s.selectLayer);
   const updateLayer = useStoryEditorStore((s) => s.updateLayer);
+
+  const isStatic = staticLayers !== undefined;
+  const layers = staticLayers ?? storeLayers;
 
   const width = displayWidth ?? DISPLAY_W;
   const scale = width / CANVAS_W;
@@ -77,10 +83,10 @@ export default function StoryCanvas({ canvasRef, displayWidth, locked }: Props) 
           scale={layer.scale}
           rotation={layer.rotation}
           displayScale={scale}
-          locked={locked}
-          selected={!locked && selectedLayerId === layer.id}
-          onSelect={() => selectLayer(layer.id)}
-          onChange={(patch) => updateLayer(layer.id, patch)}
+          locked={locked || isStatic}
+          selected={!locked && !isStatic && selectedLayerId === layer.id}
+          onSelect={() => !isStatic && selectLayer(layer.id)}
+          onChange={(patch) => !isStatic && updateLayer(layer.id, patch)}
         >
           <LayerContent layer={layer} displayScale={scale} />
         </DraggableLayer>
