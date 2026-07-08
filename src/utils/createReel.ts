@@ -103,17 +103,28 @@ function fitText(
 export interface CollageTheme {
   name: string;
   background: string;
+  /** 背景のグラデーション終点色（background→background2の縦グラデーション） */
+  background2: string;
   accent: string;
 }
 
 // 花やチェーン柄などの独自イラストは使わず、色・丸・線などcanvasで描ける
 // シンプルな図形だけで「テンプレートらしさ」を出す。
 export const COLLAGE_THEMES: CollageTheme[] = [
-  { name: 'ベージュ', background: '#F3E7DC', accent: '#B5651D' },
-  { name: 'ピンク', background: '#FBE4E8', accent: '#D6597A' },
-  { name: 'ミント', background: '#E4F3EC', accent: '#3E8E6E' },
-  { name: 'モノトーン', background: '#EFEFEF', accent: '#333333' },
+  { name: 'ベージュ', background: '#F6ECE1', background2: '#EAD9C6', accent: '#B5651D' },
+  { name: 'ピンク', background: '#FDECEF', background2: '#F6D3DA', accent: '#D6597A' },
+  { name: 'ミント', background: '#EAF6F0', background2: '#D6EEE1', accent: '#3E8E6E' },
+  { name: 'モノトーン', background: '#F5F5F5', background2: '#E2E2E2', accent: '#333333' },
 ];
+
+// 背景を単色ではなく、縦方向の淡いグラデーションにする（のっぺり感を防ぐ）
+function drawGradientBackground(ctx: CanvasRenderingContext2D, theme: CollageTheme) {
+  const g = ctx.createLinearGradient(0, 0, 0, COLLAGE_H);
+  g.addColorStop(0, theme.background);
+  g.addColorStop(1, theme.background2);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, COLLAGE_W, COLLAGE_H);
+}
 
 const COLLAGE_W = 1080;
 const COLLAGE_H = 1920;
@@ -179,7 +190,7 @@ function drawSolidDividerH(ctx: CanvasRenderingContext2D, y: number, xLeft: numb
   ctx.restore();
 }
 
-// 領域全体を囲む二重線フレーム
+// 領域全体を囲む二重線フレーム＋四隅のL字アクセント（花柄の代わりの控えめな装飾）
 function drawDoubleFrame(ctx: CanvasRenderingContext2D, area: CollageArea, color: string) {
   ctx.save();
   ctx.strokeStyle = color;
@@ -187,7 +198,57 @@ function drawDoubleFrame(ctx: CanvasRenderingContext2D, area: CollageArea, color
   ctx.strokeRect(area.x - 14, area.y - 14, area.w + 28, area.h + 28);
   ctx.lineWidth = 1.5;
   ctx.strokeRect(area.x - 22, area.y - 22, area.w + 44, area.h + 44);
+
+  const len = 46;
+  const off = 34;
+  const corners: [number, number, number, number][] = [
+    [area.x - off, area.y - off, 1, 1],
+    [area.x + area.w + off, area.y - off, -1, 1],
+    [area.x - off, area.y + area.h + off, 1, -1],
+    [area.x + area.w + off, area.y + area.h + off, -1, -1],
+  ];
+  ctx.lineWidth = 4;
+  ctx.lineCap = 'round';
+  for (const [cx, cy, dx, dy] of corners) {
+    ctx.beginPath();
+    ctx.moveTo(cx + len * dx, cy);
+    ctx.lineTo(cx, cy);
+    ctx.lineTo(cx, cy + len * dy);
+    ctx.stroke();
+  }
   ctx.restore();
+}
+
+// 円形に切り抜いた写真バッジ（サブ写真用）
+async function drawCircularPhoto(ctx: CanvasRenderingContext2D, uri: string, cx: number, cy: number, r: number, ringColor?: string) {
+  const img = await loadImage(uri);
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,0.3)';
+  ctx.shadowBlur = 18;
+  ctx.fillStyle = '#FFFFFF';
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.shadowColor = 'transparent';
+  ctx.shadowBlur = 0;
+
+  const inner = r - 8;
+  ctx.beginPath();
+  ctx.arc(cx, cy, inner, 0, Math.PI * 2);
+  ctx.clip();
+  const cover = Math.max((inner * 2) / img.width, (inner * 2) / img.height);
+  ctx.drawImage(img, cx - (img.width * cover) / 2, cy - (img.height * cover) / 2, img.width * cover, img.height * cover);
+  ctx.restore();
+
+  if (ringColor) {
+    ctx.save();
+    ctx.strokeStyle = ringColor;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r + 8, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
 }
 
 function roundRectPath(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
@@ -333,6 +394,26 @@ export const COLLAGE_TEMPLATES: CollageTemplate[] = [
       drawDottedDivider(ctx, area.x + cellW + gap / 2, area.y + topH + gap, area.y + topH + gap + bottomH, accent);
     },
   },
+  {
+    id: 'circleBadge',
+    name: 'メイン＋丸バッジ',
+    photoCount: 2,
+    drawPhotos: async (ctx, photos, area) => {
+      await drawPhotoCard(ctx, photos[0], area.x, area.y, area.w, area.h);
+      const r = area.w * 0.22;
+      await drawCircularPhoto(ctx, photos[1], area.x + area.w - r + 10, area.y + r - 10, r);
+    },
+    drawDecoration: (ctx, area, accent) => {
+      const r = area.w * 0.22;
+      ctx.save();
+      ctx.strokeStyle = accent;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(area.x + area.w - r + 10, area.y + r - 10, r + 8, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    },
+  },
 ];
 
 /**
@@ -353,8 +434,7 @@ export async function composeCollage(
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Canvasを利用できません');
 
-  ctx.fillStyle = theme.background;
-  ctx.fillRect(0, 0, COLLAGE_W, COLLAGE_H);
+  drawGradientBackground(ctx, theme);
 
   const margin = 48;
   const gridTop = 200;
@@ -370,7 +450,19 @@ export async function composeCollage(
     ctx.textBaseline = 'alphabetic';
     ctx.fillStyle = theme.accent;
     ctx.font = `900 96px ${FONT_FAMILY}`;
-    ctx.fillText(accentText.trim(), COLLAGE_W / 2, gridTop - 60);
+    const textY = gridTop - 60;
+    ctx.fillText(accentText.trim(), COLLAGE_W / 2, textY);
+    // 文字の左右に短い装飾線を添えて、ただのテキストより「あしらい」らしく見せる
+    const textW = ctx.measureText(accentText.trim()).width;
+    const lineY = textY - 30;
+    ctx.strokeStyle = theme.accent;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(COLLAGE_W / 2 - textW / 2 - 60, lineY);
+    ctx.lineTo(COLLAGE_W / 2 - textW / 2 - 16, lineY);
+    ctx.moveTo(COLLAGE_W / 2 + textW / 2 + 16, lineY);
+    ctx.lineTo(COLLAGE_W / 2 + textW / 2 + 60, lineY);
+    ctx.stroke();
   }
 
   if (caption.trim()) {
