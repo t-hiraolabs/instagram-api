@@ -32,6 +32,8 @@ Project Settings > API > `service_role` secret から取得できます。
 
 ## 使い方
 
+### 1件だけ処理する
+
 ```bash
 python crop_sprite_sheet.py --sheet-id <asset_sheets.id>
 ```
@@ -42,6 +44,17 @@ python crop_sprite_sheet.py --sheet-id <asset_sheets.id>
 ```sql
 select id, original_filename, status from asset_sheets order by created_at desc;
 ```
+
+### 監視モード（アップロードのたびに手動実行したくない場合）
+
+```bash
+python crop_sprite_sheet.py --watch
+```
+
+`status='uploaded'` のシートを10秒間隔（`--interval`で変更可）でポーリングし、
+見つかり次第自動的に切り出し・登録します。tmux やバックグラウンドプロセスとして
+常時起動しておけば、管理画面からアップロードするだけで済むようになります。
+Ctrl+Cで停止するまで動き続け、1件の処理に失敗しても監視自体は継続します。
 
 ## 素材シートの作成ガイドライン
 
