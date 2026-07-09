@@ -32,6 +32,8 @@ import { createCheckoutUrl } from '../services/billingService';
 import { PLANS, Plan, PLAN_RANK, maxInstagramAccounts } from '../utils/plans';
 import { JP_PREFECTURES, JP_PREFECTURES_CITIES } from '../utils/jpLocations';
 import { registerPush, unregisterPush, isPushSupported, isPushEnabled } from '../services/pushService';
+import { navigationRef } from '../navigation/RootNavigator';
+import { checkIsAdmin } from '../services/adminAssetService';
 import {
   connectInstagram,
   clearInstagramStorage,
@@ -159,8 +161,14 @@ export default function ProfileScreen() {
   const draftPref = JP_PREFECTURES.find((p) => draftBrand.location.startsWith(p)) ?? '';
   const draftCity = draftPref ? draftBrand.location.slice(draftPref.length) : '';
 
+  const [isAdmin, setIsAdmin] = useState(false);
+
   useEffect(() => {
     getMyPlan().then(setCurrentPlan).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    checkIsAdmin().then(setIsAdmin);
   }, []);
 
   // 決済から戻ってきたとき（?upgrade=success）の処理
@@ -817,6 +825,18 @@ export default function ProfileScreen() {
           <Text style={styles.helpLabel}>設定</Text>
           <Text style={styles.helpArrow}>›</Text>
         </TouchableOpacity>
+
+        {isAdmin && (
+          <TouchableOpacity
+            style={styles.helpRow}
+            onPress={() => navigationRef.navigate('AdminAssets' as never)}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="shield-checkmark-outline" size={18} color={COLORS.textSecondary} style={styles.helpEmoji} />
+            <Text style={styles.helpLabel}>素材シート管理（管理者）</Text>
+            <Text style={styles.helpArrow}>›</Text>
+          </TouchableOpacity>
+        )}
 
         {loggedIn ? (
           <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.8}>

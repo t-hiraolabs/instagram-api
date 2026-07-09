@@ -9,6 +9,7 @@ import ScheduleScreen from '../screens/ScheduleScreen';
 import AnalyticsScreen from '../screens/AnalyticsScreen';
 import DMScreen from '../screens/DMScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import AdminAssetsScreen from '../screens/AdminAssetsScreen';
 import { COLORS } from '../utils/theme';
 
 const Tab = createBottomTabNavigator();
@@ -127,6 +128,7 @@ export default function RootNavigator() {
     >
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         <Stack.Screen name="Main" component={TabNavigator} />
+        <Stack.Screen name="AdminAssets" component={AdminAssetsScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

@@ -20,7 +20,7 @@ export function buildLayersFromTemplate(
 
   if (d.background) {
     const a = assetsById[d.background.assetId];
-    if (a) layers.push({ id: layerId('background'), type: 'background', assetId: a.id, uri: a.fileUrl, x: 0, y: 0, scale: 1, rotation: 0, visible: true });
+    if (a) layers.push({ id: layerId('background'), type: 'background', assetId: a.id, uri: a.storageUrl, x: 0, y: 0, scale: 1, rotation: 0, visible: true });
   }
 
   photoUris.slice(0, Math.max(1, d.photoSlots || 1)).forEach((uri, i) => {
@@ -29,15 +29,15 @@ export function buildLayersFromTemplate(
 
   if (d.frame) {
     const a = assetsById[d.frame.assetId];
-    if (a) layers.push({ id: layerId('frame'), type: 'frame', assetId: a.id, uri: a.fileUrl, x: 0, y: 0, scale: 1, rotation: 0, visible: true });
+    if (a) layers.push({ id: layerId('frame'), type: 'frame', assetId: a.id, uri: a.storageUrl, x: 0, y: 0, scale: 1, rotation: 0, visible: true });
   }
   if (d.flower) {
     const a = assetsById[d.flower.assetId];
-    if (a) layers.push({ id: layerId('flower'), type: 'flower', assetId: a.id, uri: a.fileUrl, x: 780, y: 60, scale: 1, rotation: 0, visible: true });
+    if (a) layers.push({ id: layerId('flower'), type: 'flower', assetId: a.id, uri: a.storageUrl, x: 780, y: 60, scale: 1, rotation: 0, visible: true });
   }
   if (d.decoration) {
     const a = assetsById[d.decoration.assetId];
-    if (a) layers.push({ id: layerId('decoration'), type: 'decoration', assetId: a.id, uri: a.fileUrl, x: 60, y: 1500, scale: 1, rotation: 0, visible: true });
+    if (a) layers.push({ id: layerId('decoration'), type: 'decoration', assetId: a.id, uri: a.storageUrl, x: 60, y: 1500, scale: 1, rotation: 0, visible: true });
   }
 
   layers.push({

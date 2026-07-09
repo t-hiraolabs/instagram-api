@@ -16,10 +16,12 @@ export interface StoryAsset {
   id: string;
   categoryId: string;
   name: string;
-  fileUrl: string;
+  storageUrl: string;
+  thumbnailUrl: string | null;
   plan: Plan;
   width: number | null;
   height: number | null;
+  isActive: boolean;
   tags: string[];
 }
 
@@ -70,10 +72,12 @@ function rowToAsset(row: any, tags: string[]): StoryAsset {
     id: row.id,
     categoryId: row.category_id,
     name: row.name,
-    fileUrl: row.file_url,
+    storageUrl: row.storage_url,
+    thumbnailUrl: row.thumbnail_url,
     plan: row.plan,
     width: row.width,
     height: row.height,
+    isActive: row.is_active,
     tags,
   };
 }
@@ -103,8 +107,9 @@ export async function searchAssets(params: {
   const plans = allowedPlans(params.plan);
   let query = supabase
     .from('assets')
-    .select('id, category_id, name, file_url, plan, width, height, asset_tags(tag_id, tags(name))')
+    .select('id, category_id, name, storage_url, thumbnail_url, plan, width, height, is_active, asset_tags(tag_id, tags(name))')
     .in('plan', plans)
+    .eq('is_active', true)
     .limit(60);
 
   if (params.categoryId) query = query.eq('category_id', params.categoryId);
@@ -165,7 +170,7 @@ export async function getAssetsByIds(ids: string[]): Promise<Record<string, Stor
   if (ids.length === 0) return {};
   const { data, error } = await supabase
     .from('assets')
-    .select('id, category_id, name, file_url, plan, width, height')
+    .select('id, category_id, name, storage_url, thumbnail_url, plan, width, height, is_active')
     .in('id', ids);
   if (error) throw error;
   const map: Record<string, StoryAsset> = {};
