@@ -1,4 +1,4 @@
-// コラージュ型ストーリー画像の合成（composeCollage/composeTemplatePreview）で使う
+// コラージュ型ストーリー画像の合成（composeCollage/composeLayoutPreview）で使う
 // canvas描画ヘルパー群。
 
 // 花のイラスト素材（base64データURLとして埋め込み済み。require()経由のアセット
@@ -110,11 +110,11 @@ function fitText(
 }
 
 
-// ===== コラージュ型ストーリーテンプレート =====
+// ===== コラージュ型ストーリーのレイアウト =====
 //
 // 画像素材を1枚も持たず、「レイアウト（写真の並べ方）× テーマ（色）」の
-// 組み合わせだけで見た目のバリエーションを作る。テンプレートを増やしたい
-// ときは、下の COLLAGE_TEMPLATES に1件足すだけでよい（テーマは自動で掛け算される）。
+// 組み合わせだけで見た目のバリエーションを作る。レイアウトを増やしたい
+// ときは、下の COLLAGE_LAYOUTS に1件足すだけでよい（テーマは自動で掛け算される）。
 
 export interface CollageTheme {
   name: string;
@@ -152,7 +152,7 @@ interface CollageArea {
   h: number;
 }
 
-export interface CollageTemplate {
+export interface CollageLayout {
   id: string;
   name: string;
   /** この並べ方に必要な写真の枚数 */
@@ -291,9 +291,9 @@ async function drawPhotoCard(
   ctx.restore();
 }
 
-// ===== 5種類のレイアウト（写真の並べ方）=====
-// テーマ（色）とは独立しているので、テーマ4色 × レイアウト5種 = 20通りの見た目になる。
-export const COLLAGE_TEMPLATES: CollageTemplate[] = [
+// ===== 6種類のレイアウト（写真の並べ方）=====
+// テーマ（色）とは独立しているので、テーマ4色 × レイアウト6種 = 24通りの見た目になる。
+export const COLLAGE_LAYOUTS: CollageLayout[] = [
   {
     id: 'simple1',
     name: 'シンプル1枚',
@@ -408,13 +408,13 @@ export const COLLAGE_TEMPLATES: CollageTemplate[] = [
 ];
 
 /**
- * テンプレート（写真の並べ方）とテーマ（色）を組み合わせて、1枚のコラージュ風
+ * レイアウト（写真の並べ方）とテーマ（色）を組み合わせて、1枚のコラージュ風
  * ストーリー画像を作る。花やチェーン柄などの独自イラストの代わりに、色・丸・
- * 点線などcanvasで描けるシンプルな図形で「テンプレートらしさ」を出している。
+ * 点線などcanvasで描けるシンプルな図形で「レイアウトらしさ」を出している。
  */
 export async function composeCollage(
   photos: string[],
-  template: CollageTemplate,
+  layout: CollageLayout,
   theme: CollageTheme,
   accentText: string,
   caption: string
@@ -432,8 +432,8 @@ export async function composeCollage(
   const gridBottom = COLLAGE_H - 260;
   const area: CollageArea = { x: margin, y: gridTop, w: COLLAGE_W - margin * 2, h: gridBottom - gridTop };
 
-  await template.drawPhotos(ctx, photos, area);
-  await template.drawDecoration?.(ctx, area, theme.accent);
+  await layout.drawPhotos(ctx, photos, area);
+  await layout.drawDecoration?.(ctx, area, theme.accent);
 
   if (accentText.trim()) {
     await loadFontFor(accentText);
@@ -480,7 +480,7 @@ export async function composeCollage(
 
 let placeholderPhotoUrl: string | null = null;
 
-// テンプレート選択用のプレビューで、実際の写真の代わりに敷くグレーの正方形
+// レイアウト選択用のプレビューで、実際の写真の代わりに敷くグレーの正方形
 function getPlaceholderPhoto(): string {
   if (placeholderPhotoUrl) return placeholderPhotoUrl;
   const c = document.createElement('canvas');
@@ -494,14 +494,14 @@ function getPlaceholderPhoto(): string {
 }
 
 /**
- * テンプレート一覧の選択画面で、実際の写真を選ぶ前に「だいたいの見た目」を
+ * レイアウト一覧の選択画面で、実際の写真を選ぶ前に「だいたいの見た目」を
  * 確認できるよう、グレーのプレースホルダー写真でcomposeCollageと同じ処理を
  * 走らせてプレビュー画像を作る（実際に写真を入れたときと同じレイアウト・
  * 色・装飾になる）。
  */
-export async function composeTemplatePreview(template: CollageTemplate, theme: CollageTheme): Promise<string> {
+export async function composeLayoutPreview(layout: CollageLayout, theme: CollageTheme): Promise<string> {
   const placeholder = getPlaceholderPhoto();
-  const photos = Array.from({ length: template.photoCount }, () => placeholder);
-  const { previewUrl } = await composeCollage(photos, template, theme, '', '');
+  const photos = Array.from({ length: layout.photoCount }, () => placeholder);
+  const { previewUrl } = await composeCollage(photos, layout, theme, '', '');
   return previewUrl;
 }
