@@ -365,7 +365,7 @@ export default function StoryStudioScreen({ visible, onClose, onFinish }: Props)
           onClose={() => setAssetPickerVisible(false)}
           onSelect={(asset) => {
             if (!selectedLayerId) return;
-            updateLayer(selectedLayerId, { assetId: asset.id, uri: asset.fileUrl } as any);
+            updateLayer(selectedLayerId, { assetId: asset.id, uri: asset.storageUrl } as any);
           }}
         />
         <TextStyleModal

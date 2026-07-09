@@ -67,7 +67,7 @@ export default function AssetPickerModal({ visible, plan, onClose, onSelect }: P
           <ScrollView contentContainerStyle={styles.grid}>
             {assets.map((a) => (
               <TouchableOpacity key={a.id} style={styles.item} onPress={() => { onSelect(a); onClose(); }} activeOpacity={0.85}>
-                <Image source={{ uri: a.fileUrl }} style={styles.itemImg} resizeMode="contain" />
+                <Image source={{ uri: a.thumbnailUrl ?? a.storageUrl }} style={styles.itemImg} resizeMode="contain" />
                 <Text style={styles.itemName} numberOfLines={1}>{a.name}</Text>
               </TouchableOpacity>
             ))}
