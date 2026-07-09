@@ -291,8 +291,8 @@ async function drawPhotoCard(
   ctx.restore();
 }
 
-// ===== 6種類のレイアウト（写真の並べ方）=====
-// テーマ（色）とは独立しているので、テーマ4色 × レイアウト6種 = 24通りの見た目になる。
+// ===== 10種類のレイアウト（写真の並べ方）=====
+// テーマ（色）とは独立しているので、テーマ4色 × レイアウト10種 = 40通りの見た目になる。
 export const COLLAGE_LAYOUTS: CollageLayout[] = [
   {
     id: 'simple1',
@@ -304,6 +304,23 @@ export const COLLAGE_LAYOUTS: CollageLayout[] = [
     drawDecoration: async (ctx, area) => {
       const pad = 26;
       await drawFlowerAsset(ctx, FLOWER_FRAME_BORDER, area.x - pad, area.y - pad, area.w + pad * 2, area.h + pad * 2);
+    },
+  },
+  {
+    id: 'framedSingle',
+    name: 'フレーム1枚',
+    photoCount: 1,
+    drawPhotos: async (ctx, photos, area) => {
+      await drawPhotoCard(ctx, photos[0], area.x, area.y, area.w, area.h);
+    },
+    drawDecoration: (ctx, area, accent) => {
+      const pad = 20;
+      ctx.save();
+      ctx.strokeStyle = accent;
+      ctx.lineWidth = 10;
+      roundRectPath(ctx, area.x - pad, area.y - pad, area.w + pad * 2, area.h + pad * 2, 28);
+      ctx.stroke();
+      ctx.restore();
     },
   },
   {
@@ -320,6 +337,22 @@ export const COLLAGE_LAYOUTS: CollageLayout[] = [
       const gap = 24;
       const cellH = (area.h - gap) / 2;
       drawSolidDividerH(ctx, area.y + cellH + gap / 2, area.x + 30, area.x + area.w - 30, accent);
+    },
+  },
+  {
+    id: 'sideBySide2',
+    name: '横2分割',
+    photoCount: 2,
+    drawPhotos: async (ctx, photos, area) => {
+      const gap = 24;
+      const cellW = (area.w - gap) / 2;
+      await drawPhotoCard(ctx, photos[0], area.x, area.y, cellW, area.h);
+      await drawPhotoCard(ctx, photos[1], area.x + cellW + gap, area.y, cellW, area.h);
+    },
+    drawDecoration: (ctx, area, accent) => {
+      const gap = 24;
+      const cellW = (area.w - gap) / 2;
+      drawDottedDivider(ctx, area.x + cellW + gap / 2, area.y + 20, area.y + area.h - 20, accent);
     },
   },
   {
@@ -340,6 +373,27 @@ export const COLLAGE_LAYOUTS: CollageLayout[] = [
       const cellW = (area.w - gap) / 2;
       drawDottedDivider(ctx, area.x + cellW + gap / 2, area.y, area.y + area.h, accent);
       await drawCornerFlowers(ctx);
+    },
+  },
+  {
+    id: 'mosaic4',
+    name: 'メイン＋3枚モザイク',
+    photoCount: 4,
+    drawPhotos: async (ctx, photos, area) => {
+      const gap = 20;
+      const leftW = area.w * 0.6 - gap / 2;
+      const rightW = area.w - leftW - gap;
+      const rightX = area.x + leftW + gap;
+      const cellH = (area.h - gap * 2) / 3;
+      await drawPhotoCard(ctx, photos[0], area.x, area.y, leftW, area.h);
+      await drawPhotoCard(ctx, photos[1], rightX, area.y, rightW, cellH);
+      await drawPhotoCard(ctx, photos[2], rightX, area.y + cellH + gap, rightW, cellH);
+      await drawPhotoCard(ctx, photos[3], rightX, area.y + (cellH + gap) * 2, rightW, cellH);
+    },
+    drawDecoration: (ctx, area, accent) => {
+      const gap = 20;
+      const leftW = area.w * 0.6 - gap / 2;
+      drawDottedDivider(ctx, area.x + leftW + gap / 2, area.y, area.y + area.h, accent);
     },
   },
   {
@@ -383,6 +437,24 @@ export const COLLAGE_LAYOUTS: CollageLayout[] = [
       const bottomH = area.h - topH - gap;
       const cellW = (area.w - gap) / 2;
       drawDottedDivider(ctx, area.x + cellW + gap / 2, area.y + topH + gap, area.y + topH + gap + bottomH, accent);
+    },
+  },
+  {
+    id: 'filmStrip3',
+    name: 'フィルムストリップ',
+    photoCount: 3,
+    drawPhotos: async (ctx, photos, area) => {
+      const gap = 20;
+      const cellW = (area.w - gap * 2) / 3;
+      await drawPhotoCard(ctx, photos[0], area.x, area.y, cellW, area.h);
+      await drawPhotoCard(ctx, photos[1], area.x + cellW + gap, area.y, cellW, area.h);
+      await drawPhotoCard(ctx, photos[2], area.x + (cellW + gap) * 2, area.y, cellW, area.h);
+    },
+    drawDecoration: (ctx, area, accent) => {
+      const gap = 20;
+      const cellW = (area.w - gap * 2) / 3;
+      drawDottedDivider(ctx, area.x + cellW + gap / 2, area.y, area.y + area.h, accent);
+      drawDottedDivider(ctx, area.x + (cellW + gap) * 2 - gap / 2, area.y, area.y + area.h, accent);
     },
   },
   {
