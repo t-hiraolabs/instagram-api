@@ -573,16 +573,31 @@ export const COLLAGE_LAYOUTS: CollageLayout[] = [
 ];
 
 /**
+ * 画像ベースの「スタイル」。指定すると背景・フレームの質感画像を使い、
+ * テーマ（色）のグラデーション背景の代わりになる（シネマ風・レトロ風など）。
+ */
+export interface CollageStyleAssets {
+  /** 全面に敷く背景テクスチャ画像（cover-fit）。指定時はテーマのグラデーションを使わない */
+  backgroundUrl?: string;
+  /** 写真・装飾の上に全面（1080×1920）で重ねる縁取り画像。中央は透過している前提 */
+  frameUrl?: string;
+  /** あしらい文字・キャプションの色。指定時はテーマの色より優先する */
+  accentColor?: string;
+}
+
+/**
  * レイアウト（写真の並べ方）とテーマ（色）を組み合わせて、1枚のコラージュ風
  * ストーリー画像を作る。花やチェーン柄などの独自イラストの代わりに、色・丸・
  * 点線などcanvasで描けるシンプルな図形で「レイアウトらしさ」を出している。
+ * styleAssetsを渡すと、質感画像を使ったスタイル（シネマ風・レトロ風など）になる。
  */
 export async function composeCollage(
   photos: string[],
   layout: CollageLayout,
   theme: CollageTheme,
   accentText: string,
-  caption: string
+  caption: string,
+  styleAssets?: CollageStyleAssets
 ): Promise<{ blob: Blob; previewUrl: string }> {
   const canvas = document.createElement('canvas');
   canvas.width = COLLAGE_W;
@@ -590,28 +605,46 @@ export async function composeCollage(
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Canvasを利用できません');
 
-  drawGradientBackground(ctx, theme);
+  if (styleAssets?.backgroundUrl) {
+    const bg = await loadImage(styleAssets.backgroundUrl);
+    const cover = Math.max(COLLAGE_W / bg.width, COLLAGE_H / bg.height);
+    ctx.drawImage(
+      bg,
+      (COLLAGE_W - bg.width * cover) / 2,
+      (COLLAGE_H - bg.height * cover) / 2,
+      bg.width * cover,
+      bg.height * cover
+    );
+  } else {
+    drawGradientBackground(ctx, theme);
+  }
 
   const margin = 48;
   const gridTop = 200;
   const gridBottom = COLLAGE_H - 260;
   const area: CollageArea = { x: margin, y: gridTop, w: COLLAGE_W - margin * 2, h: gridBottom - gridTop };
+  const accentColor = styleAssets?.accentColor ?? theme.accent;
 
   await layout.drawPhotos(ctx, photos, area);
-  await layout.drawDecoration?.(ctx, area, theme.accent);
+  await layout.drawDecoration?.(ctx, area, accentColor);
+
+  if (styleAssets?.frameUrl) {
+    const frame = await loadImage(styleAssets.frameUrl);
+    ctx.drawImage(frame, 0, 0, COLLAGE_W, COLLAGE_H);
+  }
 
   if (accentText.trim()) {
     await loadFontFor(accentText);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'alphabetic';
-    ctx.fillStyle = theme.accent;
+    ctx.fillStyle = accentColor;
     ctx.font = `900 96px ${FONT_FAMILY}`;
     const textY = gridTop - 60;
     ctx.fillText(accentText.trim(), COLLAGE_W / 2, textY);
     // 文字の左右に短い装飾線を添えて、ただのテキストより「あしらい」らしく見せる
     const textW = ctx.measureText(accentText.trim()).width;
     const lineY = textY - 30;
-    ctx.strokeStyle = theme.accent;
+    ctx.strokeStyle = accentColor;
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(COLLAGE_W / 2 - textW / 2 - 60, lineY);
@@ -624,7 +657,7 @@ export async function composeCollage(
   if (caption.trim()) {
     await loadFontFor(caption);
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#2A2A2A';
+    ctx.fillStyle = styleAssets?.accentColor ?? '#2A2A2A';
     const { lines, lineH } = fitText(ctx, caption.trim(), area.w, 44, 28);
     let y = gridBottom + 70;
     for (const line of lines) {
@@ -664,9 +697,13 @@ function getPlaceholderPhoto(): string {
  * 走らせてプレビュー画像を作る（実際に写真を入れたときと同じレイアウト・
  * 色・装飾になる）。
  */
-export async function composeLayoutPreview(layout: CollageLayout, theme: CollageTheme): Promise<string> {
+export async function composeLayoutPreview(
+  layout: CollageLayout,
+  theme: CollageTheme,
+  styleAssets?: CollageStyleAssets
+): Promise<string> {
   const placeholder = getPlaceholderPhoto();
   const photos = Array.from({ length: layout.photoCount }, () => placeholder);
-  const { previewUrl } = await composeCollage(photos, layout, theme, '', '');
+  const { previewUrl } = await composeCollage(photos, layout, theme, '', '', styleAssets);
   return previewUrl;
 }
