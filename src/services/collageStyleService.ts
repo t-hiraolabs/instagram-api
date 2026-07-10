@@ -14,6 +14,11 @@ export interface CollageStyle {
   backgroundUrl?: string;
   frameUrl?: string;
   accentColor?: string;
+  accentFont?: string;
+  accentYOffset?: number;
+  captionColor?: string;
+  captionFont?: string;
+  captionYOffset?: number;
   /** 紐づくレイアウト（写真の並べ方）のid。指定されている場合、コラージュ編集画面では
    *  「色を選ぶ」ステップの選択肢ではなく、レイアウト選択ステップの独立したテンプレートとして表示される */
   layoutId?: string;
@@ -24,6 +29,11 @@ interface CollageStyleDefaults {
   backgroundAssetId?: string;
   frameAssetId?: string;
   accentColor?: string;
+  accentFont?: string;
+  accentYOffset?: number;
+  captionColor?: string;
+  captionFont?: string;
+  captionYOffset?: number;
   layoutId?: string;
 }
 
@@ -47,6 +57,11 @@ async function rowsToStyles(rows: any[]): Promise<CollageStyle[]> {
       backgroundUrl: d.backgroundAssetId ? assetsById[d.backgroundAssetId]?.storageUrl : undefined,
       frameUrl: d.frameAssetId ? assetsById[d.frameAssetId]?.storageUrl : undefined,
       accentColor: d.accentColor,
+      accentFont: d.accentFont,
+      accentYOffset: d.accentYOffset,
+      captionColor: d.captionColor,
+      captionFont: d.captionFont,
+      captionYOffset: d.captionYOffset,
       layoutId: d.layoutId,
       thumbnailUrl: r.thumbnail_url,
     };
@@ -83,12 +98,22 @@ export async function createCollageStyle(params: {
   backgroundAssetId: string;
   frameAssetId?: string;
   accentColor: string;
+  accentFont?: string;
+  accentYOffset?: number;
+  captionColor?: string;
+  captionFont?: string;
+  captionYOffset?: number;
   layoutId?: string;
 }): Promise<void> {
   const layerDefaults: CollageStyleDefaults = {
     backgroundAssetId: params.backgroundAssetId,
     frameAssetId: params.frameAssetId,
     accentColor: params.accentColor,
+    accentFont: params.accentFont,
+    accentYOffset: params.accentYOffset,
+    captionColor: params.captionColor,
+    captionFont: params.captionFont,
+    captionYOffset: params.captionYOffset,
     layoutId: params.layoutId,
   };
   const { error } = await supabase.from('templates').insert({

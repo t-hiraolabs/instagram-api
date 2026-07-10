@@ -10,28 +10,49 @@ import {
   FLOWER_CLUSTER,
 } from './collageAssets';
 
-// おしゃれな日本語フォント（極太）をWebフォントとして読み込んで使う
+// おしゃれな日本語フォント（極太）をWebフォントとして読み込んで使う（デフォルト）
 const FONT_NAME = 'Zen Kaku Gothic New';
 const FONT_FAMILY = `"${FONT_NAME}", sans-serif`;
 
-function ensureFontLink() {
+/** コラージュスタイルの管理画面で選べるフォントのプリセット。
+ *  idはCollageStyleAssets.accentFont/captionFontに保存する値と一致させる。 */
+export interface FontPreset {
+  id: string;
+  label: string;
+  family: string;
+  weight: string;
+  googleParam: string;
+}
+export const COLLAGE_FONT_PRESETS: FontPreset[] = [
+  { id: 'gothic', label: 'ゴシック（極太）', family: FONT_NAME, weight: '900', googleParam: 'Zen+Kaku+Gothic+New:wght@900' },
+  { id: 'mincho', label: '明朝（上品）', family: 'Shippori Mincho', weight: '800', googleParam: 'Shippori+Mincho:wght@800' },
+  { id: 'rounded', label: '丸ゴシック（やわらか）', family: 'M PLUS Rounded 1c', weight: '800', googleParam: 'M+PLUS+Rounded+1c:wght@800' },
+  { id: 'decor', label: '装飾セリフ', family: 'Kaisei Decol', weight: '700', googleParam: 'Kaisei+Decol:wght@700' },
+];
+function getFontPreset(id?: string): FontPreset {
+  return COLLAGE_FONT_PRESETS.find((f) => f.id === id) ?? COLLAGE_FONT_PRESETS[0];
+}
+
+const loadedFontLinkIds = new Set<string>();
+function ensureFontLink(preset: FontPreset) {
   if (typeof document === 'undefined') return;
-  const id = 'reel-font-link';
-  if (document.getElementById(id)) return;
+  const id = `collage-font-link-${preset.id}`;
+  if (loadedFontLinkIds.has(id) || document.getElementById(id)) return;
   const link = document.createElement('link');
   link.id = id;
   link.rel = 'stylesheet';
-  link.href =
-    'https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@900&display=swap';
+  link.href = `https://fonts.googleapis.com/css2?family=${preset.googleParam}&display=swap`;
   document.head.appendChild(link);
+  loadedFontLinkIds.add(id);
 }
 
 // 指定テキストに必要なフォント(サブセット)を読み込んでから使う
-async function loadFontFor(text: string) {
+async function loadFontFor(text: string, fontId?: string) {
   if (typeof document === 'undefined') return;
-  ensureFontLink();
+  const preset = getFontPreset(fontId);
+  ensureFontLink(preset);
   try {
-    await (document as any).fonts.load(`900 80px "${FONT_NAME}"`, text);
+    await (document as any).fonts.load(`${preset.weight} 80px "${preset.family}"`, text);
     await (document as any).fonts.ready;
   } catch (_e) {
     // 失敗時は標準フォントにフォールバック
@@ -93,15 +114,17 @@ function fitText(
   text: string,
   maxWidth: number,
   baseSize = 82,
-  minSize = 46
+  minSize = 46,
+  fontFamily: string = FONT_FAMILY,
+  weight: string = '900'
 ): { lines: string[]; fontSize: number; lineH: number } {
   for (let size = baseSize; size >= minSize; size -= 3) {
-    ctx.font = `900 ${size}px ${FONT_FAMILY}`;
+    ctx.font = `${weight} ${size}px ${fontFamily}`;
     if (ctx.measureText(text).width <= maxWidth) {
       return { lines: [text], fontSize: size, lineH: Math.round(size * 1.25) };
     }
   }
-  ctx.font = `900 ${minSize}px ${FONT_FAMILY}`;
+  ctx.font = `${weight} ${minSize}px ${fontFamily}`;
   return {
     lines: wrapText(ctx, text, maxWidth),
     fontSize: minSize,
@@ -581,8 +604,18 @@ export interface CollageStyleAssets {
   backgroundUrl?: string;
   /** 写真・装飾の上に全面（1080×1920）で重ねる縁取り画像。中央は透過している前提 */
   frameUrl?: string;
-  /** あしらい文字・キャプションの色。指定時はテーマの色より優先する */
+  /** あしらい文字の色。指定時はテーマの色より優先する */
   accentColor?: string;
+  /** あしらい文字のフォント（COLLAGE_FONT_PRESETSのid）。未指定はデフォルトのゴシック */
+  accentFont?: string;
+  /** あしらい文字の縦位置の微調整（px、+で下へ）。未指定は0 */
+  accentYOffset?: number;
+  /** キャプションの色。未指定はaccentColor、それも無ければ既定色 */
+  captionColor?: string;
+  /** キャプションのフォント（COLLAGE_FONT_PRESETSのid）。未指定はデフォルトのゴシック */
+  captionFont?: string;
+  /** キャプションの縦位置の微調整（px、+で下へ）。未指定は0 */
+  captionYOffset?: number;
 }
 
 /**
@@ -634,12 +667,13 @@ export async function composeCollage(
   }
 
   if (accentText.trim()) {
-    await loadFontFor(accentText);
+    const accentPreset = getFontPreset(styleAssets?.accentFont);
+    await loadFontFor(accentText, styleAssets?.accentFont);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'alphabetic';
     ctx.fillStyle = accentColor;
-    ctx.font = `900 96px ${FONT_FAMILY}`;
-    const textY = gridTop - 60;
+    ctx.font = `${accentPreset.weight} 96px "${accentPreset.family}"`;
+    const textY = gridTop - 60 + (styleAssets?.accentYOffset ?? 0);
     ctx.fillText(accentText.trim(), COLLAGE_W / 2, textY);
     // 文字の左右に短い装飾線を添えて、ただのテキストより「あしらい」らしく見せる
     const textW = ctx.measureText(accentText.trim()).width;
@@ -655,11 +689,12 @@ export async function composeCollage(
   }
 
   if (caption.trim()) {
-    await loadFontFor(caption);
+    const captionPreset = getFontPreset(styleAssets?.captionFont);
+    await loadFontFor(caption, styleAssets?.captionFont);
     ctx.textAlign = 'center';
-    ctx.fillStyle = styleAssets?.accentColor ?? '#2A2A2A';
-    const { lines, lineH } = fitText(ctx, caption.trim(), area.w, 44, 28);
-    let y = gridBottom + 70;
+    ctx.fillStyle = styleAssets?.captionColor ?? styleAssets?.accentColor ?? '#2A2A2A';
+    const { lines, lineH } = fitText(ctx, caption.trim(), area.w, 44, 28, `"${captionPreset.family}"`, captionPreset.weight);
+    let y = gridBottom + 70 + (styleAssets?.captionYOffset ?? 0);
     for (const line of lines) {
       ctx.fillText(line, COLLAGE_W / 2, y);
       y += lineH;

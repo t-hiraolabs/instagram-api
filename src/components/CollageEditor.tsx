@@ -76,7 +76,16 @@ export default function CollageEditor({ onDone }: Props) {
             key: s.id,
             name: s.name,
             theme: { name: s.name, background: '#000000', background2: '#000000', accent: s.accentColor ?? '#FFFFFF' },
-            styleAssets: { backgroundUrl: s.backgroundUrl, frameUrl: s.frameUrl, accentColor: s.accentColor },
+            styleAssets: {
+              backgroundUrl: s.backgroundUrl,
+              frameUrl: s.frameUrl,
+              accentColor: s.accentColor,
+              accentFont: s.accentFont,
+              accentYOffset: s.accentYOffset,
+              captionColor: s.captionColor,
+              captionFont: s.captionFont,
+              captionYOffset: s.captionYOffset,
+            },
             layoutId: s.layoutId,
           }))
         );

@@ -18,7 +18,7 @@ import {
 import {
   listAllCollageStyles, createCollageStyle, toggleCollageStyleActive, deleteCollageStyle, CollageStyle,
 } from '../services/collageStyleService';
-import { COLLAGE_LAYOUTS } from '../utils/collageCompositor';
+import { COLLAGE_LAYOUTS, COLLAGE_FONT_PRESETS } from '../utils/collageCompositor';
 
 type Tab = 'sheets' | 'assets' | 'styles';
 const PLAN_OPTIONS: Plan[] = ['free', 'pro', 'business'];
@@ -59,6 +59,11 @@ export default function AdminAssetsScreen({ navigation }: any) {
   const [styleName, setStyleName] = useState('');
   const [stylePlan, setStylePlan] = useState<Plan>('free');
   const [styleAccentColor, setStyleAccentColor] = useState('#FFFFFF');
+  const [styleAccentFont, setStyleAccentFont] = useState<string>(COLLAGE_FONT_PRESETS[0].id);
+  const [styleAccentYOffset, setStyleAccentYOffset] = useState('0');
+  const [styleCaptionColor, setStyleCaptionColor] = useState('#FFFFFF');
+  const [styleCaptionFont, setStyleCaptionFont] = useState<string>(COLLAGE_FONT_PRESETS[0].id);
+  const [styleCaptionYOffset, setStyleCaptionYOffset] = useState('0');
   const [styleBackgroundAssetId, setStyleBackgroundAssetId] = useState<string | null>(null);
   const [styleFrameAssetId, setStyleFrameAssetId] = useState<string | null>(null);
   const [styleLayoutId, setStyleLayoutId] = useState<string | null>(null);
@@ -240,6 +245,11 @@ export default function AdminAssetsScreen({ navigation }: any) {
     setStyleName('');
     setStylePlan('free');
     setStyleAccentColor('#FFFFFF');
+    setStyleAccentFont(COLLAGE_FONT_PRESETS[0].id);
+    setStyleAccentYOffset('0');
+    setStyleCaptionColor('#FFFFFF');
+    setStyleCaptionFont(COLLAGE_FONT_PRESETS[0].id);
+    setStyleCaptionYOffset('0');
     setStyleBackgroundAssetId(null);
     setStyleFrameAssetId(null);
     setStyleLayoutId(null);
@@ -258,6 +268,11 @@ export default function AdminAssetsScreen({ navigation }: any) {
         backgroundAssetId: styleBackgroundAssetId,
         frameAssetId: styleFrameAssetId ?? undefined,
         accentColor: styleAccentColor,
+        accentFont: styleAccentFont,
+        accentYOffset: Number(styleAccentYOffset) || 0,
+        captionColor: styleCaptionColor,
+        captionFont: styleCaptionFont,
+        captionYOffset: Number(styleCaptionYOffset) || 0,
         layoutId: styleLayoutId ?? undefined,
       });
       resetStyleForm();
@@ -462,7 +477,7 @@ export default function AdminAssetsScreen({ navigation }: any) {
                 ))}
               </View>
 
-              <Text style={styles.sectionLabel}>アクセントカラー（テキスト色・hex）</Text>
+              <Text style={styles.sectionLabel}>あしらい文字（年号など）の色・フォント・位置</Text>
               <View style={styles.colorRow}>
                 <View style={[styles.colorSwatch, { backgroundColor: styleAccentColor }]} />
                 <TextInput
@@ -475,6 +490,58 @@ export default function AdminAssetsScreen({ navigation }: any) {
                   autoCorrect={false}
                 />
               </View>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipRow}>
+                {COLLAGE_FONT_PRESETS.map((f) => (
+                  <TouchableOpacity
+                    key={f.id}
+                    style={[styles.chip, styleAccentFont === f.id && styles.chipActive]}
+                    onPress={() => setStyleAccentFont(f.id)}
+                  >
+                    <Text style={[styles.chipText, styleAccentFont === f.id && styles.chipTextActive]}>{f.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+              <TextInput
+                style={styles.input}
+                value={styleAccentYOffset}
+                onChangeText={setStyleAccentYOffset}
+                placeholder="縦位置の微調整（px・+で下へ、0で標準）"
+                placeholderTextColor={COLORS.textMuted}
+                keyboardType="numeric"
+              />
+
+              <Text style={styles.sectionLabel}>キャプション（下部の説明文）の色・フォント・位置</Text>
+              <View style={styles.colorRow}>
+                <View style={[styles.colorSwatch, { backgroundColor: styleCaptionColor }]} />
+                <TextInput
+                  style={[styles.input, { flex: 1 }]}
+                  value={styleCaptionColor}
+                  onChangeText={setStyleCaptionColor}
+                  placeholder="#FFFFFF"
+                  placeholderTextColor={COLORS.textMuted}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              </View>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipRow}>
+                {COLLAGE_FONT_PRESETS.map((f) => (
+                  <TouchableOpacity
+                    key={f.id}
+                    style={[styles.chip, styleCaptionFont === f.id && styles.chipActive]}
+                    onPress={() => setStyleCaptionFont(f.id)}
+                  >
+                    <Text style={[styles.chipText, styleCaptionFont === f.id && styles.chipTextActive]}>{f.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+              <TextInput
+                style={styles.input}
+                value={styleCaptionYOffset}
+                onChangeText={setStyleCaptionYOffset}
+                placeholder="縦位置の微調整（px・+で下へ、0で標準）"
+                placeholderTextColor={COLORS.textMuted}
+                keyboardType="numeric"
+              />
 
               <Text style={styles.sectionLabel}>背景画像</Text>
               <View style={styles.grid}>
