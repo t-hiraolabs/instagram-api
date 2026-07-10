@@ -35,6 +35,8 @@ export default function CollageEditor({ onDone }: Props) {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [showAllBuiltIn, setShowAllBuiltIn] = useState(false);
+  const [showLegacyStyles, setShowLegacyStyles] = useState(false);
   const [previews, setPreviews] = useState<Record<string, string | null>>({});
 
   const [selectedTile, setSelectedTile] = useState<GalleryTile | null>(null);
@@ -58,10 +60,19 @@ export default function CollageEditor({ onDone }: Props) {
     else Alert.alert(title, msg);
   };
 
-  // ギャラリーに並べる全タイルを組み立てる:
-  // 1) 組み込み13レイアウト×4色テーマ 2) layoutIdなしのDBスタイル×全レイアウト
-  // 3) layoutIdありのDB完成テンプレート（単体タイル）
-  const tiles: GalleryTile[] = useMemo(() => {
+  // 組み込みレイアウトの「おすすめ」: 13レイアウト×代表テーマ1色分（52件を最初から全部出さない）
+  const curatedBuiltInTiles: GalleryTile[] = useMemo(
+    () => COLLAGE_LAYOUTS.map((layout): GalleryTile => ({
+      key: `built::${layout.id}::${COLLAGE_THEMES[0].name}`,
+      name: `${layout.name}（${COLLAGE_THEMES[0].name}）`,
+      tags: [layout.name, COLLAGE_THEMES[0].name, `${layout.photoCount}枚`],
+      layout,
+      theme: COLLAGE_THEMES[0],
+    })),
+    []
+  );
+  // 組み込み13レイアウト×4色テーマの全52件（「すべて見る」または検索時のみ使う）
+  const allBuiltInTiles: GalleryTile[] = useMemo(() => {
     const list: GalleryTile[] = [];
     COLLAGE_LAYOUTS.forEach((layout) => {
       COLLAGE_THEMES.forEach((theme) => {
@@ -74,6 +85,14 @@ export default function CollageEditor({ onDone }: Props) {
         });
       });
     });
+    return list;
+  }, []);
+
+  // DBスタイルを「完成テンプレート」（layoutIdあり・単体タイル）と
+  // 「旧スタイル」（layoutIdなし×全レイアウトの掛け算）に分ける
+  const { fullTemplateTiles, legacyStyleTiles } = useMemo(() => {
+    const full: GalleryTile[] = [];
+    const legacy: GalleryTile[] = [];
     dbStyles.forEach((s) => {
       const styleAssets: CollageStyleAssets = {
         backgroundUrl: s.backgroundUrl,
@@ -84,6 +103,7 @@ export default function CollageEditor({ onDone }: Props) {
         captionColor: s.captionColor,
         captionFont: s.captionFont,
         captionYOffset: s.captionYOffset,
+        version: s.version,
         decorations: s.decorations,
         textLayers: s.textLayers,
       };
@@ -91,7 +111,7 @@ export default function CollageEditor({ onDone }: Props) {
       if (s.layoutId) {
         const layout = COLLAGE_LAYOUTS.find((l) => l.id === s.layoutId);
         if (!layout) return;
-        list.push({
+        full.push({
           key: `tmpl::${s.id}`,
           name: s.name,
           tags: s.tags,
@@ -102,7 +122,7 @@ export default function CollageEditor({ onDone }: Props) {
         });
       } else {
         COLLAGE_LAYOUTS.forEach((layout) => {
-          list.push({
+          legacy.push({
             key: `style::${s.id}::${layout.id}`,
             name: `${layout.name}（${s.name}）`,
             tags: [...s.tags, layout.name, `${layout.photoCount}枚`],
@@ -113,32 +133,36 @@ export default function CollageEditor({ onDone }: Props) {
         });
       }
     });
-    return list;
+    return { fullTemplateTiles: full, legacyStyleTiles: legacy };
   }, [dbStyles]);
 
+  // タグ候補は「完成テンプレート」と「組み込みレイアウト」から作る（旧スタイルの掛け算分は含めない）
   const tagCounts = useMemo(() => {
     const counts = new Map<string, number>();
-    tiles.forEach((t) => t.tags.forEach((tag) => counts.set(tag, (counts.get(tag) ?? 0) + 1)));
+    [...fullTemplateTiles, ...allBuiltInTiles].forEach((t) => t.tags.forEach((tag) => counts.set(tag, (counts.get(tag) ?? 0) + 1)));
     return counts;
-  }, [tiles]);
+  }, [fullTemplateTiles, allBuiltInTiles]);
   const topTags = useMemo(
     () => Array.from(tagCounts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 16).map(([tag]) => tag),
     [tagCounts]
   );
 
-  const filteredTiles = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    return tiles.filter((t) => {
-      if (activeTag && !t.tags.includes(activeTag)) return false;
-      if (!q) return true;
-      return t.name.toLowerCase().includes(q) || t.tags.some((tag) => tag.toLowerCase().includes(q));
-    });
-  }, [tiles, searchQuery, activeTag]);
+  const searching = searchQuery.trim().length > 0 || !!activeTag;
+  const matchesQuery = (t: GalleryTile, q: string): boolean => {
+    if (activeTag && !t.tags.includes(activeTag)) return false;
+    if (!q) return true;
+    return t.name.toLowerCase().includes(q) || t.tags.some((tag) => tag.toLowerCase().includes(q));
+  };
+  const q = searchQuery.trim().toLowerCase();
+
+  const visibleFullTemplates = fullTemplateTiles.filter((t) => matchesQuery(t, q));
+  const visibleBuiltIn = (searching ? allBuiltInTiles : (showAllBuiltIn ? allBuiltInTiles : curatedBuiltInTiles)).filter((t) => matchesQuery(t, q));
+  const visibleLegacy = (searching || showLegacyStyles) ? legacyStyleTiles.filter((t) => matchesQuery(t, q)) : [];
 
   // 表示中のタイルのプレビューを順次生成する（生成済み・生成中のものは再実行しない）
   useEffect(() => {
     let alive = true;
-    filteredTiles.forEach((t) => {
+    [...visibleFullTemplates, ...visibleBuiltIn, ...visibleLegacy].forEach((t) => {
       if (previews[t.key] !== undefined) return;
       setPreviews((p) => ({ ...p, [t.key]: null }));
       composeLayoutPreview(t.layout, t.theme, t.styleAssets)
@@ -155,7 +179,7 @@ export default function CollageEditor({ onDone }: Props) {
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filteredTiles]);
+  }, [visibleFullTemplates, visibleBuiltIn, visibleLegacy]);
 
   const selectTile = (tile: GalleryTile) => {
     setSelectedTile(tile);
@@ -224,7 +248,25 @@ export default function CollageEditor({ onDone }: Props) {
     </TouchableOpacity>
   );
 
+  const renderTileGrid = (tileList: GalleryTile[]) => (
+    <View style={styles.templateGrid}>
+      {tileList.map((t) => (
+        <TouchableOpacity key={t.key} style={styles.templateCard} onPress={() => selectTile(t)} activeOpacity={0.85}>
+          <View style={styles.templateThumbWrap}>
+            {previews[t.key] ? (
+              <Image source={{ uri: previews[t.key]! }} style={styles.templateThumb} resizeMode="cover" />
+            ) : (
+              <ActivityIndicator color={COLORS.textMuted} />
+            )}
+          </View>
+          <Text style={styles.templateName} numberOfLines={1}>{t.name}</Text>
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+
   if (step === 'gallery' || !selectedTile) {
+    const totalVisible = visibleFullTemplates.length + visibleBuiltIn.length + visibleLegacy.length;
     return (
       <View style={styles.wrap}>
         <Text style={styles.label}>テンプレートを選ぶ</Text>
@@ -236,21 +278,39 @@ export default function CollageEditor({ onDone }: Props) {
           placeholderTextColor={COLORS.textMuted}
         />
         <ScrollTagRow tags={topTags} activeTag={activeTag} onSelect={setActiveTag} />
-        <View style={styles.templateGrid}>
-          {filteredTiles.map((t) => (
-            <TouchableOpacity key={t.key} style={styles.templateCard} onPress={() => selectTile(t)} activeOpacity={0.85}>
-              <View style={styles.templateThumbWrap}>
-                {previews[t.key] ? (
-                  <Image source={{ uri: previews[t.key]! }} style={styles.templateThumb} resizeMode="cover" />
-                ) : (
-                  <ActivityIndicator color={COLORS.textMuted} />
-                )}
-              </View>
-              <Text style={styles.templateName} numberOfLines={1}>{t.name}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-        {filteredTiles.length === 0 && <Text style={styles.emptyText}>該当するテンプレートがありません</Text>}
+
+        {visibleFullTemplates.length > 0 && (
+          <>
+            <Text style={styles.sectionTitle}>テンプレート</Text>
+            {renderTileGrid(visibleFullTemplates)}
+          </>
+        )}
+
+        {visibleBuiltIn.length > 0 && (
+          <>
+            <Text style={styles.sectionTitle}>おすすめ</Text>
+            {renderTileGrid(visibleBuiltIn)}
+          </>
+        )}
+        {!searching && (
+          <TouchableOpacity style={styles.linkBtn} onPress={() => setShowAllBuiltIn((v) => !v)}>
+            <Text style={styles.linkBtnText}>{showAllBuiltIn ? '組み込みレイアウトを閉じる' : 'すべてのレイアウトを見る'}</Text>
+          </TouchableOpacity>
+        )}
+
+        {visibleLegacy.length > 0 && (
+          <>
+            <Text style={styles.sectionTitle}>旧スタイル</Text>
+            {renderTileGrid(visibleLegacy)}
+          </>
+        )}
+        {!searching && !showLegacyStyles && legacyStyleTiles.length > 0 && (
+          <TouchableOpacity style={styles.linkBtn} onPress={() => setShowLegacyStyles(true)}>
+            <Text style={styles.linkBtnText}>旧スタイルを表示（{legacyStyleTiles.length}件）</Text>
+          </TouchableOpacity>
+        )}
+
+        {totalVisible === 0 && <Text style={styles.emptyText}>該当するテンプレートがありません</Text>}
       </View>
     );
   }
@@ -360,6 +420,9 @@ const styles = StyleSheet.create({
   backRow: { flexDirection: 'row', alignItems: 'center', gap: 2, marginBottom: SPACING.sm },
   backText: { color: COLORS.textMuted, fontSize: 13, fontWeight: '600' },
   templateTitle: { color: COLORS.text, fontSize: 18, fontWeight: '800', marginBottom: SPACING.sm },
+  sectionTitle: { color: COLORS.text, fontSize: 15, fontWeight: '800', marginTop: SPACING.lg, marginBottom: SPACING.sm },
+  linkBtn: { alignSelf: 'flex-start', paddingVertical: SPACING.xs, marginTop: SPACING.xs },
+  linkBtnText: { color: COLORS.primary, fontWeight: '700', fontSize: 13 },
   tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs, marginTop: SPACING.sm, marginBottom: SPACING.sm },
   tagChip: {
     paddingVertical: 6, paddingHorizontal: SPACING.sm, borderRadius: RADIUS.full,

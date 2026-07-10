@@ -20,6 +20,7 @@ import {
 } from '../services/collageStyleService';
 import {
   COLLAGE_FONT_PRESETS, COLLAGE_LAYOUTS, COLLAGE_THEMES, composeLayoutPreview,
+  COLLAGE_W, COLLAGE_H, COLLAGE_Z_BANDS, COLLAGE_TEMPLATE_SCHEMA_VERSION,
   CollageStyleAssets, CollageDecoration, CollageTextLayer,
 } from '../utils/collageCompositor';
 
@@ -33,7 +34,7 @@ interface DecorationDraft {
   assetId: string | null;
   assetUrl: string | null;
   assetName: string;
-  x: string; y: string; w: string; h: string; rotate: string;
+  x: string; y: string; w: string; h: string; rotate: string; zIndex: string;
 }
 /** テキストレイヤー1件のフォーム入力 */
 interface TextLayerDraft {
@@ -45,10 +46,33 @@ interface TextLayerDraft {
   color: string;
   font: string;
   align: 'left' | 'center' | 'right';
+  lineHeight: string; letterSpacing: string; maxLines: string; rotation: string; zIndex: string;
 }
 
 let draftKeySeq = 0;
 const nextDraftKey = () => `draft-${draftKeySeq++}`;
+
+/** 10px単位の移動・端寄せ・複製ボタンの共通行 */
+function PositionToolRow({ onNudge, onAlign, onDuplicate }: {
+  onNudge: (dx: number, dy: number) => void;
+  onAlign: (where: 'centerX' | 'left' | 'right' | 'top' | 'bottom') => void;
+  onDuplicate: () => void;
+}) {
+  return (
+    <View style={styles.posToolRow}>
+      <TouchableOpacity style={styles.posBtn} onPress={() => onNudge(0, -10)}><Ionicons name="chevron-up" size={16} color={COLORS.text} /></TouchableOpacity>
+      <TouchableOpacity style={styles.posBtn} onPress={() => onNudge(0, 10)}><Ionicons name="chevron-down" size={16} color={COLORS.text} /></TouchableOpacity>
+      <TouchableOpacity style={styles.posBtn} onPress={() => onNudge(-10, 0)}><Ionicons name="chevron-back" size={16} color={COLORS.text} /></TouchableOpacity>
+      <TouchableOpacity style={styles.posBtn} onPress={() => onNudge(10, 0)}><Ionicons name="chevron-forward" size={16} color={COLORS.text} /></TouchableOpacity>
+      <TouchableOpacity style={styles.posTextBtn} onPress={() => onAlign('centerX')}><Text style={styles.posTextBtnText}>中央</Text></TouchableOpacity>
+      <TouchableOpacity style={styles.posTextBtn} onPress={() => onAlign('left')}><Text style={styles.posTextBtnText}>左端</Text></TouchableOpacity>
+      <TouchableOpacity style={styles.posTextBtn} onPress={() => onAlign('right')}><Text style={styles.posTextBtnText}>右端</Text></TouchableOpacity>
+      <TouchableOpacity style={styles.posTextBtn} onPress={() => onAlign('top')}><Text style={styles.posTextBtnText}>上端</Text></TouchableOpacity>
+      <TouchableOpacity style={styles.posTextBtn} onPress={() => onAlign('bottom')}><Text style={styles.posTextBtnText}>下端</Text></TouchableOpacity>
+      <TouchableOpacity style={styles.posTextBtn} onPress={onDuplicate}><Text style={styles.posTextBtnText}>複製</Text></TouchableOpacity>
+    </View>
+  );
+}
 
 const STATUS_LABEL: Record<AssetSheet['status'], string> = {
   uploaded: 'アップロード済み',
@@ -202,7 +226,8 @@ export default function AdminAssetsScreen({ navigation }: any) {
     listAllAssets({ categoryId: decorationCategoryId, isActive: true }).then(setDecorationAssets).catch(() => {});
   }, [isAdmin, tab, decorationCategoryId]);
 
-  // 完成テンプレートモード: フォームの内容が変わるたびにプレビューを再生成する
+  // 完成テンプレートモード: フォームの内容が変わるたびにプレビューを再生成する。
+  // キー入力のたびに毎回生成するとカクつくため、400ms操作が止まってから生成する（デバウンス）。
   useEffect(() => {
     if (!isAdmin || tab !== 'styles' || styleMode !== 'full' || !styleLayoutId) {
       setLivePreviewUrl(null);
@@ -212,32 +237,41 @@ export default function AdminAssetsScreen({ navigation }: any) {
     if (!layout) return;
     let alive = true;
     setLivePreviewLoading(true);
-    const bg = backgroundAssets.find((a) => a.id === styleBackgroundAssetId);
-    const fr = frameAssets.find((a) => a.id === styleFrameAssetId);
-    const styleAssets: CollageStyleAssets = {
-      backgroundUrl: bg?.storageUrl,
-      frameUrl: fr?.storageUrl,
-      accentColor: styleAccentColor,
-      decorations: styleDecorations
-        .filter((d) => d.assetUrl)
-        .map((d): CollageDecoration => ({
-          assetId: d.assetId ?? '',
-          url: d.assetUrl ?? undefined,
-          x: Number(d.x) || 0, y: Number(d.y) || 0, w: Number(d.w) || 100, h: Number(d.h) || 100,
-          rotate: Number(d.rotate) || 0,
+    const timer = setTimeout(() => {
+      const bg = backgroundAssets.find((a) => a.id === styleBackgroundAssetId);
+      const fr = frameAssets.find((a) => a.id === styleFrameAssetId);
+      const styleAssets: CollageStyleAssets = {
+        backgroundUrl: bg?.storageUrl,
+        frameUrl: fr?.storageUrl,
+        accentColor: styleAccentColor,
+        version: COLLAGE_TEMPLATE_SCHEMA_VERSION,
+        decorations: styleDecorations
+          .filter((d) => d.assetUrl)
+          .map((d): CollageDecoration => ({
+            assetId: d.assetId ?? '',
+            url: d.assetUrl ?? undefined,
+            x: Number(d.x) || 0, y: Number(d.y) || 0, w: Number(d.w) || 100, h: Number(d.h) || 100,
+            rotate: Number(d.rotate) || 0,
+            zIndex: Number(d.zIndex) || COLLAGE_Z_BANDS.decorationFrontPhotos,
+          })),
+        textLayers: styleTextLayers.map((t): CollageTextLayer => ({
+          id: t.id, label: t.label || undefined, sampleText: t.sampleText,
+          x: Number(t.x) || 0, y: Number(t.y) || 0, maxWidth: Number(t.maxWidth) || 900,
+          align: t.align, fontSize: Number(t.fontSize) || 40, font: t.font, color: t.color,
+          lineHeight: Number(t.lineHeight) || 1.25,
+          letterSpacing: Number(t.letterSpacing) || 0,
+          maxLines: Number(t.maxLines) || 3,
+          rotation: Number(t.rotation) || 0,
+          zIndex: Number(t.zIndex) || COLLAGE_Z_BANDS.text,
         })),
-      textLayers: styleTextLayers.map((t): CollageTextLayer => ({
-        id: t.id, label: t.label || undefined, sampleText: t.sampleText,
-        x: Number(t.x) || 0, y: Number(t.y) || 0, maxWidth: Number(t.maxWidth) || 900,
-        align: t.align, fontSize: Number(t.fontSize) || 40, font: t.font, color: t.color,
-      })),
-    };
-    const dummyTheme = { name: 'preview', background: '#F5F5F5', background2: '#E2E2E2', accent: styleAccentColor };
-    composeLayoutPreview(layout, dummyTheme, styleAssets)
-      .then((url) => { if (alive) setLivePreviewUrl(url); })
-      .catch(() => { if (alive) setLivePreviewUrl(null); })
-      .finally(() => { if (alive) setLivePreviewLoading(false); });
-    return () => { alive = false; };
+      };
+      const dummyTheme = { name: 'preview', background: '#F5F5F5', background2: '#E2E2E2', accent: styleAccentColor };
+      composeLayoutPreview(layout, dummyTheme, styleAssets)
+        .then((url) => { if (alive) setLivePreviewUrl(url); })
+        .catch(() => { if (alive) setLivePreviewUrl(null); })
+        .finally(() => { if (alive) setLivePreviewLoading(false); });
+    }, 400);
+    return () => { alive = false; clearTimeout(timer); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     isAdmin, tab, styleMode, styleLayoutId, styleBackgroundAssetId, styleFrameAssetId, styleAccentColor,
@@ -389,6 +423,7 @@ export default function AdminAssetsScreen({ navigation }: any) {
         assetUrl: d.url ?? null,
         assetName: '',
         x: String(d.x), y: String(d.y), w: String(d.w), h: String(d.h), rotate: String(d.rotate ?? 0),
+        zIndex: String(d.zIndex ?? COLLAGE_Z_BANDS.decorationFrontPhotos),
       }))
     );
     setStyleTextLayers(
@@ -401,6 +436,11 @@ export default function AdminAssetsScreen({ navigation }: any) {
         color: t.color ?? '#FFFFFF',
         font: t.font ?? COLLAGE_FONT_PRESETS[0].id,
         align: t.align ?? 'left',
+        lineHeight: String(t.lineHeight ?? 1.25),
+        letterSpacing: String(t.letterSpacing ?? 0),
+        maxLines: String(t.maxLines ?? 3),
+        rotation: String(t.rotation ?? 0),
+        zIndex: String(t.zIndex ?? COLLAGE_Z_BANDS.text),
       }))
     );
     setStyleFormVisible(true);
@@ -409,25 +449,79 @@ export default function AdminAssetsScreen({ navigation }: any) {
   const addDecoration = () => {
     setStyleDecorations((p) => [...p, {
       key: nextDraftKey(), assetId: null, assetUrl: null, assetName: '',
-      x: '100', y: '100', w: '150', h: '150', rotate: '0',
+      x: '100', y: '100', w: '150', h: '150', rotate: '0', zIndex: String(COLLAGE_Z_BANDS.decorationFrontPhotos),
     }]);
   };
   const updateDecoration = (key: string, patch: Partial<DecorationDraft>) => {
     setStyleDecorations((p) => p.map((d) => (d.key === key ? { ...d, ...patch } : d)));
   };
   const removeDecoration = (key: string) => setStyleDecorations((p) => p.filter((d) => d.key !== key));
+  const nudgeDecoration = (key: string, dx: number, dy: number) => {
+    setStyleDecorations((p) => p.map((d) => (d.key === key
+      ? { ...d, x: String((Number(d.x) || 0) + dx), y: String((Number(d.y) || 0) + dy) }
+      : d)));
+  };
+  const alignDecoration = (key: string, where: 'centerX' | 'left' | 'right' | 'top' | 'bottom') => {
+    setStyleDecorations((p) => p.map((d) => {
+      if (d.key !== key) return d;
+      const w = Number(d.w) || 0;
+      const h = Number(d.h) || 0;
+      if (where === 'centerX') return { ...d, x: String(Math.round((COLLAGE_W - w) / 2)) };
+      if (where === 'left') return { ...d, x: '0' };
+      if (where === 'right') return { ...d, x: String(COLLAGE_W - w) };
+      if (where === 'top') return { ...d, y: '0' };
+      return { ...d, y: String(COLLAGE_H - h) };
+    }));
+  };
+  const duplicateDecoration = (key: string) => {
+    setStyleDecorations((p) => {
+      const idx = p.findIndex((d) => d.key === key);
+      if (idx === -1) return p;
+      const src = p[idx];
+      const copy: DecorationDraft = { ...src, key: nextDraftKey(), x: String((Number(src.x) || 0) + 20), y: String((Number(src.y) || 0) + 20) };
+      return [...p.slice(0, idx + 1), copy, ...p.slice(idx + 1)];
+    });
+  };
 
   const addTextLayer = () => {
     setStyleTextLayers((p) => [...p, {
       key: nextDraftKey(), id: `text_${p.length + 1}`, label: '', sampleText: '',
       x: '100', y: '200', maxWidth: '600', fontSize: '40', color: '#FFFFFF',
       font: COLLAGE_FONT_PRESETS[0].id, align: 'left',
+      lineHeight: '1.25', letterSpacing: '0', maxLines: '3', rotation: '0', zIndex: String(COLLAGE_Z_BANDS.text),
     }]);
   };
   const updateTextLayer = (key: string, patch: Partial<TextLayerDraft>) => {
     setStyleTextLayers((p) => p.map((t) => (t.key === key ? { ...t, ...patch } : t)));
   };
   const removeTextLayer = (key: string) => setStyleTextLayers((p) => p.filter((t) => t.key !== key));
+  const nudgeTextLayer = (key: string, dx: number, dy: number) => {
+    setStyleTextLayers((p) => p.map((t) => (t.key === key
+      ? { ...t, x: String((Number(t.x) || 0) + dx), y: String((Number(t.y) || 0) + dy) }
+      : t)));
+  };
+  const alignTextLayer = (key: string, where: 'centerX' | 'left' | 'right' | 'top' | 'bottom') => {
+    setStyleTextLayers((p) => p.map((t) => {
+      if (t.key !== key) return t;
+      if (where === 'centerX') return { ...t, x: String(Math.round(COLLAGE_W / 2)) };
+      if (where === 'left') return { ...t, x: '0' };
+      if (where === 'right') return { ...t, x: String(COLLAGE_W) };
+      if (where === 'top') return { ...t, y: '80' };
+      return { ...t, y: String(COLLAGE_H - 80) };
+    }));
+  };
+  const duplicateTextLayer = (key: string) => {
+    setStyleTextLayers((p) => {
+      const idx = p.findIndex((t) => t.key === key);
+      if (idx === -1) return p;
+      const src = p[idx];
+      const copy: TextLayerDraft = {
+        ...src, key: nextDraftKey(), id: `${src.id}_copy${draftKeySeq}`,
+        y: String((Number(src.y) || 0) + 40),
+      };
+      return [...p.slice(0, idx + 1), copy, ...p.slice(idx + 1)];
+    });
+  };
 
   const parseTags = (raw: string): string[] =>
     raw.split(',').map((s) => s.trim()).filter(Boolean);
@@ -465,6 +559,7 @@ export default function AdminAssetsScreen({ navigation }: any) {
               assetId: d.assetId as string,
               x: Number(d.x) || 0, y: Number(d.y) || 0, w: Number(d.w) || 100, h: Number(d.h) || 100,
               rotate: Number(d.rotate) || 0,
+              zIndex: Number(d.zIndex) || COLLAGE_Z_BANDS.decorationFrontPhotos,
             }))
           : undefined,
         textLayers: styleMode === 'full'
@@ -472,6 +567,11 @@ export default function AdminAssetsScreen({ navigation }: any) {
               id: t.id, label: t.label || undefined, sampleText: t.sampleText,
               x: Number(t.x) || 0, y: Number(t.y) || 0, maxWidth: Number(t.maxWidth) || 900,
               align: t.align, fontSize: Number(t.fontSize) || 40, font: t.font, color: t.color,
+              lineHeight: Number(t.lineHeight) || 1.25,
+              letterSpacing: Number(t.letterSpacing) || 0,
+              maxLines: Number(t.maxLines) || 3,
+              rotation: Number(t.rotation) || 0,
+              zIndex: Number(t.zIndex) || COLLAGE_Z_BANDS.text,
             }))
           : undefined,
       };
@@ -892,6 +992,21 @@ export default function AdminAssetsScreen({ navigation }: any) {
                           <Ionicons name="trash-outline" size={20} color={COLORS.error} />
                         </TouchableOpacity>
                       </View>
+                      <View style={styles.numRow}>
+                        <Text style={styles.posTextBtnText}>重なり順</Text>
+                        <TextInput style={styles.numInput} value={d.zIndex} onChangeText={(v) => updateDecoration(d.key, { zIndex: v })} placeholder="zIndex" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
+                        <TouchableOpacity style={styles.posTextBtn} onPress={() => updateDecoration(d.key, { zIndex: String(COLLAGE_Z_BANDS.decorationBehindPhotos) })}>
+                          <Text style={styles.posTextBtnText}>写真背面(15)</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.posTextBtn} onPress={() => updateDecoration(d.key, { zIndex: String(COLLAGE_Z_BANDS.decorationFrontPhotos) })}>
+                          <Text style={styles.posTextBtnText}>写真前面(35)</Text>
+                        </TouchableOpacity>
+                      </View>
+                      <PositionToolRow
+                        onNudge={(dx, dy) => nudgeDecoration(d.key, dx, dy)}
+                        onAlign={(where) => alignDecoration(d.key, where)}
+                        onDuplicate={() => duplicateDecoration(d.key)}
+                      />
                     </View>
                   ))}
                   <TouchableOpacity style={styles.addRowBtn} onPress={addDecoration}>
@@ -931,6 +1046,25 @@ export default function AdminAssetsScreen({ navigation }: any) {
                           </TouchableOpacity>
                         ))}
                       </View>
+                      <View style={styles.numRow}>
+                        <Text style={styles.posTextBtnText}>行間</Text>
+                        <TextInput style={styles.numInput} value={t.lineHeight} onChangeText={(v) => updateTextLayer(t.key, { lineHeight: v })} placeholder="1.25" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
+                        <Text style={styles.posTextBtnText}>字間</Text>
+                        <TextInput style={styles.numInput} value={t.letterSpacing} onChangeText={(v) => updateTextLayer(t.key, { letterSpacing: v })} placeholder="0" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
+                        <Text style={styles.posTextBtnText}>最大行数</Text>
+                        <TextInput style={styles.numInput} value={t.maxLines} onChangeText={(v) => updateTextLayer(t.key, { maxLines: v })} placeholder="3" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
+                      </View>
+                      <View style={styles.numRow}>
+                        <Text style={styles.posTextBtnText}>回転°</Text>
+                        <TextInput style={styles.numInput} value={t.rotation} onChangeText={(v) => updateTextLayer(t.key, { rotation: v })} placeholder="0" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
+                        <Text style={styles.posTextBtnText}>重なり順</Text>
+                        <TextInput style={styles.numInput} value={t.zIndex} onChangeText={(v) => updateTextLayer(t.key, { zIndex: v })} placeholder="zIndex" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
+                      </View>
+                      <PositionToolRow
+                        onNudge={(dx, dy) => nudgeTextLayer(t.key, dx, dy)}
+                        onAlign={(where) => alignTextLayer(t.key, where)}
+                        onDuplicate={() => duplicateTextLayer(t.key)}
+                      />
                     </View>
                   ))}
                   <TouchableOpacity style={styles.addRowBtn} onPress={addTextLayer}>
@@ -1147,4 +1281,14 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surface, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', marginBottom: SPACING.sm,
   },
   livePreviewImg: { width: '100%', height: '100%' },
+  posToolRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
+  posBtn: {
+    width: 28, height: 28, borderRadius: RADIUS.sm, borderWidth: 1, borderColor: COLORS.border,
+    backgroundColor: COLORS.background, alignItems: 'center', justifyContent: 'center',
+  },
+  posTextBtn: {
+    paddingHorizontal: SPACING.xs, paddingVertical: 4, borderRadius: RADIUS.sm,
+    borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.background,
+  },
+  posTextBtnText: { color: COLORS.textSecondary, fontSize: 11, fontWeight: '600' },
 });
