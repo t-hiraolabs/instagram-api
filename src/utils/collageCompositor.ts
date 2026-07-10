@@ -6,7 +6,6 @@
 import {
   FLOWER_CORNER_TL,
   FLOWER_CORNER_TR,
-  FLOWER_FRAME_BORDER,
   FLOWER_CLUSTER,
 } from './collageAssets';
 
@@ -429,10 +428,6 @@ export const COLLAGE_LAYOUTS: CollageLayout[] = [
     photoCount: 1,
     drawPhotos: async (ctx, photos, area) => {
       await drawPhotoCard(ctx, photos[0], area.x, area.y, area.w, area.h);
-    },
-    drawDecoration: async (ctx, area) => {
-      const pad = 26;
-      await drawFlowerAsset(ctx, FLOWER_FRAME_BORDER, area.x - pad, area.y - pad, area.w + pad * 2, area.h + pad * 2);
     },
   },
   {
