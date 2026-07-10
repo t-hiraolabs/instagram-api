@@ -17,14 +17,21 @@ interface Props {
 
 type Step = 'count' | 'layout' | 'color' | 'edit';
 
-/** 「色を選ぶ」ステップの選択肢。組み込みの4色テーマと、DB登録の画像スタイルを同じ形にまとめたもの */
+/** 「色を選ぶ」ステップ（組み込みレイアウト用）の選択肢 */
 interface StyleOption {
   key: string;
   name: string;
   theme: CollageTheme;
   styleAssets?: CollageStyleAssets;
-  /** 特定のレイアウトに紐づくテンプレートスタイルの場合、そのレイアウトid */
-  layoutId?: string;
+}
+
+/** DB登録の画像ベーススタイル。すべてのレイアウトに適用できる独立したテンプレートとして扱う
+ *  （「色を選ぶ」ステップには出さず、レイアウト選択ステップに直接テンプレートとして並べる） */
+interface DbStyle {
+  key: string;
+  name: string;
+  theme: CollageTheme;
+  styleAssets?: CollageStyleAssets;
 }
 
 const PHOTO_COUNTS = Array.from(new Set(COLLAGE_LAYOUTS.map((t) => t.photoCount))).sort((a, b) => a - b);
@@ -35,9 +42,10 @@ export default function CollageEditor({ onDone }: Props) {
   const [layoutIdx, setLayoutIdx] = useState<number | null>(null);
   const [styleIdx, setStyleIdx] = useState<number | null>(null);
   /** レイアウトに紐づくテンプレートスタイルを選んだ場合、色選択をスキップしてこちらを使う */
-  const [directStyle, setDirectStyle] = useState<StyleOption | null>(null);
+  const [directStyle, setDirectStyle] = useState<DbStyle | null>(null);
   const [countPreviews, setCountPreviews] = useState<Record<number, string | null>>({});
   const [stylePreviews, setStylePreviews] = useState<(string | null)[]>([]);
+  // key: `${layout.id}::${style.key}`
   const [layoutTemplatePreviews, setLayoutTemplatePreviews] = useState<Record<string, string | null>>({});
   const [photos, setPhotos] = useState<(string | null)[]>([null, null, null, null]);
   const [accentText, setAccentText] = useState('2026');
@@ -45,22 +53,16 @@ export default function CollageEditor({ onDone }: Props) {
   const [finalPreview, setFinalPreview] = useState<string | null>(null);
   const [composing, setComposing] = useState(false);
   const [plan, setPlan] = useState<Plan>('free');
-  const [dbStyles, setDbStyles] = useState<StyleOption[]>([]);
+  const [dbStyles, setDbStyles] = useState<DbStyle[]>([]);
 
   const layout = layoutIdx != null ? COLLAGE_LAYOUTS[layoutIdx] : null;
   const layoutsInCount = count != null ? COLLAGE_LAYOUTS.filter((t) => t.photoCount === count) : [];
 
-  // レイアウトに紐づけて登録されたスタイルは、色選択ではなく「テンプレート」として
-  // レイアウト選択ステップに独立して表示する（選ぶと色選択をスキップする）
-  const layoutTemplateStyles = useMemo(() => dbStyles.filter((s) => s.layoutId), [dbStyles]);
-  const colorOnlyStyles = useMemo(() => dbStyles.filter((s) => !s.layoutId), [dbStyles]);
-
+  // 組み込みレイアウト用の「色を選ぶ」ステップの選択肢（DBの画像スタイルはここには含めない。
+  // すべてのレイアウトに適用できる独立したテンプレートとして、レイアウト選択ステップに出す）
   const styleOptions: StyleOption[] = useMemo(
-    () => [
-      ...COLLAGE_THEMES.map((theme): StyleOption => ({ key: theme.name, name: theme.name, theme })),
-      ...colorOnlyStyles,
-    ],
-    [colorOnlyStyles]
+    () => COLLAGE_THEMES.map((theme): StyleOption => ({ key: theme.name, name: theme.name, theme })),
+    []
   );
 
   useEffect(() => {
@@ -72,7 +74,7 @@ export default function CollageEditor({ onDone }: Props) {
     listCollageStyles(plan)
       .then((styles) => {
         setDbStyles(
-          styles.map((s): StyleOption => ({
+          styles.map((s): DbStyle => ({
             key: s.id,
             name: s.name,
             theme: { name: s.name, background: '#000000', background2: '#000000', accent: s.accentColor ?? '#FFFFFF' },
@@ -86,7 +88,6 @@ export default function CollageEditor({ onDone }: Props) {
               captionFont: s.captionFont,
               captionYOffset: s.captionYOffset,
             },
-            layoutId: s.layoutId,
           }))
         );
       })
@@ -136,28 +137,27 @@ export default function CollageEditor({ onDone }: Props) {
     };
   }, [layout, styleOptions]);
 
-  // 枚数を選んだら、その枚数のレイアウトに紐づくテンプレートスタイルのプレビューも作る
+  // 枚数を選んだら、その枚数の全レイアウト × 全DBスタイルの組み合わせでプレビューを作る
+  // （DBスタイルは特定のレイアウトに限定せず、すべてのレイアウトに適用できる）
   useEffect(() => {
-    if (count == null) return;
+    if (count == null || dbStyles.length === 0) return;
     let alive = true;
-    const relevant = layoutTemplateStyles.filter((s) => {
-      const l = COLLAGE_LAYOUTS.find((x) => x.id === s.layoutId);
-      return l?.photoCount === count;
-    });
-    relevant.forEach((s) => {
-      const l = COLLAGE_LAYOUTS.find((x) => x.id === s.layoutId);
-      if (!l) return;
-      composeLayoutPreview(l, s.theme, s.styleAssets)
-        .then((url) => {
-          if (!alive) return;
-          setLayoutTemplatePreviews((p) => ({ ...p, [s.key]: url }));
-        })
-        .catch(() => {});
+    const relevantLayouts = COLLAGE_LAYOUTS.filter((l) => l.photoCount === count);
+    relevantLayouts.forEach((l) => {
+      dbStyles.forEach((s) => {
+        const previewKey = `${l.id}::${s.key}`;
+        composeLayoutPreview(l, s.theme, s.styleAssets)
+          .then((url) => {
+            if (!alive) return;
+            setLayoutTemplatePreviews((p) => ({ ...p, [previewKey]: url }));
+          })
+          .catch(() => {});
+      });
     });
     return () => {
       alive = false;
     };
-  }, [count, layoutTemplateStyles]);
+  }, [count, dbStyles]);
 
   // レイアウトを選び直したら、使わなくなる枠の写真は捨てる
   useEffect(() => {
@@ -188,11 +188,9 @@ export default function CollageEditor({ onDone }: Props) {
     setStep('edit');
   };
 
-  // レイアウトに紐づくテンプレートスタイルを選んだ場合: レイアウトとスタイルを同時に確定し、
+  // DBの画像スタイルをテンプレートとして選んだ場合: レイアウトとスタイルを同時に確定し、
   // 色選択をスキップしてすぐ写真選びに進む
-  const selectLayoutTemplate = (style: StyleOption) => {
-    const idxInAll = COLLAGE_LAYOUTS.findIndex((l) => l.id === style.layoutId);
-    if (idxInAll === -1) return;
+  const selectLayoutTemplate = (idxInAll: number, style: DbStyle) => {
     setLayoutIdx(idxInAll);
     setStyleIdx(null);
     setDirectStyle(style);
@@ -273,10 +271,6 @@ export default function CollageEditor({ onDone }: Props) {
   }
 
   if (step === 'layout') {
-    const relevantTemplateStyles = layoutTemplateStyles.filter((s) => {
-      const l = COLLAGE_LAYOUTS.find((x) => x.id === s.layoutId);
-      return l?.photoCount === count;
-    });
     return (
       <View style={styles.wrap}>
         <BackRow label="枚数を選び直す" onPress={() => setStep('count')} />
@@ -297,18 +291,31 @@ export default function CollageEditor({ onDone }: Props) {
               </TouchableOpacity>
             );
           })}
-          {relevantTemplateStyles.map((s) => (
-            <TouchableOpacity key={s.key} style={styles.templateCard} onPress={() => selectLayoutTemplate(s)} activeOpacity={0.85}>
-              <View style={styles.templateThumbWrap}>
-                {layoutTemplatePreviews[s.key] ? (
-                  <Image source={{ uri: layoutTemplatePreviews[s.key]! }} style={styles.templateThumb} resizeMode="cover" />
-                ) : (
-                  <ActivityIndicator color={COLORS.textMuted} />
-                )}
-              </View>
-              <Text style={styles.templateName}>{s.name}</Text>
-            </TouchableOpacity>
-          ))}
+          {/* DBの画像スタイルは全レイアウトに適用できるので、この枚数の全レイアウトとの
+              組み合わせをそれぞれ独立したテンプレートとして並べる */}
+          {COLLAGE_LAYOUTS.map((t, i) => {
+            if (t.photoCount !== count) return null;
+            return dbStyles.map((s) => {
+              const previewKey = `${t.id}::${s.key}`;
+              return (
+                <TouchableOpacity
+                  key={previewKey}
+                  style={styles.templateCard}
+                  onPress={() => selectLayoutTemplate(i, s)}
+                  activeOpacity={0.85}
+                >
+                  <View style={styles.templateThumbWrap}>
+                    {layoutTemplatePreviews[previewKey] ? (
+                      <Image source={{ uri: layoutTemplatePreviews[previewKey]! }} style={styles.templateThumb} resizeMode="cover" />
+                    ) : (
+                      <ActivityIndicator color={COLORS.textMuted} />
+                    )}
+                  </View>
+                  <Text style={styles.templateName}>{t.name}（{s.name}）</Text>
+                </TouchableOpacity>
+              );
+            });
+          })}
         </View>
       </View>
     );
