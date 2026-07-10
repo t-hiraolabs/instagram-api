@@ -188,6 +188,7 @@ export default function AdminAssetsScreen({ navigation }: any) {
       try {
         await deleteAsset(a.id);
         setAssets((prev) => prev.filter((x) => x.id !== a.id));
+        if (editingAssetId === a.id) cancelEditAsset();
       } catch (e) {
         alertMsg('削除に失敗しました', 'エラー');
       }
@@ -428,6 +429,17 @@ export default function AdminAssetsScreen({ navigation }: any) {
                   <Text style={[styles.uploadBtnText, { color: COLORS.text }]}>キャンセル</Text>
                 </TouchableOpacity>
               </View>
+              <TouchableOpacity
+                style={[styles.uploadBtn, { backgroundColor: COLORS.error, marginTop: SPACING.sm }]}
+                onPress={() => {
+                  const a = assets.find((x) => x.id === editingAssetId);
+                  if (a) handleDelete(a);
+                }}
+                disabled={savingEdit}
+              >
+                <Ionicons name="trash-outline" size={18} color="#fff" />
+                <Text style={styles.uploadBtnText}>この素材を削除</Text>
+              </TouchableOpacity>
             </View>
           )}
 
