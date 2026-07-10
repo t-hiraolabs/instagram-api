@@ -3,7 +3,7 @@
 // 備えてこの画面自身もcheckIsAdmin()で二重にガードする。
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet, ScrollView, Image, Alert, Platform, Switch, ActivityIndicator,
+  View, Text, TouchableOpacity, StyleSheet, ScrollView, Image, Alert, Platform, Switch, ActivityIndicator, Modal,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -42,6 +42,7 @@ export default function AdminAssetsScreen({ navigation }: any) {
   const [filterCategoryId, setFilterCategoryId] = useState<string | null>(null);
   const [assets, setAssets] = useState<AdminAsset[]>([]);
   const [loading, setLoading] = useState(false);
+  const [detailAsset, setDetailAsset] = useState<AdminAsset | null>(null);
 
   const alertMsg = (msg: string, title = 'お知らせ') => {
     if (Platform.OS === 'web') window.alert(msg);
@@ -136,10 +137,12 @@ export default function AdminAssetsScreen({ navigation }: any) {
 
   const handleToggleActive = async (a: AdminAsset) => {
     setAssets((prev) => prev.map((x) => (x.id === a.id ? { ...x, isActive: !x.isActive } : x)));
+    setDetailAsset((prev) => (prev && prev.id === a.id ? { ...prev, isActive: !prev.isActive } : prev));
     try {
       await toggleAssetActive(a.id, !a.isActive);
     } catch (e) {
       setAssets((prev) => prev.map((x) => (x.id === a.id ? { ...x, isActive: a.isActive } : x)));
+      setDetailAsset((prev) => (prev && prev.id === a.id ? { ...prev, isActive: a.isActive } : prev));
       alertMsg('更新に失敗しました', 'エラー');
     }
   };
@@ -149,6 +152,7 @@ export default function AdminAssetsScreen({ navigation }: any) {
       try {
         await deleteAsset(a.id);
         setAssets((prev) => prev.filter((x) => x.id !== a.id));
+        setDetailAsset((prev) => (prev && prev.id === a.id ? null : prev));
       } catch (e) {
         alertMsg('削除に失敗しました', 'エラー');
       }
@@ -273,7 +277,12 @@ export default function AdminAssetsScreen({ navigation }: any) {
           {loading && <ActivityIndicator color={COLORS.primary} style={{ marginTop: SPACING.md }} />}
           <View style={styles.grid}>
             {assets.map((a) => (
-              <View key={a.id} style={[styles.assetCard, !a.isActive && { opacity: 0.5 }]}>
+              <TouchableOpacity
+                key={a.id}
+                style={[styles.assetCard, !a.isActive && { opacity: 0.5 }]}
+                onPress={() => setDetailAsset(a)}
+                activeOpacity={0.8}
+              >
                 <Image source={{ uri: a.thumbnailUrl ?? a.storageUrl }} style={styles.assetImg} resizeMode="contain" />
                 <Text style={styles.assetName} numberOfLines={1}>{a.name}</Text>
                 <View style={styles.assetActionsRow}>
@@ -282,12 +291,49 @@ export default function AdminAssetsScreen({ navigation }: any) {
                     <Ionicons name="trash-outline" size={20} color={COLORS.error} />
                   </TouchableOpacity>
                 </View>
-              </View>
+              </TouchableOpacity>
             ))}
           </View>
           {!loading && assets.length === 0 && <Text style={styles.emptyText}>該当する素材がありません</Text>}
         </ScrollView>
       )}
+
+      <Modal
+        visible={!!detailAsset}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setDetailAsset(null)}
+      >
+        <View style={styles.detailOverlay}>
+          <View style={styles.detailCard}>
+            {detailAsset && (
+              <>
+                <TouchableOpacity style={styles.detailCloseBtn} onPress={() => setDetailAsset(null)}>
+                  <Ionicons name="close" size={22} color={COLORS.textSecondary} />
+                </TouchableOpacity>
+                <Image
+                  source={{ uri: detailAsset.thumbnailUrl ?? detailAsset.storageUrl }}
+                  style={styles.detailImg}
+                  resizeMode="contain"
+                />
+                <Text style={styles.detailName}>{detailAsset.name}</Text>
+                <Text style={styles.detailMeta}>{categoryName(detailAsset.categoryId)} ・ {detailAsset.plan}</Text>
+                {detailAsset.width != null && detailAsset.height != null && (
+                  <Text style={styles.detailMeta}>{detailAsset.width} × {detailAsset.height}px</Text>
+                )}
+                <View style={styles.detailActiveRow}>
+                  <Text style={styles.detailActiveLabel}>公開する</Text>
+                  <Switch value={detailAsset.isActive} onValueChange={() => handleToggleActive(detailAsset)} />
+                </View>
+                <TouchableOpacity style={styles.detailDeleteBtn} onPress={() => handleDelete(detailAsset)} activeOpacity={0.85}>
+                  <Ionicons name="trash-outline" size={18} color="#fff" />
+                  <Text style={styles.detailDeleteBtnText}>この素材を削除</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -338,4 +384,23 @@ const styles = StyleSheet.create({
   assetImg: { width: 84, height: 84, marginBottom: SPACING.xs },
   assetName: { color: COLORS.text, fontSize: 11, fontWeight: '600', maxWidth: 90 },
   assetActionsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginTop: SPACING.xs },
+  detailOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: SPACING.lg },
+  detailCard: {
+    width: '100%', maxWidth: 360, backgroundColor: COLORS.surface, borderRadius: RADIUS.lg,
+    padding: SPACING.lg, alignItems: 'center',
+  },
+  detailCloseBtn: { position: 'absolute', top: SPACING.sm, right: SPACING.sm, padding: SPACING.xs, zIndex: 1 },
+  detailImg: { width: 160, height: 160, marginBottom: SPACING.md },
+  detailName: { color: COLORS.text, fontSize: 16, fontWeight: '800', textAlign: 'center' },
+  detailMeta: { color: COLORS.textMuted, fontSize: 12, marginTop: 2, textAlign: 'center' },
+  detailActiveRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%',
+    marginTop: SPACING.lg, paddingVertical: SPACING.sm, borderTopWidth: 1, borderTopColor: COLORS.border,
+  },
+  detailActiveLabel: { color: COLORS.text, fontSize: 14, fontWeight: '600' },
+  detailDeleteBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.xs,
+    backgroundColor: COLORS.error, borderRadius: RADIUS.md, paddingVertical: SPACING.md, width: '100%', marginTop: SPACING.md,
+  },
+  detailDeleteBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
 });
