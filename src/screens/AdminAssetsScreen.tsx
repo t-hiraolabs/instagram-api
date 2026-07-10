@@ -3,7 +3,7 @@
 // 備えてこの画面自身もcheckIsAdmin()で二重にガードする。
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet, ScrollView, Image, Alert, Platform, Switch, ActivityIndicator, TextInput,
+  View, Text, TouchableOpacity, StyleSheet, ScrollView, Image, Alert, Platform, Switch, ActivityIndicator, TextInput, Modal,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -318,6 +318,8 @@ export default function AdminAssetsScreen({ navigation }: any) {
     );
   }
 
+  const editingAsset = assets.find((x) => x.id === editingAssetId) ?? null;
+
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
@@ -405,61 +407,19 @@ export default function AdminAssetsScreen({ navigation }: any) {
             ))}
           </ScrollView>
 
-          {editingAssetId && (
-            <View style={styles.editPanel}>
-              <Text style={styles.sectionLabel}>素材名</Text>
-              <TextInput style={styles.input} value={editName} onChangeText={setEditName} placeholderTextColor={COLORS.textMuted} />
-              <Text style={styles.sectionLabel}>カテゴリ</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipRow}>
-                {categories.map((c) => (
-                  <TouchableOpacity
-                    key={c.id}
-                    style={[styles.chip, editCategoryId === c.id && styles.chipActive]}
-                    onPress={() => setEditCategoryId(c.id)}
-                  >
-                    <Text style={[styles.chipText, editCategoryId === c.id && styles.chipTextActive]}>{c.name}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-              <View style={{ flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.sm }}>
-                <TouchableOpacity style={[styles.uploadBtn, { flex: 1 }, savingEdit && { opacity: 0.6 }]} onPress={handleSaveEditAsset} disabled={savingEdit}>
-                  {savingEdit ? <ActivityIndicator color="#fff" /> : <Text style={styles.uploadBtnText}>保存</Text>}
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.uploadBtn, { flex: 1, backgroundColor: COLORS.surface }]} onPress={cancelEditAsset} disabled={savingEdit}>
-                  <Text style={[styles.uploadBtnText, { color: COLORS.text }]}>キャンセル</Text>
-                </TouchableOpacity>
-              </View>
-              <TouchableOpacity
-                style={[styles.uploadBtn, { backgroundColor: COLORS.error, marginTop: SPACING.sm }]}
-                onPress={() => {
-                  const a = assets.find((x) => x.id === editingAssetId);
-                  if (a) handleDelete(a);
-                }}
-                disabled={savingEdit}
-              >
-                <Ionicons name="trash-outline" size={18} color="#fff" />
-                <Text style={styles.uploadBtnText}>この素材を削除</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
           {loading && <ActivityIndicator color={COLORS.primary} style={{ marginTop: SPACING.md }} />}
           <View style={styles.grid}>
             {assets.map((a) => (
-              <View key={a.id} style={[styles.assetCard, !a.isActive && { opacity: 0.5 }]}>
+              <TouchableOpacity
+                key={a.id}
+                style={[styles.assetCard, !a.isActive && { opacity: 0.5 }]}
+                onPress={() => startEditAsset(a)}
+                activeOpacity={0.8}
+              >
                 <Image source={{ uri: a.thumbnailUrl ?? a.storageUrl }} style={styles.assetImg} resizeMode="contain" />
                 <Text style={styles.assetName} numberOfLines={1}>{a.name}</Text>
                 <Text style={styles.assetCategoryLabel} numberOfLines={1}>{categoryName(a.categoryId)}</Text>
-                <View style={styles.assetActionsRow}>
-                  <Switch value={a.isActive} onValueChange={() => handleToggleActive(a)} />
-                  <TouchableOpacity onPress={() => startEditAsset(a)}>
-                    <Ionicons name="create-outline" size={20} color={COLORS.textSecondary} />
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => handleDelete(a)}>
-                    <Ionicons name="trash-outline" size={20} color={COLORS.error} />
-                  </TouchableOpacity>
-                </View>
-              </View>
+              </TouchableOpacity>
             ))}
           </View>
           {!loading && assets.length === 0 && <Text style={styles.emptyText}>該当する素材がありません</Text>}
@@ -574,6 +534,72 @@ export default function AdminAssetsScreen({ navigation }: any) {
           {!loading && collageStyles.length === 0 && <Text style={styles.emptyText}>まだスタイルがありません</Text>}
         </ScrollView>
       )}
+
+      <Modal
+        visible={!!editingAsset}
+        animationType="slide"
+        transparent
+        onRequestClose={cancelEditAsset}
+      >
+        <View style={styles.detailOverlay}>
+          <View style={styles.detailCard}>
+            {editingAsset && (
+              <ScrollView contentContainerStyle={{ alignItems: 'center' }}>
+                <TouchableOpacity style={styles.detailCloseBtn} onPress={cancelEditAsset}>
+                  <Ionicons name="close" size={22} color={COLORS.textSecondary} />
+                </TouchableOpacity>
+                <Image
+                  source={{ uri: editingAsset.thumbnailUrl ?? editingAsset.storageUrl }}
+                  style={styles.detailImg}
+                  resizeMode="contain"
+                />
+
+                <View style={styles.detailActiveRow}>
+                  <Text style={styles.detailActiveLabel}>表示する</Text>
+                  <Switch value={editingAsset.isActive} onValueChange={() => handleToggleActive(editingAsset)} />
+                </View>
+
+                <Text style={styles.sectionLabel}>素材名</Text>
+                <TextInput
+                  style={[styles.input, { width: '100%' }]}
+                  value={editName}
+                  onChangeText={setEditName}
+                  placeholderTextColor={COLORS.textMuted}
+                />
+                <Text style={styles.sectionLabel}>カテゴリ</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipRow}>
+                  {categories.map((c) => (
+                    <TouchableOpacity
+                      key={c.id}
+                      style={[styles.chip, editCategoryId === c.id && styles.chipActive]}
+                      onPress={() => setEditCategoryId(c.id)}
+                    >
+                      <Text style={[styles.chipText, editCategoryId === c.id && styles.chipTextActive]}>{c.name}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+
+                <TouchableOpacity
+                  style={[styles.uploadBtn, { width: '100%' }, savingEdit && { opacity: 0.6 }]}
+                  onPress={handleSaveEditAsset}
+                  disabled={savingEdit}
+                >
+                  {savingEdit ? <ActivityIndicator color="#fff" /> : <Text style={styles.uploadBtnText}>保存</Text>}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.detailDeleteBtn}
+                  onPress={() => handleDelete(editingAsset)}
+                  disabled={savingEdit}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="trash-outline" size={18} color="#fff" />
+                  <Text style={styles.uploadBtnText}>この素材を削除</Text>
+                </TouchableOpacity>
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -625,11 +651,23 @@ const styles = StyleSheet.create({
   assetImgEmpty: { alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.background, borderRadius: RADIUS.sm },
   assetName: { color: COLORS.text, fontSize: 11, fontWeight: '600', maxWidth: 90 },
   assetCategoryLabel: { color: COLORS.textMuted, fontSize: 10, maxWidth: 90 },
-  assetActionsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginTop: SPACING.xs },
   assetCardSelected: { borderWidth: 2, borderColor: COLORS.primary },
-  editPanel: {
-    backgroundColor: COLORS.surface, borderRadius: RADIUS.md, padding: SPACING.md, marginBottom: SPACING.md,
-    borderWidth: 1, borderColor: COLORS.primary,
+  detailOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: SPACING.lg },
+  detailCard: {
+    width: '100%', maxWidth: 360, maxHeight: '85%', backgroundColor: COLORS.surface, borderRadius: RADIUS.lg,
+    padding: SPACING.lg,
+  },
+  detailCloseBtn: { position: 'absolute', top: 0, right: 0, padding: SPACING.xs, zIndex: 1 },
+  detailImg: { width: 160, height: 160, marginBottom: SPACING.sm },
+  detailActiveRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%',
+    paddingVertical: SPACING.sm, marginBottom: SPACING.xs,
+    borderTopWidth: 1, borderBottomWidth: 1, borderColor: COLORS.border,
+  },
+  detailActiveLabel: { color: COLORS.text, fontSize: 14, fontWeight: '600' },
+  detailDeleteBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.xs,
+    backgroundColor: COLORS.error, borderRadius: RADIUS.md, paddingVertical: SPACING.md, width: '100%', marginTop: SPACING.sm,
   },
   input: {
     borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.md,
