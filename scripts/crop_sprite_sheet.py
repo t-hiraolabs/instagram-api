@@ -6,12 +6,15 @@
 含まれない。
 
 使い方:
-  一件だけ処理:     python scripts/crop_sprite_sheet.py --sheet-id <asset_sheets.id>
-  常駐して自動処理:  python scripts/crop_sprite_sheet.py --watch
-                      （status='uploaded' のシートを一定間隔でポーリングして順次処理する。
-                       Ctrl+Cで停止するまで動き続けるので、tmux等のバックグラウンドで
-                       常時起動しておけば、管理画面からアップロードするだけで
-                       自動的に切り出し・登録まで完了するようになる）
+  一件だけ処理:       python scripts/crop_sprite_sheet.py --sheet-id <asset_sheets.id>
+  常駐して自動処理:    python scripts/crop_sprite_sheet.py --watch
+                        （status='uploaded' のシートを一定間隔でポーリングして順次処理する。
+                         Ctrl+Cで停止するまで動き続けるので、tmux等のバックグラウンドで
+                         常時起動しておけば、管理画面からアップロードするだけで
+                         自動的に切り出し・登録まで完了するようになる）
+  1回だけ処理して終了: python scripts/crop_sprite_sheet.py --once
+                        （status='uploaded' のシートを見つかった分だけ処理してすぐ終了する。
+                         GitHub Actions等のスケジュール実行から定期的に呼び出す用途）
 """
 from __future__ import annotations
 
@@ -235,17 +238,25 @@ def process_sheet(sheet: dict, name_prefix: str | None = None) -> None:
         raise
 
 
+def process_pending() -> None:
+    """status='uploaded' のシートを見つかった分だけ処理する（--watch/--once共通）。"""
+    pending = list_uploaded_sheets()
+    if not pending:
+        print("[pending] 未処理のシートはありません。")
+        return
+    for sheet in pending:
+        print(f"--- 新規シートを検出: {sheet['id']} ({sheet['original_filename']}) ---")
+        try:
+            process_sheet(sheet)
+        except Exception as e:  # noqa: BLE001 — 1件の失敗で全体は止めない
+            print(f"[エラー] {sheet['id']}: {e}")
+
+
 def watch(interval: int) -> None:
     print(f"[watch] status='uploaded' のシートを{interval}秒間隔で監視します。Ctrl+Cで停止します。")
     while True:
         try:
-            pending = list_uploaded_sheets()
-            for sheet in pending:
-                print(f"--- 新規シートを検出: {sheet['id']} ({sheet['original_filename']}) ---")
-                try:
-                    process_sheet(sheet)
-                except Exception as e:  # noqa: BLE001 — 1件の失敗で監視ループ自体は止めない
-                    print(f"[エラー] {sheet['id']}: {e}")
+            process_pending()
         except Exception as e:  # noqa: BLE001 — ポーリング自体の失敗（ネットワーク等）でも継続する
             print(f"[watch] ポーリング中にエラー: {e}")
         time.sleep(interval)
@@ -256,15 +267,20 @@ def main() -> None:
     parser.add_argument("--sheet-id", help="asset_sheets.id（1件だけ処理する場合）")
     parser.add_argument("--name-prefix", default=None, help="登録する素材名の接頭辞（省略時はカテゴリ名）")
     parser.add_argument("--watch", action="store_true", help="status='uploaded' のシートを自動でポーリング処理し続ける")
+    parser.add_argument("--once", action="store_true", help="status='uploaded' のシートを1回だけ処理して終了する（CIのスケジュール実行向け）")
     parser.add_argument("--interval", type=int, default=DEFAULT_WATCH_INTERVAL, help=f"--watch のポーリング間隔・秒（デフォルト{DEFAULT_WATCH_INTERVAL}秒）")
     args = parser.parse_args()
+
+    if args.once:
+        process_pending()
+        return
 
     if args.watch:
         watch(args.interval)
         return
 
     if not args.sheet_id:
-        parser.error("--sheet-id か --watch のどちらかを指定してください")
+        parser.error("--sheet-id か --watch か --once のいずれかを指定してください")
 
     sheet = get_sheet(args.sheet_id)
     process_sheet(sheet, name_prefix=args.name_prefix)
