@@ -4,7 +4,13 @@ import { supabase } from './supabaseClient';
 import { Plan } from '../utils/plans';
 import { allowedPlans, getAssetsByIds } from './storyStudioService';
 
-/** 装飾画像1件（矢印・キラキラ等）。座標はキャンバス1080×1920px基準 */
+/** 完成テンプレートのJSONスキーマバージョン。将来スキーマを変える時のためのもの */
+export const COLLAGE_TEMPLATE_SCHEMA_VERSION = 1;
+
+/**
+ * 装飾画像1件（矢印・キラキラ等）。座標はキャンバス1080×1920px基準。
+ * zIndexで描画順を決める（背景0-9 / 写真背面装飾10-19 / 写真20-29 / 写真前面装飾30-39 / フレーム40-49 / テキスト50-59が目安）。
+ */
 export interface CollageStyleDecoration {
   assetId: string;
   url?: string;
@@ -13,6 +19,7 @@ export interface CollageStyleDecoration {
   w: number;
   h: number;
   rotate?: number;
+  zIndex?: number;
 }
 
 /** テキストレイヤー1件。座標はキャンバス1080×1920px基準 */
@@ -27,6 +34,15 @@ export interface CollageStyleTextLayer {
   fontSize?: number;
   font?: string;
   color?: string;
+  /** 行間の倍率（例: 1.25）。未指定は1.25 */
+  lineHeight?: number;
+  /** 文字間隔（px）。未指定は0 */
+  letterSpacing?: number;
+  /** これを超える行は省略記号で切り詰める。未指定は3 */
+  maxLines?: number;
+  /** 回転（度）。未指定は0 */
+  rotation?: number;
+  zIndex?: number;
 }
 
 export interface CollageStyle {
@@ -47,6 +63,8 @@ export interface CollageStyle {
   captionYOffset?: number;
   /** 指定時は「完成テンプレート」。COLLAGE_LAYOUTSのidを参照し、単体タイルとしてギャラリーに並ぶ */
   layoutId?: string;
+  /** 完成テンプレートのJSONスキーマバージョン。layoutId指定時のみ意味を持つ */
+  version?: number;
   decorations?: CollageStyleDecoration[];
   textLayers?: CollageStyleTextLayer[];
   thumbnailUrl: string | null;
@@ -62,6 +80,7 @@ interface CollageStyleDefaults {
   captionFont?: string;
   captionYOffset?: number;
   layoutId?: string;
+  version?: number;
   decorations?: CollageStyleDecoration[];
   textLayers?: CollageStyleTextLayer[];
 }
@@ -94,6 +113,7 @@ async function rowsToStyles(rows: any[]): Promise<CollageStyle[]> {
       captionFont: d.captionFont,
       captionYOffset: d.captionYOffset,
       layoutId: d.layoutId,
+      version: d.version,
       decorations: d.decorations?.map((dec) => ({ ...dec, url: assetsById[dec.assetId]?.storageUrl })),
       textLayers: d.textLayers,
       thumbnailUrl: r.thumbnail_url,
@@ -137,8 +157,9 @@ interface CollageStyleParams {
   captionColor?: string;
   captionFont?: string;
   captionYOffset?: number;
+  /** 完成テンプレート（レイアウト・装飾・テキストを指定するもの）を作る場合は必須 */
   layoutId?: string;
-  decorations?: { assetId: string; x: number; y: number; w: number; h: number; rotate?: number }[];
+  decorations?: CollageStyleDecoration[];
   textLayers?: CollageStyleTextLayer[];
 }
 
@@ -153,6 +174,7 @@ function toLayerDefaults(params: CollageStyleParams): CollageStyleDefaults {
     captionFont: params.captionFont,
     captionYOffset: params.captionYOffset,
     layoutId: params.layoutId,
+    version: params.layoutId ? COLLAGE_TEMPLATE_SCHEMA_VERSION : undefined,
     decorations: params.decorations,
     textLayers: params.textLayers,
   };

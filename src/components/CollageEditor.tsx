@@ -84,6 +84,7 @@ export default function CollageEditor({ onDone }: Props) {
         captionColor: s.captionColor,
         captionFont: s.captionFont,
         captionYOffset: s.captionYOffset,
+        version: s.version,
         decorations: s.decorations,
         textLayers: s.textLayers,
       };

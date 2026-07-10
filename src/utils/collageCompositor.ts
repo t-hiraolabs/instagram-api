@@ -311,20 +311,58 @@ async function drawDecorationImage(ctx: CanvasRenderingContext2D, dec: CollageDe
   ctx.restore();
 }
 
-// テキストレイヤー1件を指定位置・フォント・色で描く（サンプル文言はtextOverridesで上書き可能）
+// テキストレイヤー1件を指定位置・フォント・色で描く（サンプル文言はtextOverridesで上書き可能）。
+// maxLines/maxWidthの範囲に収まるようフォントサイズを自動で縮め、それでも収まらない
+// 場合は省略記号で切り詰める（ユーザーが長い文言に書き換えてもレイアウトが大きく崩れないように）。
 async function drawTextLayer(ctx: CanvasRenderingContext2D, layer: CollageTextLayer, text: string) {
-  if (!text.trim()) return;
+  const trimmed = text.trim();
+  if (!trimmed) return;
   const preset = getFontPreset(layer.font);
-  await loadFontFor(text, layer.font);
-  ctx.textAlign = layer.align ?? 'left';
+  await loadFontFor(trimmed, layer.font);
+  const align = layer.align ?? 'left';
+  const baseSize = layer.fontSize ?? 40;
+  const minSize = Math.max(14, Math.round(baseSize * 0.5));
+  const lineHeightMul = layer.lineHeight ?? 1.25;
+  const maxLines = layer.maxLines ?? 3;
+
+  let fontSize = minSize;
+  let lines: string[] = [trimmed];
+  for (let size = baseSize; size >= minSize; size -= 2) {
+    ctx.font = `${preset.weight} ${size}px "${preset.family}"`;
+    const wrapped = wrapText(ctx, trimmed, layer.maxWidth);
+    fontSize = size;
+    lines = wrapped;
+    if (wrapped.length <= maxLines) break;
+  }
+  ctx.font = `${preset.weight} ${fontSize}px "${preset.family}"`;
+  if (lines.length > maxLines) {
+    lines = lines.slice(0, maxLines);
+    let truncated = lines[maxLines - 1];
+    while (truncated.length > 0 && ctx.measureText(truncated + '…').width > layer.maxWidth) {
+      truncated = truncated.slice(0, -1);
+    }
+    lines[maxLines - 1] = truncated + '…';
+  }
+
+  ctx.save();
+  ctx.textAlign = align;
   ctx.textBaseline = 'alphabetic';
   ctx.fillStyle = layer.color ?? '#FFFFFF';
-  const { lines, lineH } = fitText(ctx, text.trim(), layer.maxWidth, layer.fontSize ?? 40, 20, `"${preset.family}"`, preset.weight);
+  if ('letterSpacing' in ctx) {
+    (ctx as any).letterSpacing = layer.letterSpacing ? `${layer.letterSpacing}px` : '0px';
+  }
+  if (layer.rotation) {
+    ctx.translate(layer.x, layer.y);
+    ctx.rotate((layer.rotation * Math.PI) / 180);
+    ctx.translate(-layer.x, -layer.y);
+  }
+  const lineH = Math.round(fontSize * lineHeightMul);
   let y = layer.y;
   for (const line of lines) {
     ctx.fillText(line, layer.x, y);
     y += lineH;
   }
+  ctx.restore();
 }
 
 function roundRectPath(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
@@ -627,6 +665,23 @@ export const COLLAGE_LAYOUTS: CollageLayout[] = [
   },
 ];
 
+/** 完成テンプレートのJSONスキーマバージョン */
+export const COLLAGE_TEMPLATE_SCHEMA_VERSION = 1;
+
+/**
+ * 完成テンプレートのレイヤー描画順（zIndex）の目安バンド。装飾は10番台・30番台のどちらかを
+ * 目安に選ぶことで「写真の背面か前面か」を表現する。実際の描画は全レイヤーをzIndexで
+ * 昇順ソートしてから行うため、この範囲外の値を入れても動作はするが、目安として提示する。
+ */
+export const COLLAGE_Z_BANDS = {
+  background: 5,
+  decorationBehindPhotos: 15,
+  photos: 25,
+  decorationFrontPhotos: 35,
+  frame: 45,
+  text: 55,
+} as const;
+
 /** 装飾画像1件（矢印・キラキラ等）。座標はキャンバス1080×1920px基準 */
 export interface CollageDecoration {
   assetId: string;
@@ -636,6 +691,8 @@ export interface CollageDecoration {
   w: number;
   h: number;
   rotate?: number;
+  /** 描画順（昇順）。写真背面なら10番台、写真前面なら30番台が目安。未指定は写真前面(35)扱い */
+  zIndex?: number;
 }
 
 /** テキストレイヤー1件。座標はキャンバス1080×1920px基準。完成テンプレート用 */
@@ -650,12 +707,23 @@ export interface CollageTextLayer {
   fontSize?: number;
   font?: string;
   color?: string;
+  /** 行間の倍率（例: 1.25）。未指定は1.25 */
+  lineHeight?: number;
+  /** 文字間隔（px）。未指定は0 */
+  letterSpacing?: number;
+  /** これを超える行は省略記号で切り詰める。未指定は3 */
+  maxLines?: number;
+  /** 回転（度）。未指定は0 */
+  rotation?: number;
+  /** 描画順（昇順）。50番台が目安。未指定はテキスト帯(55)扱い */
+  zIndex?: number;
 }
 
 /**
  * 画像ベースの「スタイル」。指定すると背景・フレームの質感画像を使い、
  * テーマ（色）のグラデーション背景の代わりになる（シネマ風・レトロ風など）。
- * decorations/textLayersを指定すると、レイアウトと組み合わせた「完成テンプレート」になる。
+ * version===1の場合は、レイアウトと組み合わせた「完成テンプレート」として、
+ * decorations/textLayersをzIndexの昇順で描画する専用パイプラインを使う。
  */
 export interface CollageStyleAssets {
   /** 全面に敷く背景テクスチャ画像（cover-fit）。指定時はテーマのグラデーションを使わない */
@@ -674,9 +742,11 @@ export interface CollageStyleAssets {
   captionFont?: string;
   /** キャプションの縦位置の微調整（px、+で下へ）。未指定は0 */
   captionYOffset?: number;
-  /** 写真・レイアウト装飾の上、フレームの下に重ねる装飾画像（矢印・キラキラ等） */
+  /** 完成テンプレートのJSONスキーマバージョン。1の場合、zIndexベースの描画パイプラインを使う */
+  version?: number;
+  /** zIndexで描画順を決める装飾画像（矢印・キラキラ等） */
   decorations?: CollageDecoration[];
-  /** 指定時は、固定位置のあしらい文字/キャプションの代わりにこちらを描画する */
+  /** 指定時は、固定位置のあしらい文字/キャプションの代わりにこちらをzIndex順に描画する */
   textLayers?: CollageTextLayer[];
 }
 
@@ -721,60 +791,88 @@ export async function composeCollage(
   const area: CollageArea = { x: margin, y: gridTop, w: COLLAGE_W - margin * 2, h: gridBottom - gridTop };
   const accentColor = styleAssets?.accentColor ?? theme.accent;
 
-  await layout.drawPhotos(ctx, photos, area);
-  await layout.drawDecoration?.(ctx, area, accentColor);
-
-  if (styleAssets?.decorations?.length) {
-    for (const dec of styleAssets.decorations) {
-      await drawDecorationImage(ctx, dec);
-    }
-  }
-
-  if (styleAssets?.frameUrl) {
-    const frame = await loadImage(styleAssets.frameUrl);
-    ctx.drawImage(frame, 0, 0, COLLAGE_W, COLLAGE_H);
-  }
-
-  if (styleAssets?.textLayers?.length) {
-    // 完成テンプレート: レイヤーごとの位置・フォント・色でテキストを描く
-    // （固定位置のあしらい文字/キャプションは使わない）
-    for (const layer of styleAssets.textLayers) {
-      const text = textOverrides?.[layer.id] ?? layer.sampleText;
-      await drawTextLayer(ctx, layer, text);
+  if (styleAssets?.version === COLLAGE_TEMPLATE_SCHEMA_VERSION) {
+    // 完成テンプレート: 写真・レイアウト装飾・カスタム装飾・フレーム・テキストを
+    // 全部まとめてzIndex昇順で描画する（0-9背景/10-19写真背面装飾/20-29写真/
+    // 30-39写真前面装飾/40-49フレーム/50-59テキストが目安。背景は既に描画済み）
+    type Layer = { zIndex: number; run: () => Promise<void> | void };
+    const layers: Layer[] = [
+      { zIndex: COLLAGE_Z_BANDS.photos, run: () => layout.drawPhotos(ctx, photos, area) },
+      { zIndex: COLLAGE_Z_BANDS.photos + 1, run: () => layout.drawDecoration?.(ctx, area, accentColor) },
+      ...(styleAssets?.decorations ?? []).map((dec): Layer => ({
+        zIndex: dec.zIndex ?? COLLAGE_Z_BANDS.decorationFrontPhotos,
+        run: () => drawDecorationImage(ctx, dec),
+      })),
+      ...(styleAssets?.frameUrl
+        ? [{ zIndex: COLLAGE_Z_BANDS.frame, run: async () => {
+            const frame = await loadImage(styleAssets.frameUrl!);
+            ctx.drawImage(frame, 0, 0, COLLAGE_W, COLLAGE_H);
+          } }]
+        : []),
+      ...(styleAssets?.textLayers ?? []).map((layer): Layer => ({
+        zIndex: layer.zIndex ?? COLLAGE_Z_BANDS.text,
+        run: () => drawTextLayer(ctx, layer, textOverrides?.[layer.id] ?? layer.sampleText),
+      })),
+    ];
+    layers.sort((a, b) => a.zIndex - b.zIndex);
+    for (const layer of layers) {
+      await layer.run();
     }
   } else {
-    if (accentText.trim()) {
-      const accentPreset = getFontPreset(styleAssets?.accentFont);
-      await loadFontFor(accentText, styleAssets?.accentFont);
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'alphabetic';
-      ctx.fillStyle = accentColor;
-      ctx.font = `${accentPreset.weight} 96px "${accentPreset.family}"`;
-      const textY = gridTop - 60 + (styleAssets?.accentYOffset ?? 0);
-      ctx.fillText(accentText.trim(), COLLAGE_W / 2, textY);
-      // 文字の左右に短い装飾線を添えて、ただのテキストより「あしらい」らしく見せる
-      const textW = ctx.measureText(accentText.trim()).width;
-      const lineY = textY - 30;
-      ctx.strokeStyle = accentColor;
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(COLLAGE_W / 2 - textW / 2 - 60, lineY);
-      ctx.lineTo(COLLAGE_W / 2 - textW / 2 - 16, lineY);
-      ctx.moveTo(COLLAGE_W / 2 + textW / 2 + 16, lineY);
-      ctx.lineTo(COLLAGE_W / 2 + textW / 2 + 60, lineY);
-      ctx.stroke();
+    await layout.drawPhotos(ctx, photos, area);
+    await layout.drawDecoration?.(ctx, area, accentColor);
+
+    if (styleAssets?.decorations?.length) {
+      for (const dec of styleAssets.decorations) {
+        await drawDecorationImage(ctx, dec);
+      }
     }
 
-    if (caption.trim()) {
-      const captionPreset = getFontPreset(styleAssets?.captionFont);
-      await loadFontFor(caption, styleAssets?.captionFont);
-      ctx.textAlign = 'center';
-      ctx.fillStyle = styleAssets?.captionColor ?? styleAssets?.accentColor ?? '#2A2A2A';
-      const { lines, lineH } = fitText(ctx, caption.trim(), area.w, 44, 28, `"${captionPreset.family}"`, captionPreset.weight);
-      let y = gridBottom + 70 + (styleAssets?.captionYOffset ?? 0);
-      for (const line of lines) {
-        ctx.fillText(line, COLLAGE_W / 2, y);
-        y += lineH;
+    if (styleAssets?.frameUrl) {
+      const frame = await loadImage(styleAssets.frameUrl);
+      ctx.drawImage(frame, 0, 0, COLLAGE_W, COLLAGE_H);
+    }
+
+    if (styleAssets?.textLayers?.length) {
+      // レガシー（version未指定）: レイヤーごとの位置・フォント・色でテキストを描く
+      for (const layer of styleAssets.textLayers) {
+        const text = textOverrides?.[layer.id] ?? layer.sampleText;
+        await drawTextLayer(ctx, layer, text);
+      }
+    } else {
+      if (accentText.trim()) {
+        const accentPreset = getFontPreset(styleAssets?.accentFont);
+        await loadFontFor(accentText, styleAssets?.accentFont);
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'alphabetic';
+        ctx.fillStyle = accentColor;
+        ctx.font = `${accentPreset.weight} 96px "${accentPreset.family}"`;
+        const textY = gridTop - 60 + (styleAssets?.accentYOffset ?? 0);
+        ctx.fillText(accentText.trim(), COLLAGE_W / 2, textY);
+        // 文字の左右に短い装飾線を添えて、ただのテキストより「あしらい」らしく見せる
+        const textW = ctx.measureText(accentText.trim()).width;
+        const lineY = textY - 30;
+        ctx.strokeStyle = accentColor;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(COLLAGE_W / 2 - textW / 2 - 60, lineY);
+        ctx.lineTo(COLLAGE_W / 2 - textW / 2 - 16, lineY);
+        ctx.moveTo(COLLAGE_W / 2 + textW / 2 + 16, lineY);
+        ctx.lineTo(COLLAGE_W / 2 + textW / 2 + 60, lineY);
+        ctx.stroke();
+      }
+
+      if (caption.trim()) {
+        const captionPreset = getFontPreset(styleAssets?.captionFont);
+        await loadFontFor(caption, styleAssets?.captionFont);
+        ctx.textAlign = 'center';
+        ctx.fillStyle = styleAssets?.captionColor ?? styleAssets?.accentColor ?? '#2A2A2A';
+        const { lines, lineH } = fitText(ctx, caption.trim(), area.w, 44, 28, `"${captionPreset.family}"`, captionPreset.weight);
+        let y = gridBottom + 70 + (styleAssets?.captionYOffset ?? 0);
+        for (const line of lines) {
+          ctx.fillText(line, COLLAGE_W / 2, y);
+          y += lineH;
+        }
       }
     }
   }
