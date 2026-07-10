@@ -56,6 +56,24 @@ python crop_sprite_sheet.py --watch
 常時起動しておけば、管理画面からアップロードするだけで済むようになります。
 Ctrl+Cで停止するまで動き続け、1件の処理に失敗しても監視自体は継続します。
 
+### 完全自動化（GitHub Actionsで定期実行・推奨）
+
+自分のPC/サーバーで何かを常時起動しておく必要がない方法です。
+`.github/workflows/crop-sprite-sheets.yml` が10分おきに
+`python crop_sprite_sheet.py --once`（未処理のシートを1回だけ処理してすぐ終了する
+モード）を実行します。管理画面からアップロードするだけで、あとは何もしなくても
+数分以内に自動的に切り出し・登録されます。
+
+**セットアップ**（初回のみ）: GitHubリポジトリの
+Settings > Secrets and variables > Actions で、以下の2つをRepository secretsとして登録してください。
+
+- `SUPABASE_URL`: `https://<project-ref>.supabase.co`
+- `SUPABASE_SERVICE_ROLE_KEY`: Supabase Dashboard > Project Settings > API > `service_role` secret
+
+登録後は何もしなくても10分おきに自動実行されます。すぐに反映させたい場合は、
+GitHubの「Actions」タブ → 「Crop pending sprite sheets」→「Run workflow」で
+手動実行もできます。実行結果（成功/失敗、ログ）もActionsタブから確認できます。
+
 ## 素材シートの作成ガイドライン
 
 - 背景は完全透明（アルファ0）にする
