@@ -1,17 +1,14 @@
 name: Crop pending sprite sheets
 
-# 管理画面からアップロードされた素材シート（asset_sheets.status='uploaded'）を
-# scripts/crop_sprite_sheet.py --once で定期的に処理する。
-# 手動で今すぐ実行したい場合は Actions タブから "Run workflow" でも起動できる。
-
 on:
   schedule:
-    - cron: '*/10 * * * *'
+    - cron: '7-59/10 * * * *'
   workflow_dispatch: {}
 
 jobs:
   crop:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
 
