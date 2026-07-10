@@ -108,7 +108,6 @@ export default function AdminAssetsScreen({ navigation }: any) {
   const [collageStyles, setCollageStyles] = useState<CollageStyle[]>([]);
   const [styleFormVisible, setStyleFormVisible] = useState(false);
   const [editingStyleId, setEditingStyleId] = useState<string | null>(null);
-  const [styleMode, setStyleMode] = useState<'simple' | 'full'>('simple');
   const [styleName, setStyleName] = useState('');
   const [stylePlan, setStylePlan] = useState<Plan>('free');
   const [styleTags, setStyleTags] = useState('');
@@ -208,7 +207,7 @@ export default function AdminAssetsScreen({ navigation }: any) {
 
   // レイアウト選択用のサムネイルを1回だけ生成する
   useEffect(() => {
-    if (!isAdmin || tab !== 'styles' || styleMode !== 'full') return;
+    if (!isAdmin || tab !== 'styles') return;
     let alive = true;
     COLLAGE_LAYOUTS.forEach((l) => {
       if (layoutPreviews[l.id] !== undefined) return;
@@ -219,17 +218,17 @@ export default function AdminAssetsScreen({ navigation }: any) {
     });
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAdmin, tab, styleMode]);
+  }, [isAdmin, tab]);
 
   useEffect(() => {
     if (!isAdmin || tab !== 'styles' || !decorationCategoryId) return;
     listAllAssets({ categoryId: decorationCategoryId, isActive: true }).then(setDecorationAssets).catch(() => {});
   }, [isAdmin, tab, decorationCategoryId]);
 
-  // 完成テンプレートモード: フォームの内容が変わるたびにプレビューを再生成する。
+  // フォームの内容が変わるたびにプレビューを再生成する。
   // キー入力のたびに毎回生成するとカクつくため、400ms操作が止まってから生成する（デバウンス）。
   useEffect(() => {
-    if (!isAdmin || tab !== 'styles' || styleMode !== 'full' || !styleLayoutId) {
+    if (!isAdmin || tab !== 'styles' || !styleLayoutId) {
       setLivePreviewUrl(null);
       return;
     }
@@ -274,7 +273,7 @@ export default function AdminAssetsScreen({ navigation }: any) {
     return () => { alive = false; clearTimeout(timer); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    isAdmin, tab, styleMode, styleLayoutId, styleBackgroundAssetId, styleFrameAssetId, styleAccentColor,
+    isAdmin, tab, styleLayoutId, styleBackgroundAssetId, styleFrameAssetId, styleAccentColor,
     backgroundAssets, frameAssets, styleDecorations, styleTextLayers,
   ]);
 
@@ -384,7 +383,6 @@ export default function AdminAssetsScreen({ navigation }: any) {
 
   const resetStyleForm = () => {
     setEditingStyleId(null);
-    setStyleMode('simple');
     setStyleName('');
     setStylePlan('free');
     setStyleTags('');
@@ -403,7 +401,6 @@ export default function AdminAssetsScreen({ navigation }: any) {
 
   const startEditStyle = (s: CollageStyle) => {
     setEditingStyleId(s.id);
-    setStyleMode(s.layoutId ? 'full' : 'simple');
     setStyleName(s.name);
     setStylePlan(s.plan);
     setStyleTags(s.tags.join(', '));
@@ -531,11 +528,7 @@ export default function AdminAssetsScreen({ navigation }: any) {
       alertMsg('スタイル名を入力してください');
       return;
     }
-    if (styleMode === 'simple' && !styleBackgroundAssetId) {
-      alertMsg('背景画像を選んでください');
-      return;
-    }
-    if (styleMode === 'full' && !styleLayoutId) {
+    if (!styleLayoutId) {
       alertMsg('レイアウトを選んでください');
       return;
     }
@@ -553,27 +546,23 @@ export default function AdminAssetsScreen({ navigation }: any) {
         captionColor: styleCaptionColor,
         captionFont: styleCaptionFont,
         captionYOffset: Number(styleCaptionYOffset) || 0,
-        layoutId: styleMode === 'full' ? (styleLayoutId ?? undefined) : undefined,
-        decorations: styleMode === 'full'
-          ? styleDecorations.filter((d) => d.assetId).map((d) => ({
-              assetId: d.assetId as string,
-              x: Number(d.x) || 0, y: Number(d.y) || 0, w: Number(d.w) || 100, h: Number(d.h) || 100,
-              rotate: Number(d.rotate) || 0,
-              zIndex: Number(d.zIndex) || COLLAGE_Z_BANDS.decorationFrontPhotos,
-            }))
-          : undefined,
-        textLayers: styleMode === 'full'
-          ? styleTextLayers.map((t) => ({
-              id: t.id, label: t.label || undefined, sampleText: t.sampleText,
-              x: Number(t.x) || 0, y: Number(t.y) || 0, maxWidth: Number(t.maxWidth) || 900,
-              align: t.align, fontSize: Number(t.fontSize) || 40, font: t.font, color: t.color,
-              lineHeight: Number(t.lineHeight) || 1.25,
-              letterSpacing: Number(t.letterSpacing) || 0,
-              maxLines: Number(t.maxLines) || 3,
-              rotation: Number(t.rotation) || 0,
-              zIndex: Number(t.zIndex) || COLLAGE_Z_BANDS.text,
-            }))
-          : undefined,
+        layoutId: styleLayoutId,
+        decorations: styleDecorations.filter((d) => d.assetId).map((d) => ({
+          assetId: d.assetId as string,
+          x: Number(d.x) || 0, y: Number(d.y) || 0, w: Number(d.w) || 100, h: Number(d.h) || 100,
+          rotate: Number(d.rotate) || 0,
+          zIndex: Number(d.zIndex) || COLLAGE_Z_BANDS.decorationFrontPhotos,
+        })),
+        textLayers: styleTextLayers.map((t) => ({
+          id: t.id, label: t.label || undefined, sampleText: t.sampleText,
+          x: Number(t.x) || 0, y: Number(t.y) || 0, maxWidth: Number(t.maxWidth) || 900,
+          align: t.align, fontSize: Number(t.fontSize) || 40, font: t.font, color: t.color,
+          lineHeight: Number(t.lineHeight) || 1.25,
+          letterSpacing: Number(t.letterSpacing) || 0,
+          maxLines: Number(t.maxLines) || 3,
+          rotation: Number(t.rotation) || 0,
+          zIndex: Number(t.zIndex) || COLLAGE_Z_BANDS.text,
+        })),
       };
       if (editingStyleId) {
         await updateCollageStyle(editingStyleId, params);
@@ -762,22 +751,6 @@ export default function AdminAssetsScreen({ navigation }: any) {
             <View style={{ marginTop: SPACING.md }}>
               {editingStyleId && <Text style={styles.sheetMeta}>「{styleName}」を編集中</Text>}
 
-              <Text style={styles.sectionLabel}>種類</Text>
-              <View style={styles.chipRow}>
-                <TouchableOpacity
-                  style={[styles.chip, styleMode === 'simple' && styles.chipActive]}
-                  onPress={() => setStyleMode('simple')}
-                >
-                  <Text style={[styles.chipText, styleMode === 'simple' && styles.chipTextActive]}>スタイルのみ（全レイアウト共通）</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.chip, styleMode === 'full' && styles.chipActive]}
-                  onPress={() => setStyleMode('full')}
-                >
-                  <Text style={[styles.chipText, styleMode === 'full' && styles.chipTextActive]}>完成テンプレート（レイアウト・装飾・文字を指定）</Text>
-                </TouchableOpacity>
-              </View>
-
               <Text style={styles.sectionLabel}>名前</Text>
               <TextInput
                 style={styles.input}
@@ -809,27 +782,23 @@ export default function AdminAssetsScreen({ navigation }: any) {
                 placeholderTextColor={COLORS.textMuted}
               />
 
-              {styleMode === 'full' && (
-                <>
-                  <Text style={styles.sectionLabel}>レイアウト（写真の配置）</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipRow}>
-                    {COLLAGE_LAYOUTS.map((l) => (
-                      <TouchableOpacity key={l.id} onPress={() => setStyleLayoutId(l.id)}>
-                        <View style={[styles.assetCard, styleLayoutId === l.id && styles.assetCardSelected]}>
-                          {layoutPreviews[l.id] ? (
-                            <Image source={{ uri: layoutPreviews[l.id]! }} style={styles.layoutThumb} resizeMode="cover" />
-                          ) : (
-                            <View style={[styles.layoutThumb, styles.assetImgEmpty]}>
-                              <ActivityIndicator color={COLORS.textMuted} size="small" />
-                            </View>
-                          )}
-                          <Text style={styles.assetName} numberOfLines={1}>{l.name}</Text>
+              <Text style={styles.sectionLabel}>レイアウト（写真の配置）</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipRow}>
+                {COLLAGE_LAYOUTS.map((l) => (
+                  <TouchableOpacity key={l.id} onPress={() => setStyleLayoutId(l.id)}>
+                    <View style={[styles.assetCard, styleLayoutId === l.id && styles.assetCardSelected]}>
+                      {layoutPreviews[l.id] ? (
+                        <Image source={{ uri: layoutPreviews[l.id]! }} style={styles.layoutThumb} resizeMode="cover" />
+                      ) : (
+                        <View style={[styles.layoutThumb, styles.assetImgEmpty]}>
+                          <ActivityIndicator color={COLORS.textMuted} size="small" />
                         </View>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                </>
-              )}
+                      )}
+                      <Text style={styles.assetName} numberOfLines={1}>{l.name}</Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
 
               <Text style={styles.sectionLabel}>あしらい文字（年号など）の色・フォント・位置</Text>
               <View style={styles.colorRow}>
@@ -931,16 +900,7 @@ export default function AdminAssetsScreen({ navigation }: any) {
                 ))}
               </View>
 
-              {styleMode === 'simple' && (
-                <Text style={[styles.sheetMeta, { marginBottom: SPACING.xs }]}>
-                  このスタイルは全レイアウト（写真の枚数・並べ方）に自動的に適用され、コラージュ
-                  編集画面のギャラリーにレイアウトとの組み合わせごとに表示されます。
-                </Text>
-              )}
-
-              {styleMode === 'full' && (
-                <>
-                  <Text style={styles.sectionLabel}>装飾画像（矢印・キラキラ等。キャンバスは1080×1920pxです）</Text>
+              <Text style={styles.sectionLabel}>装飾画像（矢印・キラキラ等。キャンバスは1080×1920pxです）</Text>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipRow}>
                     {categories.map((c) => (
                       <TouchableOpacity
@@ -1082,8 +1042,6 @@ export default function AdminAssetsScreen({ navigation }: any) {
                       <Text style={styles.emptyText}>レイアウトを選ぶとプレビューが表示されます</Text>
                     )}
                   </View>
-                </>
-              )}
 
               <TouchableOpacity
                 style={[styles.uploadBtn, savingStyle && { opacity: 0.6 }]}
