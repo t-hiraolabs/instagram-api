@@ -3,19 +3,24 @@
 // 備えてこの画面自身もcheckIsAdmin()で二重にガードする。
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet, ScrollView, Image, Alert, Platform, Switch, ActivityIndicator, Modal,
+  View, Text, TouchableOpacity, StyleSheet, ScrollView, Image, Alert, Platform, Switch, ActivityIndicator, TextInput,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
+import { Plan } from '../utils/plans';
 import { getCategories, Category } from '../services/storyStudioService';
 import {
   checkIsAdmin, uploadAssetSheet, listAssetSheets, listAllAssets,
-  toggleAssetActive, deleteAsset, AssetSheet, AdminAsset,
+  toggleAssetActive, deleteAsset, updateAsset, AssetSheet, AdminAsset,
 } from '../services/adminAssetService';
+import {
+  listAllCollageStyles, createCollageStyle, toggleCollageStyleActive, deleteCollageStyle, CollageStyle,
+} from '../services/collageStyleService';
 
-type Tab = 'sheets' | 'assets';
+type Tab = 'sheets' | 'assets' | 'styles';
+const PLAN_OPTIONS: Plan[] = ['free', 'pro', 'business'];
 
 const STATUS_LABEL: Record<AssetSheet['status'], string> = {
   uploaded: 'アップロード済み',
@@ -42,7 +47,22 @@ export default function AdminAssetsScreen({ navigation }: any) {
   const [filterCategoryId, setFilterCategoryId] = useState<string | null>(null);
   const [assets, setAssets] = useState<AdminAsset[]>([]);
   const [loading, setLoading] = useState(false);
-  const [detailAsset, setDetailAsset] = useState<AdminAsset | null>(null);
+
+  const [editingAssetId, setEditingAssetId] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editCategoryId, setEditCategoryId] = useState<string | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  const [collageStyles, setCollageStyles] = useState<CollageStyle[]>([]);
+  const [styleFormVisible, setStyleFormVisible] = useState(false);
+  const [styleName, setStyleName] = useState('');
+  const [stylePlan, setStylePlan] = useState<Plan>('free');
+  const [styleAccentColor, setStyleAccentColor] = useState('#FFFFFF');
+  const [styleBackgroundAssetId, setStyleBackgroundAssetId] = useState<string | null>(null);
+  const [styleFrameAssetId, setStyleFrameAssetId] = useState<string | null>(null);
+  const [backgroundAssets, setBackgroundAssets] = useState<AdminAsset[]>([]);
+  const [frameAssets, setFrameAssets] = useState<AdminAsset[]>([]);
+  const [savingStyle, setSavingStyle] = useState(false);
 
   const alertMsg = (msg: string, title = 'お知らせ') => {
     if (Platform.OS === 'web') window.alert(msg);
@@ -92,6 +112,24 @@ export default function AdminAssetsScreen({ navigation }: any) {
     loadAssets(filterCategoryId);
   }, [isAdmin, tab, filterCategoryId, loadAssets]);
 
+  const loadStyles = useCallback(async () => {
+    setLoading(true);
+    try {
+      setCollageStyles(await listAllCollageStyles());
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isAdmin || tab !== 'styles' || categories.length === 0) return;
+    loadStyles();
+    const backgroundCategoryId = categories.find((c) => c.name === '背景')?.id;
+    const frameCategoryId = categories.find((c) => c.name === 'フレーム')?.id;
+    if (backgroundCategoryId) listAllAssets({ categoryId: backgroundCategoryId, isActive: true }).then(setBackgroundAssets).catch(() => {});
+    if (frameCategoryId) listAllAssets({ categoryId: frameCategoryId, isActive: true }).then(setFrameAssets).catch(() => {});
+  }, [isAdmin, tab, categories, loadStyles]);
+
   const categoryName = (id: string) => categories.find((c) => c.id === id)?.name ?? id;
   const categorySlug = (id: string): string => {
     // categoriesにはslugを持たせているが一覧APIはname/idのみ返すため、既知の対応表で引く
@@ -137,12 +175,10 @@ export default function AdminAssetsScreen({ navigation }: any) {
 
   const handleToggleActive = async (a: AdminAsset) => {
     setAssets((prev) => prev.map((x) => (x.id === a.id ? { ...x, isActive: !x.isActive } : x)));
-    setDetailAsset((prev) => (prev && prev.id === a.id ? { ...prev, isActive: !prev.isActive } : prev));
     try {
       await toggleAssetActive(a.id, !a.isActive);
     } catch (e) {
       setAssets((prev) => prev.map((x) => (x.id === a.id ? { ...x, isActive: a.isActive } : x)));
-      setDetailAsset((prev) => (prev && prev.id === a.id ? { ...prev, isActive: a.isActive } : prev));
       alertMsg('更新に失敗しました', 'エラー');
     }
   };
@@ -152,7 +188,6 @@ export default function AdminAssetsScreen({ navigation }: any) {
       try {
         await deleteAsset(a.id);
         setAssets((prev) => prev.filter((x) => x.id !== a.id));
-        setDetailAsset((prev) => (prev && prev.id === a.id ? null : prev));
       } catch (e) {
         alertMsg('削除に失敗しました', 'エラー');
       }
@@ -161,6 +196,98 @@ export default function AdminAssetsScreen({ navigation }: any) {
       if (window.confirm(`「${a.name}」を削除しますか？`)) doDelete();
     } else {
       Alert.alert('削除の確認', `「${a.name}」を削除しますか？`, [
+        { text: 'キャンセル', style: 'cancel' },
+        { text: '削除', style: 'destructive', onPress: doDelete },
+      ]);
+    }
+  };
+
+  const startEditAsset = (a: AdminAsset) => {
+    setEditingAssetId(a.id);
+    setEditName(a.name);
+    setEditCategoryId(a.categoryId);
+  };
+
+  const cancelEditAsset = () => {
+    setEditingAssetId(null);
+    setEditName('');
+    setEditCategoryId(null);
+  };
+
+  const handleSaveEditAsset = async () => {
+    if (!editingAssetId || !editName.trim() || !editCategoryId) return;
+    setSavingEdit(true);
+    try {
+      await updateAsset(editingAssetId, { name: editName.trim(), categoryId: editCategoryId });
+      const movedOutOfFilter = filterCategoryId && editCategoryId !== filterCategoryId;
+      if (movedOutOfFilter) {
+        setAssets((prev) => prev.filter((x) => x.id !== editingAssetId));
+      } else {
+        setAssets((prev) => prev.map((x) => (x.id === editingAssetId ? { ...x, name: editName.trim(), categoryId: editCategoryId } : x)));
+      }
+      cancelEditAsset();
+    } catch (e) {
+      alertMsg((e as { message?: string })?.message || '更新に失敗しました', 'エラー');
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const resetStyleForm = () => {
+    setStyleName('');
+    setStylePlan('free');
+    setStyleAccentColor('#FFFFFF');
+    setStyleBackgroundAssetId(null);
+    setStyleFrameAssetId(null);
+  };
+
+  const handleCreateStyle = async () => {
+    if (!styleName.trim() || !styleBackgroundAssetId) {
+      alertMsg('スタイル名と背景画像を選んでください');
+      return;
+    }
+    setSavingStyle(true);
+    try {
+      await createCollageStyle({
+        name: styleName.trim(),
+        plan: stylePlan,
+        backgroundAssetId: styleBackgroundAssetId,
+        frameAssetId: styleFrameAssetId ?? undefined,
+        accentColor: styleAccentColor,
+      });
+      resetStyleForm();
+      setStyleFormVisible(false);
+      await loadStyles();
+    } catch (e) {
+      alertMsg((e as { message?: string })?.message || '作成に失敗しました', 'エラー');
+    } finally {
+      setSavingStyle(false);
+    }
+  };
+
+  const handleToggleStyleActive = async (s: CollageStyle) => {
+    setCollageStyles((prev) => prev.map((x) => (x.id === s.id ? { ...x, isActive: !x.isActive } : x)));
+    try {
+      await toggleCollageStyleActive(s.id, !s.isActive);
+    } catch (e) {
+      setCollageStyles((prev) => prev.map((x) => (x.id === s.id ? { ...x, isActive: s.isActive } : x)));
+      alertMsg('更新に失敗しました', 'エラー');
+    }
+  };
+
+  const handleDeleteStyle = async (s: CollageStyle) => {
+    const doDelete = async () => {
+      try {
+        await deleteCollageStyle(s.id);
+        setCollageStyles((prev) => prev.filter((x) => x.id !== s.id));
+      } catch (e) {
+        alertMsg('削除に失敗しました', 'エラー');
+      }
+    };
+    if (Platform.OS === 'web') {
+      if (window.confirm(`「${s.name}」を削除しますか？`)) doDelete();
+    } else {
+      Alert.alert('削除の確認', `「${s.name}」を削除しますか？`, [
         { text: 'キャンセル', style: 'cancel' },
         { text: '削除', style: 'destructive', onPress: doDelete },
       ]);
@@ -206,6 +333,9 @@ export default function AdminAssetsScreen({ navigation }: any) {
         </TouchableOpacity>
         <TouchableOpacity style={[styles.tabBtn, tab === 'assets' && styles.tabBtnActive]} onPress={() => setTab('assets')}>
           <Text style={[styles.tabBtnText, tab === 'assets' && styles.tabBtnTextActive]}>素材一覧</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.tabBtn, tab === 'styles' && styles.tabBtnActive]} onPress={() => setTab('styles')}>
+          <Text style={[styles.tabBtnText, tab === 'styles' && styles.tabBtnTextActive]}>コラージュスタイル</Text>
         </TouchableOpacity>
       </View>
 
@@ -257,7 +387,7 @@ export default function AdminAssetsScreen({ navigation }: any) {
           ))}
           {!loading && sheets.length === 0 && <Text style={styles.emptyText}>まだ素材シートがありません</Text>}
         </ScrollView>
-      ) : (
+      ) : tab === 'assets' ? (
         <ScrollView style={styles.body} contentContainerStyle={{ paddingBottom: SPACING.xxl }}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipRow}>
             <TouchableOpacity style={[styles.chip, !filterCategoryId && styles.chipActive]} onPress={() => setFilterCategoryId(null)}>
@@ -274,66 +404,164 @@ export default function AdminAssetsScreen({ navigation }: any) {
             ))}
           </ScrollView>
 
+          {editingAssetId && (
+            <View style={styles.editPanel}>
+              <Text style={styles.sectionLabel}>素材名</Text>
+              <TextInput style={styles.input} value={editName} onChangeText={setEditName} placeholderTextColor={COLORS.textMuted} />
+              <Text style={styles.sectionLabel}>カテゴリ</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipRow}>
+                {categories.map((c) => (
+                  <TouchableOpacity
+                    key={c.id}
+                    style={[styles.chip, editCategoryId === c.id && styles.chipActive]}
+                    onPress={() => setEditCategoryId(c.id)}
+                  >
+                    <Text style={[styles.chipText, editCategoryId === c.id && styles.chipTextActive]}>{c.name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+              <View style={{ flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.sm }}>
+                <TouchableOpacity style={[styles.uploadBtn, { flex: 1 }, savingEdit && { opacity: 0.6 }]} onPress={handleSaveEditAsset} disabled={savingEdit}>
+                  {savingEdit ? <ActivityIndicator color="#fff" /> : <Text style={styles.uploadBtnText}>保存</Text>}
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.uploadBtn, { flex: 1, backgroundColor: COLORS.surface }]} onPress={cancelEditAsset} disabled={savingEdit}>
+                  <Text style={[styles.uploadBtnText, { color: COLORS.text }]}>キャンセル</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
           {loading && <ActivityIndicator color={COLORS.primary} style={{ marginTop: SPACING.md }} />}
           <View style={styles.grid}>
             {assets.map((a) => (
-              <TouchableOpacity
-                key={a.id}
-                style={[styles.assetCard, !a.isActive && { opacity: 0.5 }]}
-                onPress={() => setDetailAsset(a)}
-                activeOpacity={0.8}
-              >
+              <View key={a.id} style={[styles.assetCard, !a.isActive && { opacity: 0.5 }]}>
                 <Image source={{ uri: a.thumbnailUrl ?? a.storageUrl }} style={styles.assetImg} resizeMode="contain" />
                 <Text style={styles.assetName} numberOfLines={1}>{a.name}</Text>
+                <Text style={styles.assetCategoryLabel} numberOfLines={1}>{categoryName(a.categoryId)}</Text>
                 <View style={styles.assetActionsRow}>
                   <Switch value={a.isActive} onValueChange={() => handleToggleActive(a)} />
+                  <TouchableOpacity onPress={() => startEditAsset(a)}>
+                    <Ionicons name="create-outline" size={20} color={COLORS.textSecondary} />
+                  </TouchableOpacity>
                   <TouchableOpacity onPress={() => handleDelete(a)}>
                     <Ionicons name="trash-outline" size={20} color={COLORS.error} />
                   </TouchableOpacity>
                 </View>
-              </TouchableOpacity>
+              </View>
             ))}
           </View>
           {!loading && assets.length === 0 && <Text style={styles.emptyText}>該当する素材がありません</Text>}
         </ScrollView>
-      )}
+      ) : (
+        <ScrollView style={styles.body} contentContainerStyle={{ paddingBottom: SPACING.xxl }}>
+          <TouchableOpacity
+            style={styles.uploadBtn}
+            onPress={() => { setStyleFormVisible((v) => !v); if (styleFormVisible) resetStyleForm(); }}
+          >
+            <Ionicons name={styleFormVisible ? 'close' : 'add'} size={20} color="#fff" />
+            <Text style={styles.uploadBtnText}>{styleFormVisible ? '閉じる' : '新規スタイルを作成'}</Text>
+          </TouchableOpacity>
 
-      <Modal
-        visible={!!detailAsset}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setDetailAsset(null)}
-      >
-        <View style={styles.detailOverlay}>
-          <View style={styles.detailCard}>
-            {detailAsset && (
-              <>
-                <TouchableOpacity style={styles.detailCloseBtn} onPress={() => setDetailAsset(null)}>
-                  <Ionicons name="close" size={22} color={COLORS.textSecondary} />
-                </TouchableOpacity>
-                <Image
-                  source={{ uri: detailAsset.thumbnailUrl ?? detailAsset.storageUrl }}
-                  style={styles.detailImg}
-                  resizeMode="contain"
+          {styleFormVisible && (
+            <View style={{ marginTop: SPACING.md }}>
+              <Text style={styles.sectionLabel}>スタイル名</Text>
+              <TextInput
+                style={styles.input}
+                value={styleName}
+                onChangeText={setStyleName}
+                placeholder="例: シネマ"
+                placeholderTextColor={COLORS.textMuted}
+              />
+
+              <Text style={styles.sectionLabel}>プラン</Text>
+              <View style={styles.chipRow}>
+                {PLAN_OPTIONS.map((p) => (
+                  <TouchableOpacity
+                    key={p}
+                    style={[styles.chip, stylePlan === p && styles.chipActive]}
+                    onPress={() => setStylePlan(p)}
+                  >
+                    <Text style={[styles.chipText, stylePlan === p && styles.chipTextActive]}>{p}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={styles.sectionLabel}>アクセントカラー（テキスト色・hex）</Text>
+              <View style={styles.colorRow}>
+                <View style={[styles.colorSwatch, { backgroundColor: styleAccentColor }]} />
+                <TextInput
+                  style={[styles.input, { flex: 1 }]}
+                  value={styleAccentColor}
+                  onChangeText={setStyleAccentColor}
+                  placeholder="#FFFFFF"
+                  placeholderTextColor={COLORS.textMuted}
+                  autoCapitalize="none"
+                  autoCorrect={false}
                 />
-                <Text style={styles.detailName}>{detailAsset.name}</Text>
-                <Text style={styles.detailMeta}>{categoryName(detailAsset.categoryId)} ・ {detailAsset.plan}</Text>
-                {detailAsset.width != null && detailAsset.height != null && (
-                  <Text style={styles.detailMeta}>{detailAsset.width} × {detailAsset.height}px</Text>
+              </View>
+
+              <Text style={styles.sectionLabel}>背景画像</Text>
+              <View style={styles.grid}>
+                {backgroundAssets.map((a) => (
+                  <TouchableOpacity key={a.id} onPress={() => setStyleBackgroundAssetId(a.id)}>
+                    <View style={[styles.assetCard, styleBackgroundAssetId === a.id && styles.assetCardSelected]}>
+                      <Image source={{ uri: a.thumbnailUrl ?? a.storageUrl }} style={styles.assetImg} resizeMode="cover" />
+                      <Text style={styles.assetName} numberOfLines={1}>{a.name}</Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+                {backgroundAssets.length === 0 && (
+                  <Text style={styles.emptyText}>「背景」カテゴリの素材がありません（先にシートアップロードから登録してください）</Text>
                 )}
-                <View style={styles.detailActiveRow}>
-                  <Text style={styles.detailActiveLabel}>公開する</Text>
-                  <Switch value={detailAsset.isActive} onValueChange={() => handleToggleActive(detailAsset)} />
-                </View>
-                <TouchableOpacity style={styles.detailDeleteBtn} onPress={() => handleDelete(detailAsset)} activeOpacity={0.85}>
-                  <Ionicons name="trash-outline" size={18} color="#fff" />
-                  <Text style={styles.detailDeleteBtnText}>この素材を削除</Text>
+              </View>
+
+              <Text style={styles.sectionLabel}>フレーム画像（任意）</Text>
+              <View style={styles.grid}>
+                <TouchableOpacity onPress={() => setStyleFrameAssetId(null)}>
+                  <View style={[styles.assetCard, !styleFrameAssetId && styles.assetCardSelected]}>
+                    <View style={[styles.assetImg, styles.assetImgEmpty]}>
+                      <Text style={{ color: COLORS.textMuted, fontSize: 12 }}>なし</Text>
+                    </View>
+                  </View>
                 </TouchableOpacity>
-              </>
-            )}
-          </View>
-        </View>
-      </Modal>
+                {frameAssets.map((a) => (
+                  <TouchableOpacity key={a.id} onPress={() => setStyleFrameAssetId(a.id)}>
+                    <View style={[styles.assetCard, styleFrameAssetId === a.id && styles.assetCardSelected]}>
+                      <Image source={{ uri: a.thumbnailUrl ?? a.storageUrl }} style={styles.assetImg} resizeMode="cover" />
+                      <Text style={styles.assetName} numberOfLines={1}>{a.name}</Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <TouchableOpacity
+                style={[styles.uploadBtn, savingStyle && { opacity: 0.6 }]}
+                onPress={handleCreateStyle}
+                disabled={savingStyle}
+              >
+                {savingStyle ? <ActivityIndicator color="#fff" /> : <Text style={styles.uploadBtnText}>保存</Text>}
+              </TouchableOpacity>
+            </View>
+          )}
+
+          <Text style={styles.sectionLabel}>登録済みスタイル</Text>
+          {loading && <ActivityIndicator color={COLORS.primary} style={{ marginTop: SPACING.md }} />}
+          {collageStyles.map((s) => (
+            <View key={s.id} style={[styles.sheetRow, !s.isActive && { opacity: 0.5 }]}>
+              {s.backgroundUrl && <Image source={{ uri: s.backgroundUrl }} style={styles.styleThumb} />}
+              <View style={{ flex: 1 }}>
+                <Text style={styles.sheetName} numberOfLines={1}>{s.name}</Text>
+                <Text style={styles.sheetMeta}>{s.plan}</Text>
+              </View>
+              <Switch value={s.isActive} onValueChange={() => handleToggleStyleActive(s)} />
+              <TouchableOpacity onPress={() => handleDeleteStyle(s)} style={{ marginLeft: SPACING.sm }}>
+                <Ionicons name="trash-outline" size={20} color={COLORS.error} />
+              </TouchableOpacity>
+            </View>
+          ))}
+          {!loading && collageStyles.length === 0 && <Text style={styles.emptyText}>まだスタイルがありません</Text>}
+        </ScrollView>
+      )}
     </View>
   );
 }
@@ -382,25 +610,20 @@ const styles = StyleSheet.create({
     width: 100, backgroundColor: COLORS.surface, borderRadius: RADIUS.md, padding: SPACING.xs, alignItems: 'center',
   },
   assetImg: { width: 84, height: 84, marginBottom: SPACING.xs },
+  assetImgEmpty: { alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.background, borderRadius: RADIUS.sm },
   assetName: { color: COLORS.text, fontSize: 11, fontWeight: '600', maxWidth: 90 },
+  assetCategoryLabel: { color: COLORS.textMuted, fontSize: 10, maxWidth: 90 },
   assetActionsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginTop: SPACING.xs },
-  detailOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: SPACING.lg },
-  detailCard: {
-    width: '100%', maxWidth: 360, backgroundColor: COLORS.surface, borderRadius: RADIUS.lg,
-    padding: SPACING.lg, alignItems: 'center',
+  assetCardSelected: { borderWidth: 2, borderColor: COLORS.primary },
+  editPanel: {
+    backgroundColor: COLORS.surface, borderRadius: RADIUS.md, padding: SPACING.md, marginBottom: SPACING.md,
+    borderWidth: 1, borderColor: COLORS.primary,
   },
-  detailCloseBtn: { position: 'absolute', top: SPACING.sm, right: SPACING.sm, padding: SPACING.xs, zIndex: 1 },
-  detailImg: { width: 160, height: 160, marginBottom: SPACING.md },
-  detailName: { color: COLORS.text, fontSize: 16, fontWeight: '800', textAlign: 'center' },
-  detailMeta: { color: COLORS.textMuted, fontSize: 12, marginTop: 2, textAlign: 'center' },
-  detailActiveRow: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%',
-    marginTop: SPACING.lg, paddingVertical: SPACING.sm, borderTopWidth: 1, borderTopColor: COLORS.border,
+  input: {
+    borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, color: COLORS.text, backgroundColor: COLORS.surface,
   },
-  detailActiveLabel: { color: COLORS.text, fontSize: 14, fontWeight: '600' },
-  detailDeleteBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.xs,
-    backgroundColor: COLORS.error, borderRadius: RADIUS.md, paddingVertical: SPACING.md, width: '100%', marginTop: SPACING.md,
-  },
-  detailDeleteBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  colorRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
+  colorSwatch: { width: 28, height: 28, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border },
+  styleThumb: { width: 40, height: 40, borderRadius: RADIUS.sm, marginRight: SPACING.sm },
 });

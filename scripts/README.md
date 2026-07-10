@@ -32,6 +32,8 @@ Project Settings > API > `service_role` secret から取得できます。
 
 ## 使い方
 
+### 1件だけ処理する
+
 ```bash
 python crop_sprite_sheet.py --sheet-id <asset_sheets.id>
 ```
@@ -42,6 +44,35 @@ python crop_sprite_sheet.py --sheet-id <asset_sheets.id>
 ```sql
 select id, original_filename, status from asset_sheets order by created_at desc;
 ```
+
+### 監視モード（アップロードのたびに手動実行したくない場合）
+
+```bash
+python crop_sprite_sheet.py --watch
+```
+
+`status='uploaded'` のシートを10秒間隔（`--interval`で変更可）でポーリングし、
+見つかり次第自動的に切り出し・登録します。tmux やバックグラウンドプロセスとして
+常時起動しておけば、管理画面からアップロードするだけで済むようになります。
+Ctrl+Cで停止するまで動き続け、1件の処理に失敗しても監視自体は継続します。
+
+### 完全自動化（GitHub Actionsで定期実行・推奨）
+
+自分のPC/サーバーで何かを常時起動しておく必要がない方法です。
+`.github/workflows/crop-sprite-sheets.yml` が10分おきに
+`python crop_sprite_sheet.py --once`（未処理のシートを1回だけ処理してすぐ終了する
+モード）を実行します。管理画面からアップロードするだけで、あとは何もしなくても
+数分以内に自動的に切り出し・登録されます。
+
+**セットアップ**（初回のみ）: GitHubリポジトリの
+Settings > Secrets and variables > Actions で、以下の2つをRepository secretsとして登録してください。
+
+- `SUPABASE_URL`: `https://<project-ref>.supabase.co`
+- `SUPABASE_SERVICE_ROLE_KEY`: Supabase Dashboard > Project Settings > API > `service_role` secret
+
+登録後は何もしなくても10分おきに自動実行されます。すぐに反映させたい場合は、
+GitHubの「Actions」タブ → 「Crop pending sprite sheets」→「Run workflow」で
+手動実行もできます。実行結果（成功/失敗、ログ）もActionsタブから確認できます。
 
 ## 素材シートの作成ガイドライン
 
@@ -64,3 +95,17 @@ select id, original_filename, status from asset_sheets order by created_at desc;
    `.../thumb_{asset_id}.png` にアップロード
 8. `assets` テーブルに登録（`plan='free'`、`sheet_id`・`crop_x/y/w/h` で元シートとの
    対応関係を保持）。タグ付けは管理画面の素材一覧から別途行ってください。
+
+## コラージュの画像スタイル（シネマ風・レトロ風など）
+
+コラージュ機能の「スタイル」（背景テクスチャ画像＋フレーム画像＋アクセントカラーを
+組み合わせた名前付きテンプレート）も、ここで登録した「背景」「フレーム」カテゴリの
+素材を使う。手順:
+
+1. 「背景」カテゴリでテクスチャ画像（例: シネマ風の暗いグラデーション）、
+   「フレーム」カテゴリで縁取り画像（中央が透過したPNG、例: レターボックスの黒帯）を
+   それぞれ素材シートとしてアップロード→このスクリプトで切り出し登録
+2. 管理画面の「コラージュスタイル」タブで「新規スタイルを作成」→ 名前・プラン・
+   アクセントカラー・背景画像・フレーム画像（任意）を選んで保存
+3. コラージュ編集画面の「スタイルを選ぶ」ステップに、組み込みの4色テーマと並んで
+   自動的に表示されるようになる

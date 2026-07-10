@@ -1,4 +1,4 @@
-// コラージュ型ストーリー画像の合成（composeCollage/composeTemplatePreview）で使う
+// コラージュ型ストーリー画像の合成（composeCollage/composeLayoutPreview）で使う
 // canvas描画ヘルパー群。
 
 // 花のイラスト素材（base64データURLとして埋め込み済み。require()経由のアセット
@@ -110,11 +110,11 @@ function fitText(
 }
 
 
-// ===== コラージュ型ストーリーテンプレート =====
+// ===== コラージュ型ストーリーのレイアウト =====
 //
 // 画像素材を1枚も持たず、「レイアウト（写真の並べ方）× テーマ（色）」の
-// 組み合わせだけで見た目のバリエーションを作る。テンプレートを増やしたい
-// ときは、下の COLLAGE_TEMPLATES に1件足すだけでよい（テーマは自動で掛け算される）。
+// 組み合わせだけで見た目のバリエーションを作る。レイアウトを増やしたい
+// ときは、下の COLLAGE_LAYOUTS に1件足すだけでよい（テーマは自動で掛け算される）。
 
 export interface CollageTheme {
   name: string;
@@ -152,7 +152,7 @@ interface CollageArea {
   h: number;
 }
 
-export interface CollageTemplate {
+export interface CollageLayout {
   id: string;
   name: string;
   /** この並べ方に必要な写真の枚数 */
@@ -201,6 +201,42 @@ function drawSolidDividerH(ctx: CanvasRenderingContext2D, y: number, xLeft: numb
   ctx.moveTo(xLeft, y);
   ctx.lineTo(xRight, y);
   ctx.stroke();
+  ctx.restore();
+}
+
+// 縦の細い実線区切り（上品なレイアウト用。drawDottedDividerより控えめな見た目）
+function drawSolidDividerV(ctx: CanvasRenderingContext2D, x: number, yTop: number, yBottom: number, color: string) {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(x, yTop);
+  ctx.lineTo(x, yBottom);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// ビフォーアフター等の短いラベルを、角丸ピル型のバッジとして描く
+function drawLabelBadge(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, accent: string) {
+  ctx.save();
+  ctx.font = '700 26px sans-serif';
+  const paddingX = 20;
+  const textH = 26;
+  const paddingY = 10;
+  const textW = ctx.measureText(text).width;
+  const w = textW + paddingX * 2;
+  const h = textH + paddingY * 2;
+  ctx.fillStyle = accent;
+  roundRectPath(ctx, x, y, w, h, h / 2);
+  ctx.shadowColor = 'rgba(0,0,0,0.25)';
+  ctx.shadowBlur = 10;
+  ctx.fill();
+  ctx.shadowColor = 'transparent';
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = '#FFFFFF';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, x + paddingX, y + h / 2 + 1);
   ctx.restore();
 }
 
@@ -291,9 +327,9 @@ async function drawPhotoCard(
   ctx.restore();
 }
 
-// ===== 5種類のレイアウト（写真の並べ方）=====
-// テーマ（色）とは独立しているので、テーマ4色 × レイアウト5種 = 20通りの見た目になる。
-export const COLLAGE_TEMPLATES: CollageTemplate[] = [
+// ===== 13種類のレイアウト（写真の並べ方）=====
+// テーマ（色）とは独立しているので、テーマ4色 × レイアウト13種 = 52通りの見た目になる。
+export const COLLAGE_LAYOUTS: CollageLayout[] = [
   {
     id: 'simple1',
     name: 'シンプル1枚',
@@ -304,6 +340,42 @@ export const COLLAGE_TEMPLATES: CollageTemplate[] = [
     drawDecoration: async (ctx, area) => {
       const pad = 26;
       await drawFlowerAsset(ctx, FLOWER_FRAME_BORDER, area.x - pad, area.y - pad, area.w + pad * 2, area.h + pad * 2);
+    },
+  },
+  {
+    id: 'framedSingle',
+    name: 'フレーム1枚',
+    photoCount: 1,
+    drawPhotos: async (ctx, photos, area) => {
+      await drawPhotoCard(ctx, photos[0], area.x, area.y, area.w, area.h);
+    },
+    drawDecoration: (ctx, area, accent) => {
+      const pad = 20;
+      ctx.save();
+      ctx.strokeStyle = accent;
+      ctx.lineWidth = 10;
+      roundRectPath(ctx, area.x - pad, area.y - pad, area.w + pad * 2, area.h + pad * 2, 28);
+      ctx.stroke();
+      ctx.restore();
+    },
+  },
+  {
+    id: 'magazine1',
+    name: 'マガジン風',
+    photoCount: 1,
+    drawPhotos: async (ctx, photos, area) => {
+      const photoH = area.h * 0.82;
+      await drawPhotoCard(ctx, photos[0], area.x, area.y, area.w, photoH);
+    },
+    drawDecoration: (ctx, area, accent) => {
+      const photoH = area.h * 0.82;
+      const bandY = area.y + photoH - 6;
+      const bandH = area.h - photoH + 6;
+      ctx.save();
+      ctx.fillStyle = accent;
+      roundRectPath(ctx, area.x, bandY, area.w, bandH, 14);
+      ctx.fill();
+      ctx.restore();
     },
   },
   {
@@ -320,6 +392,40 @@ export const COLLAGE_TEMPLATES: CollageTemplate[] = [
       const gap = 24;
       const cellH = (area.h - gap) / 2;
       drawSolidDividerH(ctx, area.y + cellH + gap / 2, area.x + 30, area.x + area.w - 30, accent);
+    },
+  },
+  {
+    id: 'sideBySide2',
+    name: '横2分割',
+    photoCount: 2,
+    drawPhotos: async (ctx, photos, area) => {
+      const gap = 24;
+      const cellW = (area.w - gap) / 2;
+      await drawPhotoCard(ctx, photos[0], area.x, area.y, cellW, area.h);
+      await drawPhotoCard(ctx, photos[1], area.x + cellW + gap, area.y, cellW, area.h);
+    },
+    drawDecoration: (ctx, area, accent) => {
+      const gap = 24;
+      const cellW = (area.w - gap) / 2;
+      drawDottedDivider(ctx, area.x + cellW + gap / 2, area.y + 20, area.y + area.h - 20, accent);
+    },
+  },
+  {
+    id: 'beforeAfter2',
+    name: 'ビフォーアフター',
+    photoCount: 2,
+    drawPhotos: async (ctx, photos, area) => {
+      const gap = 24;
+      const cellW = (area.w - gap) / 2;
+      await drawPhotoCard(ctx, photos[0], area.x, area.y, cellW, area.h);
+      await drawPhotoCard(ctx, photos[1], area.x + cellW + gap, area.y, cellW, area.h);
+    },
+    drawDecoration: (ctx, area, accent) => {
+      const gap = 24;
+      const cellW = (area.w - gap) / 2;
+      drawSolidDividerV(ctx, area.x + cellW + gap / 2, area.y + 20, area.y + area.h - 20, accent);
+      drawLabelBadge(ctx, 'BEFORE', area.x + 20, area.y + 20, accent);
+      drawLabelBadge(ctx, 'AFTER', area.x + cellW + gap + 20, area.y + 20, accent);
     },
   },
   {
@@ -340,6 +446,27 @@ export const COLLAGE_TEMPLATES: CollageTemplate[] = [
       const cellW = (area.w - gap) / 2;
       drawDottedDivider(ctx, area.x + cellW + gap / 2, area.y, area.y + area.h, accent);
       await drawCornerFlowers(ctx);
+    },
+  },
+  {
+    id: 'mosaic4',
+    name: 'メイン＋3枚モザイク',
+    photoCount: 4,
+    drawPhotos: async (ctx, photos, area) => {
+      const gap = 20;
+      const leftW = area.w * 0.6 - gap / 2;
+      const rightW = area.w - leftW - gap;
+      const rightX = area.x + leftW + gap;
+      const cellH = (area.h - gap * 2) / 3;
+      await drawPhotoCard(ctx, photos[0], area.x, area.y, leftW, area.h);
+      await drawPhotoCard(ctx, photos[1], rightX, area.y, rightW, cellH);
+      await drawPhotoCard(ctx, photos[2], rightX, area.y + cellH + gap, rightW, cellH);
+      await drawPhotoCard(ctx, photos[3], rightX, area.y + (cellH + gap) * 2, rightW, cellH);
+    },
+    drawDecoration: (ctx, area, accent) => {
+      const gap = 20;
+      const leftW = area.w * 0.6 - gap / 2;
+      drawDottedDivider(ctx, area.x + leftW + gap / 2, area.y, area.y + area.h, accent);
     },
   },
   {
@@ -386,6 +513,44 @@ export const COLLAGE_TEMPLATES: CollageTemplate[] = [
     },
   },
   {
+    id: 'filmStrip3',
+    name: 'フィルムストリップ',
+    photoCount: 3,
+    drawPhotos: async (ctx, photos, area) => {
+      const gap = 20;
+      const cellW = (area.w - gap * 2) / 3;
+      await drawPhotoCard(ctx, photos[0], area.x, area.y, cellW, area.h);
+      await drawPhotoCard(ctx, photos[1], area.x + cellW + gap, area.y, cellW, area.h);
+      await drawPhotoCard(ctx, photos[2], area.x + (cellW + gap) * 2, area.y, cellW, area.h);
+    },
+    drawDecoration: (ctx, area, accent) => {
+      const gap = 20;
+      const cellW = (area.w - gap * 2) / 3;
+      drawDottedDivider(ctx, area.x + cellW + gap / 2, area.y, area.y + area.h, accent);
+      drawDottedDivider(ctx, area.x + (cellW + gap) * 2 - gap / 2, area.y, area.y + area.h, accent);
+    },
+  },
+  {
+    id: 'elegantTriptych3',
+    name: 'エレガント3分割',
+    photoCount: 3,
+    drawPhotos: async (ctx, photos, area) => {
+      const gap = 36;
+      const cellW = (area.w - gap * 2) / 3;
+      await drawPhotoCard(ctx, photos[0], area.x, area.y, cellW, area.h);
+      await drawPhotoCard(ctx, photos[1], area.x + cellW + gap, area.y, cellW, area.h);
+      await drawPhotoCard(ctx, photos[2], area.x + (cellW + gap) * 2, area.y, cellW, area.h);
+    },
+    drawDecoration: (ctx, area, accent) => {
+      const gap = 36;
+      const cellW = (area.w - gap * 2) / 3;
+      const lineTop = area.y + 40;
+      const lineBottom = area.y + area.h - 40;
+      drawSolidDividerV(ctx, area.x + cellW + gap / 2, lineTop, lineBottom, accent);
+      drawSolidDividerV(ctx, area.x + (cellW + gap) * 2 - gap / 2, lineTop, lineBottom, accent);
+    },
+  },
+  {
     id: 'circleBadge',
     name: 'メイン＋丸バッジ',
     photoCount: 2,
@@ -408,16 +573,31 @@ export const COLLAGE_TEMPLATES: CollageTemplate[] = [
 ];
 
 /**
- * テンプレート（写真の並べ方）とテーマ（色）を組み合わせて、1枚のコラージュ風
+ * 画像ベースの「スタイル」。指定すると背景・フレームの質感画像を使い、
+ * テーマ（色）のグラデーション背景の代わりになる（シネマ風・レトロ風など）。
+ */
+export interface CollageStyleAssets {
+  /** 全面に敷く背景テクスチャ画像（cover-fit）。指定時はテーマのグラデーションを使わない */
+  backgroundUrl?: string;
+  /** 写真・装飾の上に全面（1080×1920）で重ねる縁取り画像。中央は透過している前提 */
+  frameUrl?: string;
+  /** あしらい文字・キャプションの色。指定時はテーマの色より優先する */
+  accentColor?: string;
+}
+
+/**
+ * レイアウト（写真の並べ方）とテーマ（色）を組み合わせて、1枚のコラージュ風
  * ストーリー画像を作る。花やチェーン柄などの独自イラストの代わりに、色・丸・
- * 点線などcanvasで描けるシンプルな図形で「テンプレートらしさ」を出している。
+ * 点線などcanvasで描けるシンプルな図形で「レイアウトらしさ」を出している。
+ * styleAssetsを渡すと、質感画像を使ったスタイル（シネマ風・レトロ風など）になる。
  */
 export async function composeCollage(
   photos: string[],
-  template: CollageTemplate,
+  layout: CollageLayout,
   theme: CollageTheme,
   accentText: string,
-  caption: string
+  caption: string,
+  styleAssets?: CollageStyleAssets
 ): Promise<{ blob: Blob; previewUrl: string }> {
   const canvas = document.createElement('canvas');
   canvas.width = COLLAGE_W;
@@ -425,28 +605,46 @@ export async function composeCollage(
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Canvasを利用できません');
 
-  drawGradientBackground(ctx, theme);
+  if (styleAssets?.backgroundUrl) {
+    const bg = await loadImage(styleAssets.backgroundUrl);
+    const cover = Math.max(COLLAGE_W / bg.width, COLLAGE_H / bg.height);
+    ctx.drawImage(
+      bg,
+      (COLLAGE_W - bg.width * cover) / 2,
+      (COLLAGE_H - bg.height * cover) / 2,
+      bg.width * cover,
+      bg.height * cover
+    );
+  } else {
+    drawGradientBackground(ctx, theme);
+  }
 
   const margin = 48;
   const gridTop = 200;
   const gridBottom = COLLAGE_H - 260;
   const area: CollageArea = { x: margin, y: gridTop, w: COLLAGE_W - margin * 2, h: gridBottom - gridTop };
+  const accentColor = styleAssets?.accentColor ?? theme.accent;
 
-  await template.drawPhotos(ctx, photos, area);
-  await template.drawDecoration?.(ctx, area, theme.accent);
+  await layout.drawPhotos(ctx, photos, area);
+  await layout.drawDecoration?.(ctx, area, accentColor);
+
+  if (styleAssets?.frameUrl) {
+    const frame = await loadImage(styleAssets.frameUrl);
+    ctx.drawImage(frame, 0, 0, COLLAGE_W, COLLAGE_H);
+  }
 
   if (accentText.trim()) {
     await loadFontFor(accentText);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'alphabetic';
-    ctx.fillStyle = theme.accent;
+    ctx.fillStyle = accentColor;
     ctx.font = `900 96px ${FONT_FAMILY}`;
     const textY = gridTop - 60;
     ctx.fillText(accentText.trim(), COLLAGE_W / 2, textY);
     // 文字の左右に短い装飾線を添えて、ただのテキストより「あしらい」らしく見せる
     const textW = ctx.measureText(accentText.trim()).width;
     const lineY = textY - 30;
-    ctx.strokeStyle = theme.accent;
+    ctx.strokeStyle = accentColor;
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(COLLAGE_W / 2 - textW / 2 - 60, lineY);
@@ -459,7 +657,7 @@ export async function composeCollage(
   if (caption.trim()) {
     await loadFontFor(caption);
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#2A2A2A';
+    ctx.fillStyle = styleAssets?.accentColor ?? '#2A2A2A';
     const { lines, lineH } = fitText(ctx, caption.trim(), area.w, 44, 28);
     let y = gridBottom + 70;
     for (const line of lines) {
@@ -480,7 +678,7 @@ export async function composeCollage(
 
 let placeholderPhotoUrl: string | null = null;
 
-// テンプレート選択用のプレビューで、実際の写真の代わりに敷くグレーの正方形
+// レイアウト選択用のプレビューで、実際の写真の代わりに敷くグレーの正方形
 function getPlaceholderPhoto(): string {
   if (placeholderPhotoUrl) return placeholderPhotoUrl;
   const c = document.createElement('canvas');
@@ -494,14 +692,18 @@ function getPlaceholderPhoto(): string {
 }
 
 /**
- * テンプレート一覧の選択画面で、実際の写真を選ぶ前に「だいたいの見た目」を
+ * レイアウト一覧の選択画面で、実際の写真を選ぶ前に「だいたいの見た目」を
  * 確認できるよう、グレーのプレースホルダー写真でcomposeCollageと同じ処理を
  * 走らせてプレビュー画像を作る（実際に写真を入れたときと同じレイアウト・
  * 色・装飾になる）。
  */
-export async function composeTemplatePreview(template: CollageTemplate, theme: CollageTheme): Promise<string> {
+export async function composeLayoutPreview(
+  layout: CollageLayout,
+  theme: CollageTheme,
+  styleAssets?: CollageStyleAssets
+): Promise<string> {
   const placeholder = getPlaceholderPhoto();
-  const photos = Array.from({ length: template.photoCount }, () => placeholder);
-  const { previewUrl } = await composeCollage(photos, template, theme, '', '');
+  const photos = Array.from({ length: layout.photoCount }, () => placeholder);
+  const { previewUrl } = await composeCollage(photos, layout, theme, '', '', styleAssets);
   return previewUrl;
 }

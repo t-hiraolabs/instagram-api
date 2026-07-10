@@ -48,7 +48,7 @@ export interface LayerDefaults {
 }
 
 /** ユーザーが許可されているプラン（自分と同格以下）を返す */
-function allowedPlans(plan: Plan): Plan[] {
+export function allowedPlans(plan: Plan): Plan[] {
   if (plan === 'business') return ['free', 'pro', 'business'];
   if (plan === 'pro') return ['free', 'pro'];
   return ['free'];
