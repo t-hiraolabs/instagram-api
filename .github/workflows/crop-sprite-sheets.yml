@@ -1,3 +1,4 @@
+# 素材シートの自動切り出し（10分おきに未処理分を処理する）
 name: Crop pending sprite sheets
 
 on:
