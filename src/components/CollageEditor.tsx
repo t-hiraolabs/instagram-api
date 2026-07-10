@@ -148,16 +148,24 @@ export default function CollageEditor({ onDone }: Props) {
   );
 
   const searching = searchQuery.trim().length > 0 || !!activeTag;
-  const matchesQuery = (t: GalleryTile, q: string): boolean => {
-    if (activeTag && !t.tags.includes(activeTag)) return false;
-    if (!q) return true;
-    return t.name.toLowerCase().includes(q) || t.tags.some((tag) => tag.toLowerCase().includes(q));
-  };
   const q = searchQuery.trim().toLowerCase();
 
-  const visibleFullTemplates = fullTemplateTiles.filter((t) => matchesQuery(t, q));
-  const visibleBuiltIn = (searching ? allBuiltInTiles : (showAllBuiltIn ? allBuiltInTiles : curatedBuiltInTiles)).filter((t) => matchesQuery(t, q));
-  const visibleLegacy = (searching || showLegacyStyles) ? legacyStyleTiles.filter((t) => matchesQuery(t, q)) : [];
+  // タイルの新しい配列参照を毎レンダー作ると、下のプレビュー生成useEffectが
+  // レンダーのたびに再実行され続けてしまう（previewsの古いスナップショットに対して
+  // 同じタイルを何度もcomposeLayoutPreviewし直す無限再レンダーの原因になる）ため、
+  // 依存する値が実際に変わった時だけ再計算するようuseMemoで確定させる。
+  const visibleFullTemplates = useMemo(
+    () => fullTemplateTiles.filter((t) => (!activeTag || t.tags.includes(activeTag)) && (!q || t.name.toLowerCase().includes(q) || t.tags.some((tag) => tag.toLowerCase().includes(q)))),
+    [fullTemplateTiles, activeTag, q]
+  );
+  const visibleBuiltIn = useMemo(() => {
+    const base = searching ? allBuiltInTiles : (showAllBuiltIn ? allBuiltInTiles : curatedBuiltInTiles);
+    return base.filter((t) => (!activeTag || t.tags.includes(activeTag)) && (!q || t.name.toLowerCase().includes(q) || t.tags.some((tag) => tag.toLowerCase().includes(q))));
+  }, [searching, showAllBuiltIn, allBuiltInTiles, curatedBuiltInTiles, activeTag, q]);
+  const visibleLegacy = useMemo(() => {
+    if (!searching && !showLegacyStyles) return [];
+    return legacyStyleTiles.filter((t) => (!activeTag || t.tags.includes(activeTag)) && (!q || t.name.toLowerCase().includes(q) || t.tags.some((tag) => tag.toLowerCase().includes(q))));
+  }, [searching, showLegacyStyles, legacyStyleTiles, activeTag, q]);
 
   // 表示中のタイルのプレビューを順次生成する（生成済み・生成中のものは再実行しない）
   useEffect(() => {
