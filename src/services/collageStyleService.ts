@@ -14,6 +14,9 @@ export interface CollageStyle {
   backgroundUrl?: string;
   frameUrl?: string;
   accentColor?: string;
+  /** 紐づくレイアウト（写真の並べ方）のid。指定されている場合、コラージュ編集画面では
+   *  「色を選ぶ」ステップの選択肢ではなく、レイアウト選択ステップの独立したテンプレートとして表示される */
+  layoutId?: string;
   thumbnailUrl: string | null;
 }
 
@@ -21,6 +24,7 @@ interface CollageStyleDefaults {
   backgroundAssetId?: string;
   frameAssetId?: string;
   accentColor?: string;
+  layoutId?: string;
 }
 
 async function rowsToStyles(rows: any[]): Promise<CollageStyle[]> {
@@ -43,6 +47,7 @@ async function rowsToStyles(rows: any[]): Promise<CollageStyle[]> {
       backgroundUrl: d.backgroundAssetId ? assetsById[d.backgroundAssetId]?.storageUrl : undefined,
       frameUrl: d.frameAssetId ? assetsById[d.frameAssetId]?.storageUrl : undefined,
       accentColor: d.accentColor,
+      layoutId: d.layoutId,
       thumbnailUrl: r.thumbnail_url,
     };
   });
@@ -78,11 +83,13 @@ export async function createCollageStyle(params: {
   backgroundAssetId: string;
   frameAssetId?: string;
   accentColor: string;
+  layoutId?: string;
 }): Promise<void> {
   const layerDefaults: CollageStyleDefaults = {
     backgroundAssetId: params.backgroundAssetId,
     frameAssetId: params.frameAssetId,
     accentColor: params.accentColor,
+    layoutId: params.layoutId,
   };
   const { error } = await supabase.from('templates').insert({
     type: 'collage',

@@ -23,6 +23,8 @@ interface StyleOption {
   name: string;
   theme: CollageTheme;
   styleAssets?: CollageStyleAssets;
+  /** 特定のレイアウトに紐づくテンプレートスタイルの場合、そのレイアウトid */
+  layoutId?: string;
 }
 
 const PHOTO_COUNTS = Array.from(new Set(COLLAGE_LAYOUTS.map((t) => t.photoCount))).sort((a, b) => a - b);
@@ -32,8 +34,11 @@ export default function CollageEditor({ onDone }: Props) {
   const [count, setCount] = useState<number | null>(null);
   const [layoutIdx, setLayoutIdx] = useState<number | null>(null);
   const [styleIdx, setStyleIdx] = useState<number | null>(null);
+  /** レイアウトに紐づくテンプレートスタイルを選んだ場合、色選択をスキップしてこちらを使う */
+  const [directStyle, setDirectStyle] = useState<StyleOption | null>(null);
   const [countPreviews, setCountPreviews] = useState<Record<number, string | null>>({});
   const [stylePreviews, setStylePreviews] = useState<(string | null)[]>([]);
+  const [layoutTemplatePreviews, setLayoutTemplatePreviews] = useState<Record<string, string | null>>({});
   const [photos, setPhotos] = useState<(string | null)[]>([null, null, null, null]);
   const [accentText, setAccentText] = useState('2026');
   const [caption, setCaption] = useState('');
@@ -45,12 +50,17 @@ export default function CollageEditor({ onDone }: Props) {
   const layout = layoutIdx != null ? COLLAGE_LAYOUTS[layoutIdx] : null;
   const layoutsInCount = count != null ? COLLAGE_LAYOUTS.filter((t) => t.photoCount === count) : [];
 
+  // レイアウトに紐づけて登録されたスタイルは、色選択ではなく「テンプレート」として
+  // レイアウト選択ステップに独立して表示する（選ぶと色選択をスキップする）
+  const layoutTemplateStyles = useMemo(() => dbStyles.filter((s) => s.layoutId), [dbStyles]);
+  const colorOnlyStyles = useMemo(() => dbStyles.filter((s) => !s.layoutId), [dbStyles]);
+
   const styleOptions: StyleOption[] = useMemo(
     () => [
       ...COLLAGE_THEMES.map((theme): StyleOption => ({ key: theme.name, name: theme.name, theme })),
-      ...dbStyles,
+      ...colorOnlyStyles,
     ],
-    [dbStyles]
+    [colorOnlyStyles]
   );
 
   useEffect(() => {
@@ -67,6 +77,7 @@ export default function CollageEditor({ onDone }: Props) {
             name: s.name,
             theme: { name: s.name, background: '#000000', background2: '#000000', accent: s.accentColor ?? '#FFFFFF' },
             styleAssets: { backgroundUrl: s.backgroundUrl, frameUrl: s.frameUrl, accentColor: s.accentColor },
+            layoutId: s.layoutId,
           }))
         );
       })
@@ -116,6 +127,29 @@ export default function CollageEditor({ onDone }: Props) {
     };
   }, [layout, styleOptions]);
 
+  // 枚数を選んだら、その枚数のレイアウトに紐づくテンプレートスタイルのプレビューも作る
+  useEffect(() => {
+    if (count == null) return;
+    let alive = true;
+    const relevant = layoutTemplateStyles.filter((s) => {
+      const l = COLLAGE_LAYOUTS.find((x) => x.id === s.layoutId);
+      return l?.photoCount === count;
+    });
+    relevant.forEach((s) => {
+      const l = COLLAGE_LAYOUTS.find((x) => x.id === s.layoutId);
+      if (!l) return;
+      composeLayoutPreview(l, s.theme, s.styleAssets)
+        .then((url) => {
+          if (!alive) return;
+          setLayoutTemplatePreviews((p) => ({ ...p, [s.key]: url }));
+        })
+        .catch(() => {});
+    });
+    return () => {
+      alive = false;
+    };
+  }, [count, layoutTemplateStyles]);
+
   // レイアウトを選び直したら、使わなくなる枠の写真は捨てる
   useEffect(() => {
     if (!layout) return;
@@ -134,14 +168,30 @@ export default function CollageEditor({ onDone }: Props) {
   const selectLayout = (idxInAll: number) => {
     setLayoutIdx(idxInAll);
     setStyleIdx(null);
+    setDirectStyle(null);
     setStep('color');
   };
 
   const selectStyle = (i: number) => {
     setStyleIdx(i);
+    setDirectStyle(null);
     setFinalPreview(null);
     setStep('edit');
   };
+
+  // レイアウトに紐づくテンプレートスタイルを選んだ場合: レイアウトとスタイルを同時に確定し、
+  // 色選択をスキップしてすぐ写真選びに進む
+  const selectLayoutTemplate = (style: StyleOption) => {
+    const idxInAll = COLLAGE_LAYOUTS.findIndex((l) => l.id === style.layoutId);
+    if (idxInAll === -1) return;
+    setLayoutIdx(idxInAll);
+    setStyleIdx(null);
+    setDirectStyle(style);
+    setFinalPreview(null);
+    setStep('edit');
+  };
+
+  const selectedStyleOption = directStyle ?? (styleIdx != null ? styleOptions[styleIdx] : null);
 
   const pickPhoto = async (slot: number) => {
     if (Platform.OS !== 'web') {
@@ -167,10 +217,10 @@ export default function CollageEditor({ onDone }: Props) {
   const ready = !!layout && filledCount === layout.photoCount;
 
   const generatePreview = async () => {
-    if (!ready || !layout || styleIdx == null) return;
+    if (!ready || !layout || !selectedStyleOption) return;
     setComposing(true);
     try {
-      const selected = styleOptions[styleIdx];
+      const selected = selectedStyleOption;
       const { previewUrl } = await composeCollage(
         photos.slice(0, layout.photoCount) as string[],
         layout,
@@ -214,6 +264,10 @@ export default function CollageEditor({ onDone }: Props) {
   }
 
   if (step === 'layout') {
+    const relevantTemplateStyles = layoutTemplateStyles.filter((s) => {
+      const l = COLLAGE_LAYOUTS.find((x) => x.id === s.layoutId);
+      return l?.photoCount === count;
+    });
     return (
       <View style={styles.wrap}>
         <BackRow label="枚数を選び直す" onPress={() => setStep('count')} />
@@ -234,6 +288,18 @@ export default function CollageEditor({ onDone }: Props) {
               </TouchableOpacity>
             );
           })}
+          {relevantTemplateStyles.map((s) => (
+            <TouchableOpacity key={s.key} style={styles.templateCard} onPress={() => selectLayoutTemplate(s)} activeOpacity={0.85}>
+              <View style={styles.templateThumbWrap}>
+                {layoutTemplatePreviews[s.key] ? (
+                  <Image source={{ uri: layoutTemplatePreviews[s.key]! }} style={styles.templateThumb} resizeMode="cover" />
+                ) : (
+                  <ActivityIndicator color={COLORS.textMuted} />
+                )}
+              </View>
+              <Text style={styles.templateName}>{s.name}</Text>
+            </TouchableOpacity>
+          ))}
         </View>
       </View>
     );
@@ -263,12 +329,15 @@ export default function CollageEditor({ onDone }: Props) {
     );
   }
 
-  if (!layout || styleIdx == null) return null;
+  if (!layout || !selectedStyleOption) return null;
 
   return (
     <View style={styles.wrap}>
-      <BackRow label="スタイルを選び直す" onPress={() => setStep('color')} />
-      <Text style={styles.templateTitle}>{layout.name}（{styleOptions[styleIdx].name}）</Text>
+      <BackRow
+        label={directStyle ? 'テンプレートを選び直す' : 'スタイルを選び直す'}
+        onPress={() => setStep(directStyle ? 'layout' : 'color')}
+      />
+      <Text style={styles.templateTitle}>{layout.name}（{selectedStyleOption.name}）</Text>
 
       <Text style={styles.label}>写真を選ぶ（{layout.photoCount}枚）</Text>
       <View style={styles.photoGrid}>

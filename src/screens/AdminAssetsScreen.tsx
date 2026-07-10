@@ -18,6 +18,7 @@ import {
 import {
   listAllCollageStyles, createCollageStyle, toggleCollageStyleActive, deleteCollageStyle, CollageStyle,
 } from '../services/collageStyleService';
+import { COLLAGE_LAYOUTS } from '../utils/collageCompositor';
 
 type Tab = 'sheets' | 'assets' | 'styles';
 const PLAN_OPTIONS: Plan[] = ['free', 'pro', 'business'];
@@ -60,6 +61,7 @@ export default function AdminAssetsScreen({ navigation }: any) {
   const [styleAccentColor, setStyleAccentColor] = useState('#FFFFFF');
   const [styleBackgroundAssetId, setStyleBackgroundAssetId] = useState<string | null>(null);
   const [styleFrameAssetId, setStyleFrameAssetId] = useState<string | null>(null);
+  const [styleLayoutId, setStyleLayoutId] = useState<string | null>(null);
   const [backgroundAssets, setBackgroundAssets] = useState<AdminAsset[]>([]);
   const [frameAssets, setFrameAssets] = useState<AdminAsset[]>([]);
   const [savingStyle, setSavingStyle] = useState(false);
@@ -240,6 +242,7 @@ export default function AdminAssetsScreen({ navigation }: any) {
     setStyleAccentColor('#FFFFFF');
     setStyleBackgroundAssetId(null);
     setStyleFrameAssetId(null);
+    setStyleLayoutId(null);
   };
 
   const handleCreateStyle = async () => {
@@ -255,6 +258,7 @@ export default function AdminAssetsScreen({ navigation }: any) {
         backgroundAssetId: styleBackgroundAssetId,
         frameAssetId: styleFrameAssetId ?? undefined,
         accentColor: styleAccentColor,
+        layoutId: styleLayoutId ?? undefined,
       });
       resetStyleForm();
       setStyleFormVisible(false);
@@ -505,6 +509,32 @@ export default function AdminAssetsScreen({ navigation }: any) {
                   </TouchableOpacity>
                 ))}
               </View>
+
+              <Text style={styles.sectionLabel}>紐づけるレイアウト（任意）</Text>
+              <Text style={[styles.sheetMeta, { marginBottom: SPACING.xs }]}>
+                選ぶと、コラージュ編集画面の「色を選ぶ」ステップではなく、対応する枚数の
+                「テンプレートを選ぶ」ステップに独立した1件として表示され、選択後は色選択を
+                スキップしてすぐ写真選びに進みます。選ばない場合は従来通り色の選択肢に加わります。
+              </Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipRow}>
+                <TouchableOpacity
+                  style={[styles.chip, !styleLayoutId && styles.chipActive]}
+                  onPress={() => setStyleLayoutId(null)}
+                >
+                  <Text style={[styles.chipText, !styleLayoutId && styles.chipTextActive]}>なし（色として追加）</Text>
+                </TouchableOpacity>
+                {COLLAGE_LAYOUTS.map((l) => (
+                  <TouchableOpacity
+                    key={l.id}
+                    style={[styles.chip, styleLayoutId === l.id && styles.chipActive]}
+                    onPress={() => setStyleLayoutId(l.id)}
+                  >
+                    <Text style={[styles.chipText, styleLayoutId === l.id && styles.chipTextActive]}>
+                      {l.name}（{l.photoCount}枚）
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
 
               <TouchableOpacity
                 style={[styles.uploadBtn, savingStyle && { opacity: 0.6 }]}
