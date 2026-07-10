@@ -1,4 +1,4 @@
-// コラージュ型ストーリー（web専用）: 枚数→レイアウト→スタイル→写真の順に選んで加工する
+// コラージュ型ストーリー（web専用）: テンプレートギャラリーから1つ選び、写真とテキストを入れて仕上げる
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Image, TextInput, ActivityIndicator, Platform, Alert } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -6,92 +6,51 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS, RADIUS, SPACING } from '../utils/theme';
 import { Plan } from '../utils/plans';
 import { getMyPlan } from '../services/scheduleService';
-import { listCollageStyles } from '../services/collageStyleService';
+import { listCollageStyles, CollageStyle } from '../services/collageStyleService';
 import {
-  composeCollage, composeLayoutPreview, COLLAGE_LAYOUTS, COLLAGE_THEMES, CollageTheme, CollageStyleAssets,
+  composeCollage, composeLayoutPreview, COLLAGE_LAYOUTS, COLLAGE_THEMES, CollageLayout, CollageTheme, CollageStyleAssets, CollageTextLayer,
 } from '../utils/collageCompositor';
 
 interface Props {
   onDone: (dataUrl: string) => void;
 }
 
-type Step = 'count' | 'layout' | 'color' | 'edit';
+type Step = 'gallery' | 'edit';
 
-/** 「色を選ぶ」ステップ（組み込みレイアウト用）の選択肢 */
-interface StyleOption {
+/** ギャラリーに並ぶ1タイル。組み込みレイアウト×テーマ／DBスタイル×レイアウト／DB完成テンプレートのいずれか */
+interface GalleryTile {
   key: string;
   name: string;
+  tags: string[];
+  layout: CollageLayout;
   theme: CollageTheme;
   styleAssets?: CollageStyleAssets;
+  textLayers?: CollageTextLayer[];
 }
-
-/** DB登録の画像ベーススタイル。すべてのレイアウトに適用できる独立したテンプレートとして扱う
- *  （「色を選ぶ」ステップには出さず、レイアウト選択ステップに直接テンプレートとして並べる） */
-interface DbStyle {
-  key: string;
-  name: string;
-  theme: CollageTheme;
-  styleAssets?: CollageStyleAssets;
-}
-
-const PHOTO_COUNTS = Array.from(new Set(COLLAGE_LAYOUTS.map((t) => t.photoCount))).sort((a, b) => a - b);
 
 export default function CollageEditor({ onDone }: Props) {
-  const [step, setStep] = useState<Step>('count');
-  const [count, setCount] = useState<number | null>(null);
-  const [layoutIdx, setLayoutIdx] = useState<number | null>(null);
-  const [styleIdx, setStyleIdx] = useState<number | null>(null);
-  /** レイアウトに紐づくテンプレートスタイルを選んだ場合、色選択をスキップしてこちらを使う */
-  const [directStyle, setDirectStyle] = useState<DbStyle | null>(null);
-  const [countPreviews, setCountPreviews] = useState<Record<number, string | null>>({});
-  const [stylePreviews, setStylePreviews] = useState<(string | null)[]>([]);
-  // key: `${layout.id}::${style.key}`
-  const [layoutTemplatePreviews, setLayoutTemplatePreviews] = useState<Record<string, string | null>>({});
+  const [step, setStep] = useState<Step>('gallery');
+  const [plan, setPlan] = useState<Plan>('free');
+  const [dbStyles, setDbStyles] = useState<CollageStyle[]>([]);
+
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [previews, setPreviews] = useState<Record<string, string | null>>({});
+
+  const [selectedTile, setSelectedTile] = useState<GalleryTile | null>(null);
   const [photos, setPhotos] = useState<(string | null)[]>([null, null, null, null]);
   const [accentText, setAccentText] = useState('2026');
   const [caption, setCaption] = useState('');
+  const [textValues, setTextValues] = useState<Record<string, string>>({});
   const [finalPreview, setFinalPreview] = useState<string | null>(null);
   const [composing, setComposing] = useState(false);
-  const [plan, setPlan] = useState<Plan>('free');
-  const [dbStyles, setDbStyles] = useState<DbStyle[]>([]);
-
-  const layout = layoutIdx != null ? COLLAGE_LAYOUTS[layoutIdx] : null;
-  const layoutsInCount = count != null ? COLLAGE_LAYOUTS.filter((t) => t.photoCount === count) : [];
-
-  // 組み込みレイアウト用の「色を選ぶ」ステップの選択肢（DBの画像スタイルはここには含めない。
-  // すべてのレイアウトに適用できる独立したテンプレートとして、レイアウト選択ステップに出す）
-  const styleOptions: StyleOption[] = useMemo(
-    () => COLLAGE_THEMES.map((theme): StyleOption => ({ key: theme.name, name: theme.name, theme })),
-    []
-  );
 
   useEffect(() => {
     getMyPlan().then(setPlan).catch(() => {});
   }, []);
 
-  // 画像ベースのスタイル（シネマ風・レトロ風など）をDBから取得し、組み込みの4色テーマと並べる
   useEffect(() => {
-    listCollageStyles(plan)
-      .then((styles) => {
-        setDbStyles(
-          styles.map((s): DbStyle => ({
-            key: s.id,
-            name: s.name,
-            theme: { name: s.name, background: '#000000', background2: '#000000', accent: s.accentColor ?? '#FFFFFF' },
-            styleAssets: {
-              backgroundUrl: s.backgroundUrl,
-              frameUrl: s.frameUrl,
-              accentColor: s.accentColor,
-              accentFont: s.accentFont,
-              accentYOffset: s.accentYOffset,
-              captionColor: s.captionColor,
-              captionFont: s.captionFont,
-              captionYOffset: s.captionYOffset,
-            },
-          }))
-        );
-      })
-      .catch(() => {});
+    listCollageStyles(plan).then(setDbStyles).catch(() => {});
   }, [plan]);
 
   const alertMsg = (msg: string, title = 'お知らせ') => {
@@ -99,106 +58,116 @@ export default function CollageEditor({ onDone }: Props) {
     else Alert.alert(title, msg);
   };
 
-  // 枚数選択画面：各レイアウトの代表色（1色目）でプレビューを作る
-  useEffect(() => {
-    let alive = true;
-    COLLAGE_LAYOUTS.forEach((t, i) => {
-      composeLayoutPreview(t, COLLAGE_THEMES[0])
-        .then((url) => {
-          if (!alive) return;
-          setCountPreviews((p) => ({ ...p, [i]: url }));
-        })
-        .catch(() => {});
-    });
-    return () => {
-      alive = false;
-    };
-  }, []);
-
-  // レイアウトを選んだら、スタイルごとのプレビューを作る
-  useEffect(() => {
-    if (!layout) return;
-    let alive = true;
-    setStylePreviews(styleOptions.map(() => null));
-    styleOptions.forEach((option, i) => {
-      composeLayoutPreview(layout, option.theme, option.styleAssets)
-        .then((url) => {
-          if (!alive) return;
-          setStylePreviews((p) => {
-            const next = [...p];
-            next[i] = url;
-            return next;
-          });
-        })
-        .catch(() => {});
-    });
-    return () => {
-      alive = false;
-    };
-  }, [layout, styleOptions]);
-
-  // 枚数を選んだら、その枚数の全レイアウト × 全DBスタイルの組み合わせでプレビューを作る
-  // （DBスタイルは特定のレイアウトに限定せず、すべてのレイアウトに適用できる）
-  useEffect(() => {
-    if (count == null || dbStyles.length === 0) return;
-    let alive = true;
-    const relevantLayouts = COLLAGE_LAYOUTS.filter((l) => l.photoCount === count);
-    relevantLayouts.forEach((l) => {
-      dbStyles.forEach((s) => {
-        const previewKey = `${l.id}::${s.key}`;
-        composeLayoutPreview(l, s.theme, s.styleAssets)
-          .then((url) => {
-            if (!alive) return;
-            setLayoutTemplatePreviews((p) => ({ ...p, [previewKey]: url }));
-          })
-          .catch(() => {});
+  // ギャラリーに並べる全タイルを組み立てる:
+  // 1) 組み込み13レイアウト×4色テーマ 2) layoutIdなしのDBスタイル×全レイアウト
+  // 3) layoutIdありのDB完成テンプレート（単体タイル）
+  const tiles: GalleryTile[] = useMemo(() => {
+    const list: GalleryTile[] = [];
+    COLLAGE_LAYOUTS.forEach((layout) => {
+      COLLAGE_THEMES.forEach((theme) => {
+        list.push({
+          key: `built::${layout.id}::${theme.name}`,
+          name: `${layout.name}（${theme.name}）`,
+          tags: [layout.name, theme.name, `${layout.photoCount}枚`],
+          layout,
+          theme,
+        });
       });
     });
+    dbStyles.forEach((s) => {
+      const styleAssets: CollageStyleAssets = {
+        backgroundUrl: s.backgroundUrl,
+        frameUrl: s.frameUrl,
+        accentColor: s.accentColor,
+        accentFont: s.accentFont,
+        accentYOffset: s.accentYOffset,
+        captionColor: s.captionColor,
+        captionFont: s.captionFont,
+        captionYOffset: s.captionYOffset,
+        decorations: s.decorations,
+        textLayers: s.textLayers,
+      };
+      const dummyTheme: CollageTheme = { name: s.name, background: '#000000', background2: '#000000', accent: s.accentColor ?? '#FFFFFF' };
+      if (s.layoutId) {
+        const layout = COLLAGE_LAYOUTS.find((l) => l.id === s.layoutId);
+        if (!layout) return;
+        list.push({
+          key: `tmpl::${s.id}`,
+          name: s.name,
+          tags: s.tags,
+          layout,
+          theme: dummyTheme,
+          styleAssets,
+          textLayers: s.textLayers,
+        });
+      } else {
+        COLLAGE_LAYOUTS.forEach((layout) => {
+          list.push({
+            key: `style::${s.id}::${layout.id}`,
+            name: `${layout.name}（${s.name}）`,
+            tags: [...s.tags, layout.name, `${layout.photoCount}枚`],
+            layout,
+            theme: dummyTheme,
+            styleAssets,
+          });
+        });
+      }
+    });
+    return list;
+  }, [dbStyles]);
+
+  const tagCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    tiles.forEach((t) => t.tags.forEach((tag) => counts.set(tag, (counts.get(tag) ?? 0) + 1)));
+    return counts;
+  }, [tiles]);
+  const topTags = useMemo(
+    () => Array.from(tagCounts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 16).map(([tag]) => tag),
+    [tagCounts]
+  );
+
+  const filteredTiles = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return tiles.filter((t) => {
+      if (activeTag && !t.tags.includes(activeTag)) return false;
+      if (!q) return true;
+      return t.name.toLowerCase().includes(q) || t.tags.some((tag) => tag.toLowerCase().includes(q));
+    });
+  }, [tiles, searchQuery, activeTag]);
+
+  // 表示中のタイルのプレビューを順次生成する（生成済み・生成中のものは再実行しない）
+  useEffect(() => {
+    let alive = true;
+    filteredTiles.forEach((t) => {
+      if (previews[t.key] !== undefined) return;
+      setPreviews((p) => ({ ...p, [t.key]: null }));
+      composeLayoutPreview(t.layout, t.theme, t.styleAssets)
+        .then((url) => {
+          if (!alive) return;
+          setPreviews((p) => ({ ...p, [t.key]: url }));
+        })
+        .catch(() => {
+          if (!alive) return;
+          setPreviews((p) => ({ ...p, [t.key]: null }));
+        });
+    });
     return () => {
       alive = false;
     };
-  }, [count, dbStyles]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredTiles]);
 
-  // レイアウトを選び直したら、使わなくなる枠の写真は捨てる
-  useEffect(() => {
-    if (!layout) return;
-    setPhotos((p) => {
-      const next = [...p];
-      for (let i = layout.photoCount; i < next.length; i++) next[i] = null;
-      return next;
-    });
-  }, [layout]);
-
-  const selectCount = (c: number) => {
-    setCount(c);
-    setStep('layout');
-  };
-
-  const selectLayout = (idxInAll: number) => {
-    setLayoutIdx(idxInAll);
-    setStyleIdx(null);
-    setDirectStyle(null);
-    setStep('color');
-  };
-
-  const selectStyle = (i: number) => {
-    setStyleIdx(i);
-    setDirectStyle(null);
+  const selectTile = (tile: GalleryTile) => {
+    setSelectedTile(tile);
+    setPhotos(Array.from({ length: 4 }, () => null));
+    setAccentText('2026');
+    setCaption('');
+    const initial: Record<string, string> = {};
+    (tile.textLayers ?? []).forEach((l) => { initial[l.id] = l.sampleText; });
+    setTextValues(initial);
     setFinalPreview(null);
     setStep('edit');
   };
-
-  // DBの画像スタイルをテンプレートとして選んだ場合: レイアウトとスタイルを同時に確定し、
-  // 色選択をスキップしてすぐ写真選びに進む
-  const selectLayoutTemplate = (idxInAll: number, style: DbStyle) => {
-    setLayoutIdx(idxInAll);
-    setStyleIdx(null);
-    setDirectStyle(style);
-    setFinalPreview(null);
-    setStep('edit');
-  };
-
-  const selectedStyleOption = directStyle ?? (styleIdx != null ? styleOptions[styleIdx] : null);
 
   const pickPhoto = async (slot: number) => {
     if (Platform.OS !== 'web') {
@@ -220,21 +189,21 @@ export default function CollageEditor({ onDone }: Props) {
     });
   };
 
-  const filledCount = layout ? photos.slice(0, layout.photoCount).filter(Boolean).length : 0;
-  const ready = !!layout && filledCount === layout.photoCount;
+  const filledCount = selectedTile ? photos.slice(0, selectedTile.layout.photoCount).filter(Boolean).length : 0;
+  const ready = !!selectedTile && filledCount === selectedTile.layout.photoCount;
 
   const generatePreview = async () => {
-    if (!ready || !layout || !selectedStyleOption) return;
+    if (!ready || !selectedTile) return;
     setComposing(true);
     try {
-      const selected = selectedStyleOption;
       const { previewUrl } = await composeCollage(
-        photos.slice(0, layout.photoCount) as string[],
-        layout,
-        selected.theme,
+        photos.slice(0, selectedTile.layout.photoCount) as string[],
+        selectedTile.layout,
+        selectedTile.theme,
         accentText,
         caption,
-        selected.styleAssets
+        selectedTile.styleAssets,
+        textValues
       );
       setFinalPreview(previewUrl);
     } catch (e) {
@@ -255,105 +224,44 @@ export default function CollageEditor({ onDone }: Props) {
     </TouchableOpacity>
   );
 
-  if (step === 'count') {
+  if (step === 'gallery' || !selectedTile) {
     return (
       <View style={styles.wrap}>
-        <Text style={styles.label}>写真の枚数を選ぶ</Text>
-        <View style={styles.countRow}>
-          {PHOTO_COUNTS.map((c) => (
-            <TouchableOpacity key={c} style={styles.countChip} onPress={() => selectCount(c)} activeOpacity={0.85}>
-              <Text style={styles.countChipText}>{c}枚</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
-    );
-  }
-
-  if (step === 'layout') {
-    return (
-      <View style={styles.wrap}>
-        <BackRow label="枚数を選び直す" onPress={() => setStep('count')} />
-        <Text style={styles.label}>{count}枚のテンプレートを選ぶ</Text>
+        <Text style={styles.label}>テンプレートを選ぶ</Text>
+        <TextInput
+          style={styles.input}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholder="キーワードで検索（例: シンプル、3分割）"
+          placeholderTextColor={COLORS.textMuted}
+        />
+        <ScrollTagRow tags={topTags} activeTag={activeTag} onSelect={setActiveTag} />
         <View style={styles.templateGrid}>
-          {COLLAGE_LAYOUTS.map((t, i) => {
-            if (t.photoCount !== count) return null;
-            return (
-              <TouchableOpacity key={t.id} style={styles.templateCard} onPress={() => selectLayout(i)} activeOpacity={0.85}>
-                <View style={styles.templateThumbWrap}>
-                  {countPreviews[i] ? (
-                    <Image source={{ uri: countPreviews[i]! }} style={styles.templateThumb} resizeMode="cover" />
-                  ) : (
-                    <ActivityIndicator color={COLORS.textMuted} />
-                  )}
-                </View>
-                <Text style={styles.templateName}>{t.name}</Text>
-              </TouchableOpacity>
-            );
-          })}
-          {/* DBの画像スタイルは全レイアウトに適用できるので、この枚数の全レイアウトとの
-              組み合わせをそれぞれ独立したテンプレートとして並べる */}
-          {COLLAGE_LAYOUTS.map((t, i) => {
-            if (t.photoCount !== count) return null;
-            return dbStyles.map((s) => {
-              const previewKey = `${t.id}::${s.key}`;
-              return (
-                <TouchableOpacity
-                  key={previewKey}
-                  style={styles.templateCard}
-                  onPress={() => selectLayoutTemplate(i, s)}
-                  activeOpacity={0.85}
-                >
-                  <View style={styles.templateThumbWrap}>
-                    {layoutTemplatePreviews[previewKey] ? (
-                      <Image source={{ uri: layoutTemplatePreviews[previewKey]! }} style={styles.templateThumb} resizeMode="cover" />
-                    ) : (
-                      <ActivityIndicator color={COLORS.textMuted} />
-                    )}
-                  </View>
-                  <Text style={styles.templateName}>{t.name}（{s.name}）</Text>
-                </TouchableOpacity>
-              );
-            });
-          })}
-        </View>
-      </View>
-    );
-  }
-
-  if (step === 'color' && layout) {
-    return (
-      <View style={styles.wrap}>
-        <BackRow label="テンプレートを選び直す" onPress={() => setStep('layout')} />
-        <Text style={styles.templateTitle}>{layout.name}</Text>
-        <Text style={styles.label}>スタイルを選ぶ（実際の見た目のプレビューです）</Text>
-        <View style={styles.templateGrid}>
-          {styleOptions.map((option, i) => (
-            <TouchableOpacity key={option.key} style={styles.templateCard} onPress={() => selectStyle(i)} activeOpacity={0.85}>
+          {filteredTiles.map((t) => (
+            <TouchableOpacity key={t.key} style={styles.templateCard} onPress={() => selectTile(t)} activeOpacity={0.85}>
               <View style={styles.templateThumbWrap}>
-                {stylePreviews[i] ? (
-                  <Image source={{ uri: stylePreviews[i]! }} style={styles.templateThumb} resizeMode="cover" />
+                {previews[t.key] ? (
+                  <Image source={{ uri: previews[t.key]! }} style={styles.templateThumb} resizeMode="cover" />
                 ) : (
                   <ActivityIndicator color={COLORS.textMuted} />
                 )}
               </View>
-              <Text style={styles.templateName}>{option.name}</Text>
+              <Text style={styles.templateName} numberOfLines={1}>{t.name}</Text>
             </TouchableOpacity>
           ))}
         </View>
+        {filteredTiles.length === 0 && <Text style={styles.emptyText}>該当するテンプレートがありません</Text>}
       </View>
     );
   }
 
-  if (!layout || !selectedStyleOption) return null;
+  const layout = selectedTile.layout;
+  const textLayers = selectedTile.textLayers ?? [];
 
   return (
     <View style={styles.wrap}>
-      <BackRow
-        label={directStyle ? 'テンプレートを選び直す' : 'スタイルを選び直す'}
-        onPress={() => setStep(directStyle ? 'layout' : 'color')}
-      />
-      <Text style={styles.templateTitle}>{layout.name}（{selectedStyleOption.name}）</Text>
+      <BackRow label="テンプレートを選び直す" onPress={() => setStep('gallery')} />
+      <Text style={styles.templateTitle}>{selectedTile.name}</Text>
 
       <Text style={styles.label}>写真を選ぶ（{layout.photoCount}枚）</Text>
       <View style={styles.photoGrid}>
@@ -368,23 +276,40 @@ export default function CollageEditor({ onDone }: Props) {
         ))}
       </View>
 
-      <Text style={styles.label}>あしらい文字（年号など・空欄でも可）</Text>
-      <TextInput
-        style={styles.input}
-        value={accentText}
-        onChangeText={setAccentText}
-        placeholder="例: 2026"
-        placeholderTextColor={COLORS.textMuted}
-      />
+      {textLayers.length > 0 ? (
+        textLayers.map((l) => (
+          <View key={l.id}>
+            <Text style={styles.label}>{l.label ?? l.id}</Text>
+            <TextInput
+              style={styles.input}
+              value={textValues[l.id] ?? ''}
+              onChangeText={(v) => setTextValues((p) => ({ ...p, [l.id]: v }))}
+              placeholder={l.sampleText}
+              placeholderTextColor={COLORS.textMuted}
+            />
+          </View>
+        ))
+      ) : (
+        <>
+          <Text style={styles.label}>あしらい文字（年号など・空欄でも可）</Text>
+          <TextInput
+            style={styles.input}
+            value={accentText}
+            onChangeText={setAccentText}
+            placeholder="例: 2026"
+            placeholderTextColor={COLORS.textMuted}
+          />
 
-      <Text style={styles.label}>キャプション（画像内の下部・空欄でも可）</Text>
-      <TextInput
-        style={styles.input}
-        value={caption}
-        onChangeText={setCaption}
-        placeholder="例: 今年もありがとうございました"
-        placeholderTextColor={COLORS.textMuted}
-      />
+          <Text style={styles.label}>キャプション（画像内の下部・空欄でも可）</Text>
+          <TextInput
+            style={styles.input}
+            value={caption}
+            onChangeText={setCaption}
+            placeholder="例: 今年もありがとうございました"
+            placeholderTextColor={COLORS.textMuted}
+          />
+        </>
+      )}
 
       <TouchableOpacity
         style={[styles.genBtn, !ready && styles.genBtnDisabled]}
@@ -409,22 +334,40 @@ export default function CollageEditor({ onDone }: Props) {
   );
 }
 
+/** ギャラリー上部のタグ絞り込みチップ行（「すべて」＋頻出タグ上位16件） */
+function ScrollTagRow({ tags, activeTag, onSelect }: { tags: string[]; activeTag: string | null; onSelect: (t: string | null) => void }) {
+  return (
+    <View style={styles.tagRow}>
+      <TouchableOpacity style={[styles.tagChip, !activeTag && styles.tagChipActive]} onPress={() => onSelect(null)}>
+        <Text style={[styles.tagChipText, !activeTag && styles.tagChipTextActive]}>すべて</Text>
+      </TouchableOpacity>
+      {tags.map((tag) => (
+        <TouchableOpacity
+          key={tag}
+          style={[styles.tagChip, activeTag === tag && styles.tagChipActive]}
+          onPress={() => onSelect(activeTag === tag ? null : tag)}
+        >
+          <Text style={[styles.tagChipText, activeTag === tag && styles.tagChipTextActive]}>{tag}</Text>
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   wrap: { paddingBottom: SPACING.xl },
   label: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700', marginTop: SPACING.md, marginBottom: SPACING.xs },
   backRow: { flexDirection: 'row', alignItems: 'center', gap: 2, marginBottom: SPACING.sm },
   backText: { color: COLORS.textMuted, fontSize: 13, fontWeight: '600' },
   templateTitle: { color: COLORS.text, fontSize: 18, fontWeight: '800', marginBottom: SPACING.sm },
-  countRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm },
-  countChip: {
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.lg,
-    borderRadius: RADIUS.full,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.surface,
+  tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs, marginTop: SPACING.sm, marginBottom: SPACING.sm },
+  tagChip: {
+    paddingVertical: 6, paddingHorizontal: SPACING.sm, borderRadius: RADIUS.full,
+    borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.surface,
   },
-  countChipText: { color: COLORS.text, fontSize: 16, fontWeight: '800' },
+  tagChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  tagChipText: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '600' },
+  tagChipTextActive: { color: '#fff' },
   templateGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.md },
   templateCard: { width: 140, alignItems: 'center' },
   templateThumbWrap: {
@@ -439,7 +382,8 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   templateThumb: { width: '100%', height: '100%' },
-  templateName: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '700', marginTop: 6, textAlign: 'center' },
+  templateName: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '700', marginTop: 6, textAlign: 'center', maxWidth: 140 },
+  emptyText: { color: COLORS.textMuted, textAlign: 'center', marginTop: SPACING.lg },
   photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm },
   photoSlot: {
     width: 90,

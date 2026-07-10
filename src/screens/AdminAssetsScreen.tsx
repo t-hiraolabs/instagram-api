@@ -16,12 +16,39 @@ import {
   toggleAssetActive, deleteAsset, updateAsset, AssetSheet, AdminAsset,
 } from '../services/adminAssetService';
 import {
-  listAllCollageStyles, createCollageStyle, toggleCollageStyleActive, deleteCollageStyle, CollageStyle,
+  listAllCollageStyles, createCollageStyle, updateCollageStyle, toggleCollageStyleActive, deleteCollageStyle, CollageStyle,
 } from '../services/collageStyleService';
-import { COLLAGE_FONT_PRESETS } from '../utils/collageCompositor';
+import {
+  COLLAGE_FONT_PRESETS, COLLAGE_LAYOUTS, COLLAGE_THEMES, composeLayoutPreview,
+  CollageStyleAssets, CollageDecoration, CollageTextLayer,
+} from '../utils/collageCompositor';
 
 type Tab = 'sheets' | 'assets' | 'styles';
 const PLAN_OPTIONS: Plan[] = ['free', 'pro', 'business'];
+const ALIGN_OPTIONS: Array<'left' | 'center' | 'right'> = ['left', 'center', 'right'];
+
+/** 装飾1件のフォーム入力（数値は文字列で保持し、保存時にNumberへ変換する） */
+interface DecorationDraft {
+  key: string;
+  assetId: string | null;
+  assetUrl: string | null;
+  assetName: string;
+  x: string; y: string; w: string; h: string; rotate: string;
+}
+/** テキストレイヤー1件のフォーム入力 */
+interface TextLayerDraft {
+  key: string;
+  id: string;
+  label: string;
+  sampleText: string;
+  x: string; y: string; maxWidth: string; fontSize: string;
+  color: string;
+  font: string;
+  align: 'left' | 'center' | 'right';
+}
+
+let draftKeySeq = 0;
+const nextDraftKey = () => `draft-${draftKeySeq++}`;
 
 const STATUS_LABEL: Record<AssetSheet['status'], string> = {
   uploaded: 'アップロード済み',
@@ -56,8 +83,11 @@ export default function AdminAssetsScreen({ navigation }: any) {
 
   const [collageStyles, setCollageStyles] = useState<CollageStyle[]>([]);
   const [styleFormVisible, setStyleFormVisible] = useState(false);
+  const [editingStyleId, setEditingStyleId] = useState<string | null>(null);
+  const [styleMode, setStyleMode] = useState<'simple' | 'full'>('simple');
   const [styleName, setStyleName] = useState('');
   const [stylePlan, setStylePlan] = useState<Plan>('free');
+  const [styleTags, setStyleTags] = useState('');
   const [styleAccentColor, setStyleAccentColor] = useState('#FFFFFF');
   const [styleAccentFont, setStyleAccentFont] = useState<string>(COLLAGE_FONT_PRESETS[0].id);
   const [styleAccentYOffset, setStyleAccentYOffset] = useState('0');
@@ -69,6 +99,17 @@ export default function AdminAssetsScreen({ navigation }: any) {
   const [backgroundAssets, setBackgroundAssets] = useState<AdminAsset[]>([]);
   const [frameAssets, setFrameAssets] = useState<AdminAsset[]>([]);
   const [savingStyle, setSavingStyle] = useState(false);
+
+  // 完成テンプレートモード用
+  const [styleLayoutId, setStyleLayoutId] = useState<string | null>(null);
+  const [layoutPreviews, setLayoutPreviews] = useState<Record<string, string | null>>({});
+  const [styleDecorations, setStyleDecorations] = useState<DecorationDraft[]>([]);
+  const [styleTextLayers, setStyleTextLayers] = useState<TextLayerDraft[]>([]);
+  const [decorationCategoryId, setDecorationCategoryId] = useState<string | null>(null);
+  const [decorationAssets, setDecorationAssets] = useState<AdminAsset[]>([]);
+  const [decorationPickerFor, setDecorationPickerFor] = useState<string | null>(null);
+  const [livePreviewUrl, setLivePreviewUrl] = useState<string | null>(null);
+  const [livePreviewLoading, setLivePreviewLoading] = useState(false);
 
   const alertMsg = (msg: string, title = 'お知らせ') => {
     if (Platform.OS === 'web') window.alert(msg);
@@ -134,7 +175,74 @@ export default function AdminAssetsScreen({ navigation }: any) {
     const frameCategoryId = categories.find((c) => c.name === 'フレーム')?.id;
     if (backgroundCategoryId) listAllAssets({ categoryId: backgroundCategoryId, isActive: true }).then(setBackgroundAssets).catch(() => {});
     if (frameCategoryId) listAllAssets({ categoryId: frameCategoryId, isActive: true }).then(setFrameAssets).catch(() => {});
+    if (!decorationCategoryId) {
+      const stampCategoryId = categories.find((c) => c.name === 'スタンプ' || c.name === 'ワンポイント')?.id;
+      if (stampCategoryId) setDecorationCategoryId(stampCategoryId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAdmin, tab, categories, loadStyles]);
+
+  // レイアウト選択用のサムネイルを1回だけ生成する
+  useEffect(() => {
+    if (!isAdmin || tab !== 'styles' || styleMode !== 'full') return;
+    let alive = true;
+    COLLAGE_LAYOUTS.forEach((l) => {
+      if (layoutPreviews[l.id] !== undefined) return;
+      setLayoutPreviews((p) => ({ ...p, [l.id]: null }));
+      composeLayoutPreview(l, COLLAGE_THEMES[0])
+        .then((url) => { if (alive) setLayoutPreviews((p) => ({ ...p, [l.id]: url })); })
+        .catch(() => {});
+    });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin, tab, styleMode]);
+
+  useEffect(() => {
+    if (!isAdmin || tab !== 'styles' || !decorationCategoryId) return;
+    listAllAssets({ categoryId: decorationCategoryId, isActive: true }).then(setDecorationAssets).catch(() => {});
+  }, [isAdmin, tab, decorationCategoryId]);
+
+  // 完成テンプレートモード: フォームの内容が変わるたびにプレビューを再生成する
+  useEffect(() => {
+    if (!isAdmin || tab !== 'styles' || styleMode !== 'full' || !styleLayoutId) {
+      setLivePreviewUrl(null);
+      return;
+    }
+    const layout = COLLAGE_LAYOUTS.find((l) => l.id === styleLayoutId);
+    if (!layout) return;
+    let alive = true;
+    setLivePreviewLoading(true);
+    const bg = backgroundAssets.find((a) => a.id === styleBackgroundAssetId);
+    const fr = frameAssets.find((a) => a.id === styleFrameAssetId);
+    const styleAssets: CollageStyleAssets = {
+      backgroundUrl: bg?.storageUrl,
+      frameUrl: fr?.storageUrl,
+      accentColor: styleAccentColor,
+      decorations: styleDecorations
+        .filter((d) => d.assetUrl)
+        .map((d): CollageDecoration => ({
+          assetId: d.assetId ?? '',
+          url: d.assetUrl ?? undefined,
+          x: Number(d.x) || 0, y: Number(d.y) || 0, w: Number(d.w) || 100, h: Number(d.h) || 100,
+          rotate: Number(d.rotate) || 0,
+        })),
+      textLayers: styleTextLayers.map((t): CollageTextLayer => ({
+        id: t.id, label: t.label || undefined, sampleText: t.sampleText,
+        x: Number(t.x) || 0, y: Number(t.y) || 0, maxWidth: Number(t.maxWidth) || 900,
+        align: t.align, fontSize: Number(t.fontSize) || 40, font: t.font, color: t.color,
+      })),
+    };
+    const dummyTheme = { name: 'preview', background: '#F5F5F5', background2: '#E2E2E2', accent: styleAccentColor };
+    composeLayoutPreview(layout, dummyTheme, styleAssets)
+      .then((url) => { if (alive) setLivePreviewUrl(url); })
+      .catch(() => { if (alive) setLivePreviewUrl(null); })
+      .finally(() => { if (alive) setLivePreviewLoading(false); });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    isAdmin, tab, styleMode, styleLayoutId, styleBackgroundAssetId, styleFrameAssetId, styleAccentColor,
+    backgroundAssets, frameAssets, styleDecorations, styleTextLayers,
+  ]);
 
   const categoryName = (id: string) => categories.find((c) => c.id === id)?.name ?? id;
   const categorySlug = (id: string): string => {
@@ -241,8 +349,11 @@ export default function AdminAssetsScreen({ navigation }: any) {
   };
 
   const resetStyleForm = () => {
+    setEditingStyleId(null);
+    setStyleMode('simple');
     setStyleName('');
     setStylePlan('free');
+    setStyleTags('');
     setStyleAccentColor('#FFFFFF');
     setStyleAccentFont(COLLAGE_FONT_PRESETS[0].id);
     setStyleAccentYOffset('0');
@@ -251,19 +362,96 @@ export default function AdminAssetsScreen({ navigation }: any) {
     setStyleCaptionYOffset('0');
     setStyleBackgroundAssetId(null);
     setStyleFrameAssetId(null);
+    setStyleLayoutId(null);
+    setStyleDecorations([]);
+    setStyleTextLayers([]);
   };
 
-  const handleCreateStyle = async () => {
-    if (!styleName.trim() || !styleBackgroundAssetId) {
-      alertMsg('スタイル名と背景画像を選んでください');
+  const startEditStyle = (s: CollageStyle) => {
+    setEditingStyleId(s.id);
+    setStyleMode(s.layoutId ? 'full' : 'simple');
+    setStyleName(s.name);
+    setStylePlan(s.plan);
+    setStyleTags(s.tags.join(', '));
+    setStyleAccentColor(s.accentColor ?? '#FFFFFF');
+    setStyleAccentFont(s.accentFont ?? COLLAGE_FONT_PRESETS[0].id);
+    setStyleAccentYOffset(String(s.accentYOffset ?? 0));
+    setStyleCaptionColor(s.captionColor ?? '#FFFFFF');
+    setStyleCaptionFont(s.captionFont ?? COLLAGE_FONT_PRESETS[0].id);
+    setStyleCaptionYOffset(String(s.captionYOffset ?? 0));
+    setStyleBackgroundAssetId(s.backgroundAssetId ?? null);
+    setStyleFrameAssetId(s.frameAssetId ?? null);
+    setStyleLayoutId(s.layoutId ?? null);
+    setStyleDecorations(
+      (s.decorations ?? []).map((d) => ({
+        key: nextDraftKey(),
+        assetId: d.assetId,
+        assetUrl: d.url ?? null,
+        assetName: '',
+        x: String(d.x), y: String(d.y), w: String(d.w), h: String(d.h), rotate: String(d.rotate ?? 0),
+      }))
+    );
+    setStyleTextLayers(
+      (s.textLayers ?? []).map((t) => ({
+        key: nextDraftKey(),
+        id: t.id,
+        label: t.label ?? '',
+        sampleText: t.sampleText,
+        x: String(t.x), y: String(t.y), maxWidth: String(t.maxWidth), fontSize: String(t.fontSize ?? 40),
+        color: t.color ?? '#FFFFFF',
+        font: t.font ?? COLLAGE_FONT_PRESETS[0].id,
+        align: t.align ?? 'left',
+      }))
+    );
+    setStyleFormVisible(true);
+  };
+
+  const addDecoration = () => {
+    setStyleDecorations((p) => [...p, {
+      key: nextDraftKey(), assetId: null, assetUrl: null, assetName: '',
+      x: '100', y: '100', w: '150', h: '150', rotate: '0',
+    }]);
+  };
+  const updateDecoration = (key: string, patch: Partial<DecorationDraft>) => {
+    setStyleDecorations((p) => p.map((d) => (d.key === key ? { ...d, ...patch } : d)));
+  };
+  const removeDecoration = (key: string) => setStyleDecorations((p) => p.filter((d) => d.key !== key));
+
+  const addTextLayer = () => {
+    setStyleTextLayers((p) => [...p, {
+      key: nextDraftKey(), id: `text_${p.length + 1}`, label: '', sampleText: '',
+      x: '100', y: '200', maxWidth: '600', fontSize: '40', color: '#FFFFFF',
+      font: COLLAGE_FONT_PRESETS[0].id, align: 'left',
+    }]);
+  };
+  const updateTextLayer = (key: string, patch: Partial<TextLayerDraft>) => {
+    setStyleTextLayers((p) => p.map((t) => (t.key === key ? { ...t, ...patch } : t)));
+  };
+  const removeTextLayer = (key: string) => setStyleTextLayers((p) => p.filter((t) => t.key !== key));
+
+  const parseTags = (raw: string): string[] =>
+    raw.split(',').map((s) => s.trim()).filter(Boolean);
+
+  const handleSaveStyle = async () => {
+    if (!styleName.trim()) {
+      alertMsg('スタイル名を入力してください');
+      return;
+    }
+    if (styleMode === 'simple' && !styleBackgroundAssetId) {
+      alertMsg('背景画像を選んでください');
+      return;
+    }
+    if (styleMode === 'full' && !styleLayoutId) {
+      alertMsg('レイアウトを選んでください');
       return;
     }
     setSavingStyle(true);
     try {
-      await createCollageStyle({
+      const params = {
         name: styleName.trim(),
         plan: stylePlan,
-        backgroundAssetId: styleBackgroundAssetId,
+        tags: parseTags(styleTags),
+        backgroundAssetId: styleBackgroundAssetId ?? undefined,
         frameAssetId: styleFrameAssetId ?? undefined,
         accentColor: styleAccentColor,
         accentFont: styleAccentFont,
@@ -271,12 +459,32 @@ export default function AdminAssetsScreen({ navigation }: any) {
         captionColor: styleCaptionColor,
         captionFont: styleCaptionFont,
         captionYOffset: Number(styleCaptionYOffset) || 0,
-      });
+        layoutId: styleMode === 'full' ? (styleLayoutId ?? undefined) : undefined,
+        decorations: styleMode === 'full'
+          ? styleDecorations.filter((d) => d.assetId).map((d) => ({
+              assetId: d.assetId as string,
+              x: Number(d.x) || 0, y: Number(d.y) || 0, w: Number(d.w) || 100, h: Number(d.h) || 100,
+              rotate: Number(d.rotate) || 0,
+            }))
+          : undefined,
+        textLayers: styleMode === 'full'
+          ? styleTextLayers.map((t) => ({
+              id: t.id, label: t.label || undefined, sampleText: t.sampleText,
+              x: Number(t.x) || 0, y: Number(t.y) || 0, maxWidth: Number(t.maxWidth) || 900,
+              align: t.align, fontSize: Number(t.fontSize) || 40, font: t.font, color: t.color,
+            }))
+          : undefined,
+      };
+      if (editingStyleId) {
+        await updateCollageStyle(editingStyleId, params);
+      } else {
+        await createCollageStyle(params);
+      }
       resetStyleForm();
       setStyleFormVisible(false);
       await loadStyles();
     } catch (e) {
-      alertMsg((e as { message?: string })?.message || '作成に失敗しました', 'エラー');
+      alertMsg((e as { message?: string })?.message || '保存に失敗しました', 'エラー');
     } finally {
       setSavingStyle(false);
     }
@@ -354,7 +562,7 @@ export default function AdminAssetsScreen({ navigation }: any) {
           <Text style={[styles.tabBtnText, tab === 'assets' && styles.tabBtnTextActive]}>素材一覧</Text>
         </TouchableOpacity>
         <TouchableOpacity style={[styles.tabBtn, tab === 'styles' && styles.tabBtnActive]} onPress={() => setTab('styles')}>
-          <Text style={[styles.tabBtnText, tab === 'styles' && styles.tabBtnTextActive]}>コラージュスタイル</Text>
+          <Text style={[styles.tabBtnText, tab === 'styles' && styles.tabBtnTextActive]}>コラージュテンプレート</Text>
         </TouchableOpacity>
       </View>
 
@@ -447,12 +655,30 @@ export default function AdminAssetsScreen({ navigation }: any) {
             onPress={() => { setStyleFormVisible((v) => !v); if (styleFormVisible) resetStyleForm(); }}
           >
             <Ionicons name={styleFormVisible ? 'close' : 'add'} size={20} color="#fff" />
-            <Text style={styles.uploadBtnText}>{styleFormVisible ? '閉じる' : '新規スタイルを作成'}</Text>
+            <Text style={styles.uploadBtnText}>{styleFormVisible ? '閉じる' : '新規テンプレートを作成'}</Text>
           </TouchableOpacity>
 
           {styleFormVisible && (
             <View style={{ marginTop: SPACING.md }}>
-              <Text style={styles.sectionLabel}>スタイル名</Text>
+              {editingStyleId && <Text style={styles.sheetMeta}>「{styleName}」を編集中</Text>}
+
+              <Text style={styles.sectionLabel}>種類</Text>
+              <View style={styles.chipRow}>
+                <TouchableOpacity
+                  style={[styles.chip, styleMode === 'simple' && styles.chipActive]}
+                  onPress={() => setStyleMode('simple')}
+                >
+                  <Text style={[styles.chipText, styleMode === 'simple' && styles.chipTextActive]}>スタイルのみ（全レイアウト共通）</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.chip, styleMode === 'full' && styles.chipActive]}
+                  onPress={() => setStyleMode('full')}
+                >
+                  <Text style={[styles.chipText, styleMode === 'full' && styles.chipTextActive]}>完成テンプレート（レイアウト・装飾・文字を指定）</Text>
+                </TouchableOpacity>
+              </View>
+
+              <Text style={styles.sectionLabel}>名前</Text>
               <TextInput
                 style={styles.input}
                 value={styleName}
@@ -473,6 +699,37 @@ export default function AdminAssetsScreen({ navigation }: any) {
                   </TouchableOpacity>
                 ))}
               </View>
+
+              <Text style={styles.sectionLabel}>タグ（検索用・カンマ区切り）</Text>
+              <TextInput
+                style={styles.input}
+                value={styleTags}
+                onChangeText={setStyleTags}
+                placeholder="例: ベージュ, シンプル, 大人っぽい"
+                placeholderTextColor={COLORS.textMuted}
+              />
+
+              {styleMode === 'full' && (
+                <>
+                  <Text style={styles.sectionLabel}>レイアウト（写真の配置）</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipRow}>
+                    {COLLAGE_LAYOUTS.map((l) => (
+                      <TouchableOpacity key={l.id} onPress={() => setStyleLayoutId(l.id)}>
+                        <View style={[styles.assetCard, styleLayoutId === l.id && styles.assetCardSelected]}>
+                          {layoutPreviews[l.id] ? (
+                            <Image source={{ uri: layoutPreviews[l.id]! }} style={styles.layoutThumb} resizeMode="cover" />
+                          ) : (
+                            <View style={[styles.layoutThumb, styles.assetImgEmpty]}>
+                              <ActivityIndicator color={COLORS.textMuted} size="small" />
+                            </View>
+                          )}
+                          <Text style={styles.assetName} numberOfLines={1}>{l.name}</Text>
+                        </View>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </>
+              )}
 
               <Text style={styles.sectionLabel}>あしらい文字（年号など）の色・フォント・位置</Text>
               <View style={styles.colorRow}>
@@ -574,30 +831,147 @@ export default function AdminAssetsScreen({ navigation }: any) {
                 ))}
               </View>
 
-              <Text style={[styles.sheetMeta, { marginBottom: SPACING.xs }]}>
-                このスタイルは全レイアウト（写真の枚数・並べ方）に自動的に適用され、コラージュ
-                編集画面の「テンプレートを選ぶ」ステップにレイアウトとの組み合わせごとに表示されます。
-              </Text>
+              {styleMode === 'simple' && (
+                <Text style={[styles.sheetMeta, { marginBottom: SPACING.xs }]}>
+                  このスタイルは全レイアウト（写真の枚数・並べ方）に自動的に適用され、コラージュ
+                  編集画面のギャラリーにレイアウトとの組み合わせごとに表示されます。
+                </Text>
+              )}
+
+              {styleMode === 'full' && (
+                <>
+                  <Text style={styles.sectionLabel}>装飾画像（矢印・キラキラ等。キャンバスは1080×1920pxです）</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipRow}>
+                    {categories.map((c) => (
+                      <TouchableOpacity
+                        key={c.id}
+                        style={[styles.chip, decorationCategoryId === c.id && styles.chipActive]}
+                        onPress={() => setDecorationCategoryId(c.id)}
+                      >
+                        <Text style={[styles.chipText, decorationCategoryId === c.id && styles.chipTextActive]}>{c.name}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                  {styleDecorations.map((d) => (
+                    <View key={d.key} style={styles.draftRow}>
+                      <TouchableOpacity onPress={() => setDecorationPickerFor(decorationPickerFor === d.key ? null : d.key)}>
+                        <View style={styles.decorationPickBtn}>
+                          {d.assetUrl ? (
+                            <Image source={{ uri: d.assetUrl }} style={styles.decorationPickImg} resizeMode="contain" />
+                          ) : (
+                            <Text style={styles.chipText}>素材を選ぶ</Text>
+                          )}
+                        </View>
+                      </TouchableOpacity>
+                      {decorationPickerFor === d.key && (
+                        <View style={styles.grid}>
+                          {decorationAssets.map((a) => (
+                            <TouchableOpacity
+                              key={a.id}
+                              onPress={() => {
+                                updateDecoration(d.key, { assetId: a.id, assetUrl: a.thumbnailUrl ?? a.storageUrl, assetName: a.name });
+                                setDecorationPickerFor(null);
+                              }}
+                            >
+                              <View style={styles.assetCard}>
+                                <Image source={{ uri: a.thumbnailUrl ?? a.storageUrl }} style={styles.assetImg} resizeMode="contain" />
+                                <Text style={styles.assetName} numberOfLines={1}>{a.name}</Text>
+                              </View>
+                            </TouchableOpacity>
+                          ))}
+                          {decorationAssets.length === 0 && <Text style={styles.emptyText}>このカテゴリに素材がありません</Text>}
+                        </View>
+                      )}
+                      <View style={styles.numRow}>
+                        <TextInput style={styles.numInput} value={d.x} onChangeText={(v) => updateDecoration(d.key, { x: v })} placeholder="x" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
+                        <TextInput style={styles.numInput} value={d.y} onChangeText={(v) => updateDecoration(d.key, { y: v })} placeholder="y" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
+                        <TextInput style={styles.numInput} value={d.w} onChangeText={(v) => updateDecoration(d.key, { w: v })} placeholder="幅" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
+                        <TextInput style={styles.numInput} value={d.h} onChangeText={(v) => updateDecoration(d.key, { h: v })} placeholder="高さ" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
+                        <TextInput style={styles.numInput} value={d.rotate} onChangeText={(v) => updateDecoration(d.key, { rotate: v })} placeholder="回転°" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
+                        <TouchableOpacity onPress={() => removeDecoration(d.key)}>
+                          <Ionicons name="trash-outline" size={20} color={COLORS.error} />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ))}
+                  <TouchableOpacity style={styles.addRowBtn} onPress={addDecoration}>
+                    <Ionicons name="add" size={16} color={COLORS.primary} />
+                    <Text style={styles.addRowBtnText}>装飾を追加</Text>
+                  </TouchableOpacity>
+
+                  <Text style={styles.sectionLabel}>テキストレイヤー（あしらい文字・キャプションの代わりに使う）</Text>
+                  {styleTextLayers.map((t) => (
+                    <View key={t.key} style={styles.draftRow}>
+                      <TextInput style={styles.input} value={t.label} onChangeText={(v) => updateTextLayer(t.key, { label: v })} placeholder="ラベル（例: 見出し）" placeholderTextColor={COLORS.textMuted} />
+                      <TextInput style={styles.input} value={t.sampleText} onChangeText={(v) => updateTextLayer(t.key, { sampleText: v })} placeholder="サンプル文言（例: 家で咲いた花）" placeholderTextColor={COLORS.textMuted} />
+                      <View style={styles.numRow}>
+                        <TextInput style={styles.numInput} value={t.x} onChangeText={(v) => updateTextLayer(t.key, { x: v })} placeholder="x" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
+                        <TextInput style={styles.numInput} value={t.y} onChangeText={(v) => updateTextLayer(t.key, { y: v })} placeholder="y" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
+                        <TextInput style={styles.numInput} value={t.maxWidth} onChangeText={(v) => updateTextLayer(t.key, { maxWidth: v })} placeholder="最大幅" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
+                        <TextInput style={styles.numInput} value={t.fontSize} onChangeText={(v) => updateTextLayer(t.key, { fontSize: v })} placeholder="文字サイズ" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
+                        <TouchableOpacity onPress={() => removeTextLayer(t.key)}>
+                          <Ionicons name="trash-outline" size={20} color={COLORS.error} />
+                        </TouchableOpacity>
+                      </View>
+                      <View style={styles.colorRow}>
+                        <View style={[styles.colorSwatch, { backgroundColor: t.color }]} />
+                        <TextInput style={[styles.input, { flex: 1 }]} value={t.color} onChangeText={(v) => updateTextLayer(t.key, { color: v })} placeholder="#FFFFFF" placeholderTextColor={COLORS.textMuted} autoCapitalize="none" autoCorrect={false} />
+                      </View>
+                      <View style={styles.chipRow}>
+                        {COLLAGE_FONT_PRESETS.map((f) => (
+                          <TouchableOpacity key={f.id} style={[styles.chip, t.font === f.id && styles.chipActive]} onPress={() => updateTextLayer(t.key, { font: f.id })}>
+                            <Text style={[styles.chipText, t.font === f.id && styles.chipTextActive]}>{f.label}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                      <View style={styles.chipRow}>
+                        {ALIGN_OPTIONS.map((al) => (
+                          <TouchableOpacity key={al} style={[styles.chip, t.align === al && styles.chipActive]} onPress={() => updateTextLayer(t.key, { align: al })}>
+                            <Text style={[styles.chipText, t.align === al && styles.chipTextActive]}>{al === 'left' ? '左揃え' : al === 'center' ? '中央揃え' : '右揃え'}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </View>
+                  ))}
+                  <TouchableOpacity style={styles.addRowBtn} onPress={addTextLayer}>
+                    <Ionicons name="add" size={16} color={COLORS.primary} />
+                    <Text style={styles.addRowBtnText}>テキストを追加</Text>
+                  </TouchableOpacity>
+
+                  <Text style={styles.sectionLabel}>プレビュー</Text>
+                  <View style={styles.livePreviewWrap}>
+                    {livePreviewLoading ? (
+                      <ActivityIndicator color={COLORS.primary} />
+                    ) : livePreviewUrl ? (
+                      <Image source={{ uri: livePreviewUrl }} style={styles.livePreviewImg} resizeMode="contain" />
+                    ) : (
+                      <Text style={styles.emptyText}>レイアウトを選ぶとプレビューが表示されます</Text>
+                    )}
+                  </View>
+                </>
+              )}
 
               <TouchableOpacity
                 style={[styles.uploadBtn, savingStyle && { opacity: 0.6 }]}
-                onPress={handleCreateStyle}
+                onPress={handleSaveStyle}
                 disabled={savingStyle}
               >
-                {savingStyle ? <ActivityIndicator color="#fff" /> : <Text style={styles.uploadBtnText}>保存</Text>}
+                {savingStyle ? <ActivityIndicator color="#fff" /> : <Text style={styles.uploadBtnText}>{editingStyleId ? '更新' : '保存'}</Text>}
               </TouchableOpacity>
             </View>
           )}
 
-          <Text style={styles.sectionLabel}>登録済みスタイル</Text>
+          <Text style={styles.sectionLabel}>登録済みテンプレート</Text>
           {loading && <ActivityIndicator color={COLORS.primary} style={{ marginTop: SPACING.md }} />}
           {collageStyles.map((s) => (
             <View key={s.id} style={[styles.sheetRow, !s.isActive && { opacity: 0.5 }]}>
-              {s.backgroundUrl && <Image source={{ uri: s.backgroundUrl }} style={styles.styleThumb} />}
-              <View style={{ flex: 1 }}>
-                <Text style={styles.sheetName} numberOfLines={1}>{s.name}</Text>
-                <Text style={styles.sheetMeta}>{s.plan}</Text>
-              </View>
+              <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: SPACING.sm }} onPress={() => startEditStyle(s)} activeOpacity={0.7}>
+                {s.backgroundUrl && <Image source={{ uri: s.backgroundUrl }} style={styles.styleThumb} />}
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.sheetName} numberOfLines={1}>{s.name}{s.layoutId ? '（完成テンプレート）' : ''}</Text>
+                  <Text style={styles.sheetMeta}>{s.plan}{s.tags.length > 0 ? ` ・ ${s.tags.join(', ')}` : ''}</Text>
+                </View>
+              </TouchableOpacity>
               <Switch value={s.isActive} onValueChange={() => handleToggleStyleActive(s)} />
               <TouchableOpacity onPress={() => handleDeleteStyle(s)} style={{ marginLeft: SPACING.sm }}>
                 <Ionicons name="trash-outline" size={20} color={COLORS.error} />
@@ -749,4 +1123,28 @@ const styles = StyleSheet.create({
   colorRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
   colorSwatch: { width: 28, height: 28, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border },
   styleThumb: { width: 40, height: 40, borderRadius: RADIUS.sm, marginRight: SPACING.sm },
+  layoutThumb: { width: 84, height: (84 * 1920) / 1080, borderRadius: RADIUS.sm, marginBottom: SPACING.xs },
+  draftRow: {
+    backgroundColor: COLORS.surface, borderRadius: RADIUS.md, padding: SPACING.sm, marginBottom: SPACING.sm, gap: SPACING.xs,
+  },
+  decorationPickBtn: {
+    width: 72, height: 72, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.border,
+    alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.background,
+  },
+  decorationPickImg: { width: '100%', height: '100%' },
+  numRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.xs, flexWrap: 'wrap' },
+  numInput: {
+    width: 64, borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.sm,
+    paddingHorizontal: SPACING.xs, paddingVertical: 6, color: COLORS.text, backgroundColor: COLORS.surface, fontSize: 12,
+  },
+  addRowBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start',
+    paddingVertical: SPACING.xs, marginBottom: SPACING.sm,
+  },
+  addRowBtnText: { color: COLORS.primary, fontWeight: '700', fontSize: 13 },
+  livePreviewWrap: {
+    width: 180, height: (180 * 1920) / 1080, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.border,
+    backgroundColor: COLORS.surface, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', marginBottom: SPACING.sm,
+  },
+  livePreviewImg: { width: '100%', height: '100%' },
 });

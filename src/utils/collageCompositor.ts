@@ -295,6 +295,38 @@ async function drawCircularPhoto(ctx: CanvasRenderingContext2D, uri: string, cx:
   }
 }
 
+// 装飾画像（矢印・キラキラ等）を指定位置・サイズ・回転で描く
+async function drawDecorationImage(ctx: CanvasRenderingContext2D, dec: CollageDecoration) {
+  if (!dec.url) return;
+  const img = await loadImage(dec.url);
+  ctx.save();
+  if (dec.rotate) {
+    const cx = dec.x + dec.w / 2;
+    const cy = dec.y + dec.h / 2;
+    ctx.translate(cx, cy);
+    ctx.rotate((dec.rotate * Math.PI) / 180);
+    ctx.translate(-cx, -cy);
+  }
+  ctx.drawImage(img, dec.x, dec.y, dec.w, dec.h);
+  ctx.restore();
+}
+
+// テキストレイヤー1件を指定位置・フォント・色で描く（サンプル文言はtextOverridesで上書き可能）
+async function drawTextLayer(ctx: CanvasRenderingContext2D, layer: CollageTextLayer, text: string) {
+  if (!text.trim()) return;
+  const preset = getFontPreset(layer.font);
+  await loadFontFor(text, layer.font);
+  ctx.textAlign = layer.align ?? 'left';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = layer.color ?? '#FFFFFF';
+  const { lines, lineH } = fitText(ctx, text.trim(), layer.maxWidth, layer.fontSize ?? 40, 20, `"${preset.family}"`, preset.weight);
+  let y = layer.y;
+  for (const line of lines) {
+    ctx.fillText(line, layer.x, y);
+    y += lineH;
+  }
+}
+
 function roundRectPath(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
   ctx.beginPath();
   if (typeof (ctx as any).roundRect === 'function') {
@@ -595,9 +627,35 @@ export const COLLAGE_LAYOUTS: CollageLayout[] = [
   },
 ];
 
+/** 装飾画像1件（矢印・キラキラ等）。座標はキャンバス1080×1920px基準 */
+export interface CollageDecoration {
+  assetId: string;
+  url?: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  rotate?: number;
+}
+
+/** テキストレイヤー1件。座標はキャンバス1080×1920px基準。完成テンプレート用 */
+export interface CollageTextLayer {
+  id: string;
+  label?: string;
+  sampleText: string;
+  x: number;
+  y: number;
+  maxWidth: number;
+  align?: CanvasTextAlign;
+  fontSize?: number;
+  font?: string;
+  color?: string;
+}
+
 /**
  * 画像ベースの「スタイル」。指定すると背景・フレームの質感画像を使い、
  * テーマ（色）のグラデーション背景の代わりになる（シネマ風・レトロ風など）。
+ * decorations/textLayersを指定すると、レイアウトと組み合わせた「完成テンプレート」になる。
  */
 export interface CollageStyleAssets {
   /** 全面に敷く背景テクスチャ画像（cover-fit）。指定時はテーマのグラデーションを使わない */
@@ -616,6 +674,10 @@ export interface CollageStyleAssets {
   captionFont?: string;
   /** キャプションの縦位置の微調整（px、+で下へ）。未指定は0 */
   captionYOffset?: number;
+  /** 写真・レイアウト装飾の上、フレームの下に重ねる装飾画像（矢印・キラキラ等） */
+  decorations?: CollageDecoration[];
+  /** 指定時は、固定位置のあしらい文字/キャプションの代わりにこちらを描画する */
+  textLayers?: CollageTextLayer[];
 }
 
 /**
@@ -630,7 +692,8 @@ export async function composeCollage(
   theme: CollageTheme,
   accentText: string,
   caption: string,
-  styleAssets?: CollageStyleAssets
+  styleAssets?: CollageStyleAssets,
+  textOverrides?: Record<string, string>
 ): Promise<{ blob: Blob; previewUrl: string }> {
   const canvas = document.createElement('canvas');
   canvas.width = COLLAGE_W;
@@ -661,43 +724,58 @@ export async function composeCollage(
   await layout.drawPhotos(ctx, photos, area);
   await layout.drawDecoration?.(ctx, area, accentColor);
 
+  if (styleAssets?.decorations?.length) {
+    for (const dec of styleAssets.decorations) {
+      await drawDecorationImage(ctx, dec);
+    }
+  }
+
   if (styleAssets?.frameUrl) {
     const frame = await loadImage(styleAssets.frameUrl);
     ctx.drawImage(frame, 0, 0, COLLAGE_W, COLLAGE_H);
   }
 
-  if (accentText.trim()) {
-    const accentPreset = getFontPreset(styleAssets?.accentFont);
-    await loadFontFor(accentText, styleAssets?.accentFont);
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'alphabetic';
-    ctx.fillStyle = accentColor;
-    ctx.font = `${accentPreset.weight} 96px "${accentPreset.family}"`;
-    const textY = gridTop - 60 + (styleAssets?.accentYOffset ?? 0);
-    ctx.fillText(accentText.trim(), COLLAGE_W / 2, textY);
-    // 文字の左右に短い装飾線を添えて、ただのテキストより「あしらい」らしく見せる
-    const textW = ctx.measureText(accentText.trim()).width;
-    const lineY = textY - 30;
-    ctx.strokeStyle = accentColor;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(COLLAGE_W / 2 - textW / 2 - 60, lineY);
-    ctx.lineTo(COLLAGE_W / 2 - textW / 2 - 16, lineY);
-    ctx.moveTo(COLLAGE_W / 2 + textW / 2 + 16, lineY);
-    ctx.lineTo(COLLAGE_W / 2 + textW / 2 + 60, lineY);
-    ctx.stroke();
-  }
+  if (styleAssets?.textLayers?.length) {
+    // 完成テンプレート: レイヤーごとの位置・フォント・色でテキストを描く
+    // （固定位置のあしらい文字/キャプションは使わない）
+    for (const layer of styleAssets.textLayers) {
+      const text = textOverrides?.[layer.id] ?? layer.sampleText;
+      await drawTextLayer(ctx, layer, text);
+    }
+  } else {
+    if (accentText.trim()) {
+      const accentPreset = getFontPreset(styleAssets?.accentFont);
+      await loadFontFor(accentText, styleAssets?.accentFont);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillStyle = accentColor;
+      ctx.font = `${accentPreset.weight} 96px "${accentPreset.family}"`;
+      const textY = gridTop - 60 + (styleAssets?.accentYOffset ?? 0);
+      ctx.fillText(accentText.trim(), COLLAGE_W / 2, textY);
+      // 文字の左右に短い装飾線を添えて、ただのテキストより「あしらい」らしく見せる
+      const textW = ctx.measureText(accentText.trim()).width;
+      const lineY = textY - 30;
+      ctx.strokeStyle = accentColor;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(COLLAGE_W / 2 - textW / 2 - 60, lineY);
+      ctx.lineTo(COLLAGE_W / 2 - textW / 2 - 16, lineY);
+      ctx.moveTo(COLLAGE_W / 2 + textW / 2 + 16, lineY);
+      ctx.lineTo(COLLAGE_W / 2 + textW / 2 + 60, lineY);
+      ctx.stroke();
+    }
 
-  if (caption.trim()) {
-    const captionPreset = getFontPreset(styleAssets?.captionFont);
-    await loadFontFor(caption, styleAssets?.captionFont);
-    ctx.textAlign = 'center';
-    ctx.fillStyle = styleAssets?.captionColor ?? styleAssets?.accentColor ?? '#2A2A2A';
-    const { lines, lineH } = fitText(ctx, caption.trim(), area.w, 44, 28, `"${captionPreset.family}"`, captionPreset.weight);
-    let y = gridBottom + 70 + (styleAssets?.captionYOffset ?? 0);
-    for (const line of lines) {
-      ctx.fillText(line, COLLAGE_W / 2, y);
-      y += lineH;
+    if (caption.trim()) {
+      const captionPreset = getFontPreset(styleAssets?.captionFont);
+      await loadFontFor(caption, styleAssets?.captionFont);
+      ctx.textAlign = 'center';
+      ctx.fillStyle = styleAssets?.captionColor ?? styleAssets?.accentColor ?? '#2A2A2A';
+      const { lines, lineH } = fitText(ctx, caption.trim(), area.w, 44, 28, `"${captionPreset.family}"`, captionPreset.weight);
+      let y = gridBottom + 70 + (styleAssets?.captionYOffset ?? 0);
+      for (const line of lines) {
+        ctx.fillText(line, COLLAGE_W / 2, y);
+        y += lineH;
+      }
     }
   }
 
@@ -735,10 +813,11 @@ function getPlaceholderPhoto(): string {
 export async function composeLayoutPreview(
   layout: CollageLayout,
   theme: CollageTheme,
-  styleAssets?: CollageStyleAssets
+  styleAssets?: CollageStyleAssets,
+  textOverrides?: Record<string, string>
 ): Promise<string> {
   const placeholder = getPlaceholderPhoto();
   const photos = Array.from({ length: layout.photoCount }, () => placeholder);
-  const { previewUrl } = await composeCollage(photos, layout, theme, '', '', styleAssets);
+  const { previewUrl } = await composeCollage(photos, layout, theme, '', '', styleAssets, textOverrides);
   return previewUrl;
 }
