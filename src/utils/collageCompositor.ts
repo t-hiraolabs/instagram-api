@@ -165,8 +165,8 @@ function drawGradientBackground(ctx: CanvasRenderingContext2D, theme: CollageThe
   ctx.fillRect(0, 0, COLLAGE_W, COLLAGE_H);
 }
 
-const COLLAGE_W = 1080;
-const COLLAGE_H = 1920;
+export const COLLAGE_W = 1080;
+export const COLLAGE_H = 1920;
 
 interface CollageArea {
   x: number;
