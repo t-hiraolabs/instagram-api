@@ -409,7 +409,7 @@ export default function AdminAssetsScreen({ navigation }: any) {
               <Text style={styles.sectionLabel}>素材名</Text>
               <TextInput style={styles.input} value={editName} onChangeText={setEditName} placeholderTextColor={COLORS.textMuted} />
               <Text style={styles.sectionLabel}>カテゴリ</Text>
-              <View style={styles.chipRow}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipRow}>
                 {categories.map((c) => (
                   <TouchableOpacity
                     key={c.id}
@@ -419,7 +419,7 @@ export default function AdminAssetsScreen({ navigation }: any) {
                     <Text style={[styles.chipText, editCategoryId === c.id && styles.chipTextActive]}>{c.name}</Text>
                   </TouchableOpacity>
                 ))}
-              </View>
+              </ScrollView>
               <View style={{ flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.sm }}>
                 <TouchableOpacity style={[styles.uploadBtn, { flex: 1 }, savingEdit && { opacity: 0.6 }]} onPress={handleSaveEditAsset} disabled={savingEdit}>
                   {savingEdit ? <ActivityIndicator color="#fff" /> : <Text style={styles.uploadBtnText}>保存</Text>}
