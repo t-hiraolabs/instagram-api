@@ -13,7 +13,7 @@ import { Plan } from '../utils/plans';
 import { getCategories, Category } from '../services/storyStudioService';
 import {
   checkIsAdmin, uploadAssetSheet, listAssetSheets, listAllAssets,
-  toggleAssetActive, deleteAsset, AssetSheet, AdminAsset,
+  toggleAssetActive, deleteAsset, updateAsset, AssetSheet, AdminAsset,
 } from '../services/adminAssetService';
 import {
   listAllCollageStyles, createCollageStyle, toggleCollageStyleActive, deleteCollageStyle, CollageStyle,
@@ -47,6 +47,11 @@ export default function AdminAssetsScreen({ navigation }: any) {
   const [filterCategoryId, setFilterCategoryId] = useState<string | null>(null);
   const [assets, setAssets] = useState<AdminAsset[]>([]);
   const [loading, setLoading] = useState(false);
+
+  const [editingAssetId, setEditingAssetId] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editCategoryId, setEditCategoryId] = useState<string | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const [collageStyles, setCollageStyles] = useState<CollageStyle[]>([]);
   const [styleFormVisible, setStyleFormVisible] = useState(false);
@@ -194,6 +199,37 @@ export default function AdminAssetsScreen({ navigation }: any) {
         { text: 'キャンセル', style: 'cancel' },
         { text: '削除', style: 'destructive', onPress: doDelete },
       ]);
+    }
+  };
+
+  const startEditAsset = (a: AdminAsset) => {
+    setEditingAssetId(a.id);
+    setEditName(a.name);
+    setEditCategoryId(a.categoryId);
+  };
+
+  const cancelEditAsset = () => {
+    setEditingAssetId(null);
+    setEditName('');
+    setEditCategoryId(null);
+  };
+
+  const handleSaveEditAsset = async () => {
+    if (!editingAssetId || !editName.trim() || !editCategoryId) return;
+    setSavingEdit(true);
+    try {
+      await updateAsset(editingAssetId, { name: editName.trim(), categoryId: editCategoryId });
+      const movedOutOfFilter = filterCategoryId && editCategoryId !== filterCategoryId;
+      if (movedOutOfFilter) {
+        setAssets((prev) => prev.filter((x) => x.id !== editingAssetId));
+      } else {
+        setAssets((prev) => prev.map((x) => (x.id === editingAssetId ? { ...x, name: editName.trim(), categoryId: editCategoryId } : x)));
+      }
+      cancelEditAsset();
+    } catch (e) {
+      alertMsg((e as { message?: string })?.message || '更新に失敗しました', 'エラー');
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -368,14 +404,45 @@ export default function AdminAssetsScreen({ navigation }: any) {
             ))}
           </ScrollView>
 
+          {editingAssetId && (
+            <View style={styles.editPanel}>
+              <Text style={styles.sectionLabel}>素材名</Text>
+              <TextInput style={styles.input} value={editName} onChangeText={setEditName} placeholderTextColor={COLORS.textMuted} />
+              <Text style={styles.sectionLabel}>カテゴリ</Text>
+              <View style={styles.chipRow}>
+                {categories.map((c) => (
+                  <TouchableOpacity
+                    key={c.id}
+                    style={[styles.chip, editCategoryId === c.id && styles.chipActive]}
+                    onPress={() => setEditCategoryId(c.id)}
+                  >
+                    <Text style={[styles.chipText, editCategoryId === c.id && styles.chipTextActive]}>{c.name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <View style={{ flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.sm }}>
+                <TouchableOpacity style={[styles.uploadBtn, { flex: 1 }, savingEdit && { opacity: 0.6 }]} onPress={handleSaveEditAsset} disabled={savingEdit}>
+                  {savingEdit ? <ActivityIndicator color="#fff" /> : <Text style={styles.uploadBtnText}>保存</Text>}
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.uploadBtn, { flex: 1, backgroundColor: COLORS.surface }]} onPress={cancelEditAsset} disabled={savingEdit}>
+                  <Text style={[styles.uploadBtnText, { color: COLORS.text }]}>キャンセル</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
           {loading && <ActivityIndicator color={COLORS.primary} style={{ marginTop: SPACING.md }} />}
           <View style={styles.grid}>
             {assets.map((a) => (
               <View key={a.id} style={[styles.assetCard, !a.isActive && { opacity: 0.5 }]}>
                 <Image source={{ uri: a.thumbnailUrl ?? a.storageUrl }} style={styles.assetImg} resizeMode="contain" />
                 <Text style={styles.assetName} numberOfLines={1}>{a.name}</Text>
+                <Text style={styles.assetCategoryLabel} numberOfLines={1}>{categoryName(a.categoryId)}</Text>
                 <View style={styles.assetActionsRow}>
                   <Switch value={a.isActive} onValueChange={() => handleToggleActive(a)} />
+                  <TouchableOpacity onPress={() => startEditAsset(a)}>
+                    <Ionicons name="create-outline" size={20} color={COLORS.textSecondary} />
+                  </TouchableOpacity>
                   <TouchableOpacity onPress={() => handleDelete(a)}>
                     <Ionicons name="trash-outline" size={20} color={COLORS.error} />
                   </TouchableOpacity>
@@ -545,8 +612,13 @@ const styles = StyleSheet.create({
   assetImg: { width: 84, height: 84, marginBottom: SPACING.xs },
   assetImgEmpty: { alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.background, borderRadius: RADIUS.sm },
   assetName: { color: COLORS.text, fontSize: 11, fontWeight: '600', maxWidth: 90 },
+  assetCategoryLabel: { color: COLORS.textMuted, fontSize: 10, maxWidth: 90 },
   assetActionsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginTop: SPACING.xs },
   assetCardSelected: { borderWidth: 2, borderColor: COLORS.primary },
+  editPanel: {
+    backgroundColor: COLORS.surface, borderRadius: RADIUS.md, padding: SPACING.md, marginBottom: SPACING.md,
+    borderWidth: 1, borderColor: COLORS.primary,
+  },
   input: {
     borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, color: COLORS.text, backgroundColor: COLORS.surface,

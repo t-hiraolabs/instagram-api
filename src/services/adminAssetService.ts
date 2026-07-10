@@ -136,6 +136,16 @@ export async function toggleAssetActive(id: string, isActive: boolean): Promise<
   if (error) throw error;
 }
 
+/** 名前・カテゴリを修正する（シートアップロード時のカテゴリ選択ミスの訂正など） */
+export async function updateAsset(id: string, updates: { name?: string; categoryId?: string; plan?: Plan }): Promise<void> {
+  const payload: Record<string, unknown> = {};
+  if (updates.name !== undefined) payload.name = updates.name;
+  if (updates.categoryId !== undefined) payload.category_id = updates.categoryId;
+  if (updates.plan !== undefined) payload.plan = updates.plan;
+  const { error } = await supabase.from('assets').update(payload).eq('id', id);
+  if (error) throw error;
+}
+
 export async function deleteAsset(id: string): Promise<void> {
   const { error } = await supabase.from('assets').delete().eq('id', id);
   if (error) throw error;
