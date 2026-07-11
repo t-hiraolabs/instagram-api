@@ -52,11 +52,11 @@ interface TextLayerDraft {
 let draftKeySeq = 0;
 const nextDraftKey = () => `draft-${draftKeySeq++}`;
 
-/** 10px単位の移動・端寄せ・複製ボタンの共通行 */
+/** 10px単位の移動・端寄せ・複製ボタンの共通行。onDuplicate省略時は複製ボタンを出さない */
 function PositionToolRow({ onNudge, onAlign, onDuplicate }: {
   onNudge: (dx: number, dy: number) => void;
   onAlign: (where: 'centerX' | 'left' | 'right' | 'top' | 'bottom') => void;
-  onDuplicate: () => void;
+  onDuplicate?: () => void;
 }) {
   return (
     <View style={styles.posToolRow}>
@@ -69,7 +69,9 @@ function PositionToolRow({ onNudge, onAlign, onDuplicate }: {
       <TouchableOpacity style={styles.posTextBtn} onPress={() => onAlign('right')}><Text style={styles.posTextBtnText}>右端</Text></TouchableOpacity>
       <TouchableOpacity style={styles.posTextBtn} onPress={() => onAlign('top')}><Text style={styles.posTextBtnText}>上端</Text></TouchableOpacity>
       <TouchableOpacity style={styles.posTextBtn} onPress={() => onAlign('bottom')}><Text style={styles.posTextBtnText}>下端</Text></TouchableOpacity>
-      <TouchableOpacity style={styles.posTextBtn} onPress={onDuplicate}><Text style={styles.posTextBtnText}>複製</Text></TouchableOpacity>
+      {onDuplicate && (
+        <TouchableOpacity style={styles.posTextBtn} onPress={onDuplicate}><Text style={styles.posTextBtnText}>複製</Text></TouchableOpacity>
+      )}
     </View>
   );
 }
@@ -119,6 +121,7 @@ export default function AdminAssetsScreen({ navigation }: any) {
   const [styleCaptionYOffset, setStyleCaptionYOffset] = useState('0');
   const [styleBackgroundAssetId, setStyleBackgroundAssetId] = useState<string | null>(null);
   const [styleFrameAssetId, setStyleFrameAssetId] = useState<string | null>(null);
+  const [styleBackgroundColor, setStyleBackgroundColor] = useState('');
   const [backgroundAssets, setBackgroundAssets] = useState<AdminAsset[]>([]);
   const [frameAssets, setFrameAssets] = useState<AdminAsset[]>([]);
   const [savingStyle, setSavingStyle] = useState(false);
@@ -133,6 +136,13 @@ export default function AdminAssetsScreen({ navigation }: any) {
   const [decorationPickerFor, setDecorationPickerFor] = useState<string | null>(null);
   const [livePreviewUrl, setLivePreviewUrl] = useState<string | null>(null);
   const [livePreviewLoading, setLivePreviewLoading] = useState(false);
+
+  // 写真1枚のレイアウト専用: 白カード無しで自由配置する場合の矩形
+  const [usePlainPhotoArea, setUsePlainPhotoArea] = useState(false);
+  const [photoAreaX, setPhotoAreaX] = useState('48');
+  const [photoAreaY, setPhotoAreaY] = useState('200');
+  const [photoAreaW, setPhotoAreaW] = useState('984');
+  const [photoAreaH, setPhotoAreaH] = useState('1460');
 
   const alertMsg = (msg: string, title = 'お知らせ') => {
     if (Platform.OS === 'web') window.alert(msg);
@@ -242,8 +252,12 @@ export default function AdminAssetsScreen({ navigation }: any) {
       const styleAssets: CollageStyleAssets = {
         backgroundUrl: bg?.storageUrl,
         frameUrl: fr?.storageUrl,
+        backgroundColor: bg?.storageUrl ? undefined : (styleBackgroundColor || undefined),
         accentColor: styleAccentColor,
         version: COLLAGE_TEMPLATE_SCHEMA_VERSION,
+        photoArea: usePlainPhotoArea && layout.photoCount === 1
+          ? { x: Number(photoAreaX) || 0, y: Number(photoAreaY) || 0, w: Number(photoAreaW) || 100, h: Number(photoAreaH) || 100 }
+          : undefined,
         decorations: styleDecorations
           .filter((d) => d.assetUrl)
           .map((d): CollageDecoration => ({
@@ -273,8 +287,9 @@ export default function AdminAssetsScreen({ navigation }: any) {
     return () => { alive = false; clearTimeout(timer); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    isAdmin, tab, styleLayoutId, styleBackgroundAssetId, styleFrameAssetId, styleAccentColor,
+    isAdmin, tab, styleLayoutId, styleBackgroundAssetId, styleFrameAssetId, styleAccentColor, styleBackgroundColor,
     backgroundAssets, frameAssets, styleDecorations, styleTextLayers,
+    usePlainPhotoArea, photoAreaX, photoAreaY, photoAreaW, photoAreaH,
   ]);
 
   const categoryName = (id: string) => categories.find((c) => c.id === id)?.name ?? id;
@@ -394,9 +409,15 @@ export default function AdminAssetsScreen({ navigation }: any) {
     setStyleCaptionYOffset('0');
     setStyleBackgroundAssetId(null);
     setStyleFrameAssetId(null);
+    setStyleBackgroundColor('');
     setStyleLayoutId(null);
     setStyleDecorations([]);
     setStyleTextLayers([]);
+    setUsePlainPhotoArea(false);
+    setPhotoAreaX('48');
+    setPhotoAreaY('200');
+    setPhotoAreaW('984');
+    setPhotoAreaH('1460');
   };
 
   const startEditStyle = (s: CollageStyle) => {
@@ -412,7 +433,13 @@ export default function AdminAssetsScreen({ navigation }: any) {
     setStyleCaptionYOffset(String(s.captionYOffset ?? 0));
     setStyleBackgroundAssetId(s.backgroundAssetId ?? null);
     setStyleFrameAssetId(s.frameAssetId ?? null);
+    setStyleBackgroundColor(s.backgroundColor ?? '');
     setStyleLayoutId(s.layoutId ?? null);
+    setUsePlainPhotoArea(!!s.photoArea);
+    setPhotoAreaX(String(s.photoArea?.x ?? 48));
+    setPhotoAreaY(String(s.photoArea?.y ?? 200));
+    setPhotoAreaW(String(s.photoArea?.w ?? 984));
+    setPhotoAreaH(String(s.photoArea?.h ?? 1460));
     setStyleDecorations(
       (s.decorations ?? []).map((d) => ({
         key: nextDraftKey(),
@@ -520,6 +547,20 @@ export default function AdminAssetsScreen({ navigation }: any) {
     });
   };
 
+  const nudgePhotoArea = (dx: number, dy: number) => {
+    setPhotoAreaX(String((Number(photoAreaX) || 0) + dx));
+    setPhotoAreaY(String((Number(photoAreaY) || 0) + dy));
+  };
+  const alignPhotoArea = (where: 'centerX' | 'left' | 'right' | 'top' | 'bottom') => {
+    const w = Number(photoAreaW) || 0;
+    const h = Number(photoAreaH) || 0;
+    if (where === 'centerX') setPhotoAreaX(String(Math.round((COLLAGE_W - w) / 2)));
+    else if (where === 'left') setPhotoAreaX('0');
+    else if (where === 'right') setPhotoAreaX(String(COLLAGE_W - w));
+    else if (where === 'top') setPhotoAreaY('0');
+    else setPhotoAreaY(String(COLLAGE_H - h));
+  };
+
   const parseTags = (raw: string): string[] =>
     raw.split(',').map((s) => s.trim()).filter(Boolean);
 
@@ -540,6 +581,7 @@ export default function AdminAssetsScreen({ navigation }: any) {
         tags: parseTags(styleTags),
         backgroundAssetId: styleBackgroundAssetId ?? undefined,
         frameAssetId: styleFrameAssetId ?? undefined,
+        backgroundColor: styleBackgroundAssetId ? undefined : (styleBackgroundColor || undefined),
         accentColor: styleAccentColor,
         accentFont: styleAccentFont,
         accentYOffset: Number(styleAccentYOffset) || 0,
@@ -563,6 +605,9 @@ export default function AdminAssetsScreen({ navigation }: any) {
           rotation: Number(t.rotation) || 0,
           zIndex: Number(t.zIndex) || COLLAGE_Z_BANDS.text,
         })),
+        photoArea: usePlainPhotoArea && COLLAGE_LAYOUTS.find((l) => l.id === styleLayoutId)?.photoCount === 1
+          ? { x: Number(photoAreaX) || 0, y: Number(photoAreaY) || 0, w: Number(photoAreaW) || 100, h: Number(photoAreaH) || 100 }
+          : undefined,
       };
       if (editingStyleId) {
         await updateCollageStyle(editingStyleId, params);
@@ -800,6 +845,32 @@ export default function AdminAssetsScreen({ navigation }: any) {
                 ))}
               </ScrollView>
 
+              {COLLAGE_LAYOUTS.find((l) => l.id === styleLayoutId)?.photoCount === 1 && (
+                <>
+                  <View style={styles.colorRow}>
+                    <TouchableOpacity
+                      style={[styles.chip, usePlainPhotoArea && styles.chipActive]}
+                      onPress={() => setUsePlainPhotoArea((v) => !v)}
+                    >
+                      <Text style={[styles.chipText, usePlainPhotoArea && styles.chipTextActive]}>
+                        写真を縁なしで自由配置する（フレーム画像で余白を表現する場合）
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                  {usePlainPhotoArea && (
+                    <>
+                      <View style={styles.numRow}>
+                        <TextInput style={styles.numInput} value={photoAreaX} onChangeText={setPhotoAreaX} placeholder="x" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
+                        <TextInput style={styles.numInput} value={photoAreaY} onChangeText={setPhotoAreaY} placeholder="y" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
+                        <TextInput style={styles.numInput} value={photoAreaW} onChangeText={setPhotoAreaW} placeholder="幅" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
+                        <TextInput style={styles.numInput} value={photoAreaH} onChangeText={setPhotoAreaH} placeholder="高さ" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
+                      </View>
+                      <PositionToolRow onNudge={nudgePhotoArea} onAlign={alignPhotoArea} />
+                    </>
+                  )}
+                </>
+              )}
+
               <Text style={styles.sectionLabel}>あしらい文字（年号など）の色・フォント・位置</Text>
               <View style={styles.colorRow}>
                 <View style={[styles.colorSwatch, { backgroundColor: styleAccentColor }]} />
@@ -866,8 +937,29 @@ export default function AdminAssetsScreen({ navigation }: any) {
                 keyboardType="numeric"
               />
 
-              <Text style={styles.sectionLabel}>背景画像</Text>
+              <Text style={styles.sectionLabel}>背景色（背景画像を使わない場合。例: 白背景の縁なしテンプレート用）</Text>
+              <View style={styles.colorRow}>
+                <View style={[styles.colorSwatch, { backgroundColor: styleBackgroundColor || '#00000000' }]} />
+                <TextInput
+                  style={[styles.input, { flex: 1 }]}
+                  value={styleBackgroundColor}
+                  onChangeText={setStyleBackgroundColor}
+                  placeholder="例: #FFFFFF（空欄なら下の背景画像を使う）"
+                  placeholderTextColor={COLORS.textMuted}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              </View>
+
+              <Text style={styles.sectionLabel}>背景画像（任意。指定すると背景色より優先される）</Text>
               <View style={styles.grid}>
+                <TouchableOpacity onPress={() => setStyleBackgroundAssetId(null)}>
+                  <View style={[styles.assetCard, !styleBackgroundAssetId && styles.assetCardSelected]}>
+                    <View style={[styles.assetImg, styles.assetImgEmpty]}>
+                      <Text style={{ color: COLORS.textMuted, fontSize: 12 }}>なし</Text>
+                    </View>
+                  </View>
+                </TouchableOpacity>
                 {backgroundAssets.map((a) => (
                   <TouchableOpacity key={a.id} onPress={() => setStyleBackgroundAssetId(a.id)}>
                     <View style={[styles.assetCard, styleBackgroundAssetId === a.id && styles.assetCardSelected]}>

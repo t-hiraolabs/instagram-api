@@ -45,6 +45,14 @@ export interface CollageStyleTextLayer {
   zIndex?: number;
 }
 
+/** 写真1枚のレイアウトで、白カードなしの自由配置で写真を描く矩形（キャンバス1080×1920px基準） */
+export interface CollageStylePhotoArea {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 export interface CollageStyle {
   id: string;
   name: string;
@@ -55,6 +63,8 @@ export interface CollageStyle {
   frameAssetId?: string;
   backgroundUrl?: string;
   frameUrl?: string;
+  /** 単色背景（例: "#FFFFFF"）。backgroundAssetIdが無い場合に使う */
+  backgroundColor?: string;
   accentColor?: string;
   accentFont?: string;
   accentYOffset?: number;
@@ -67,12 +77,15 @@ export interface CollageStyle {
   version?: number;
   decorations?: CollageStyleDecoration[];
   textLayers?: CollageStyleTextLayer[];
+  /** 指定時、写真を白カードなしでこの矩形にそのまま描く（写真1枚のレイアウト専用） */
+  photoArea?: CollageStylePhotoArea;
   thumbnailUrl: string | null;
 }
 
 interface CollageStyleDefaults {
   backgroundAssetId?: string;
   frameAssetId?: string;
+  backgroundColor?: string;
   accentColor?: string;
   accentFont?: string;
   accentYOffset?: number;
@@ -83,6 +96,7 @@ interface CollageStyleDefaults {
   version?: number;
   decorations?: CollageStyleDecoration[];
   textLayers?: CollageStyleTextLayer[];
+  photoArea?: CollageStylePhotoArea;
 }
 
 async function rowsToStyles(rows: any[]): Promise<CollageStyle[]> {
@@ -106,6 +120,7 @@ async function rowsToStyles(rows: any[]): Promise<CollageStyle[]> {
       frameAssetId: d.frameAssetId,
       backgroundUrl: d.backgroundAssetId ? assetsById[d.backgroundAssetId]?.storageUrl : undefined,
       frameUrl: d.frameAssetId ? assetsById[d.frameAssetId]?.storageUrl : undefined,
+      backgroundColor: d.backgroundColor,
       accentColor: d.accentColor,
       accentFont: d.accentFont,
       accentYOffset: d.accentYOffset,
@@ -116,6 +131,7 @@ async function rowsToStyles(rows: any[]): Promise<CollageStyle[]> {
       version: d.version,
       decorations: d.decorations?.map((dec) => ({ ...dec, url: assetsById[dec.assetId]?.storageUrl })),
       textLayers: d.textLayers,
+      photoArea: d.photoArea,
       thumbnailUrl: r.thumbnail_url,
     };
   });
@@ -151,6 +167,7 @@ interface CollageStyleParams {
   tags?: string[];
   backgroundAssetId?: string;
   frameAssetId?: string;
+  backgroundColor?: string;
   accentColor?: string;
   accentFont?: string;
   accentYOffset?: number;
@@ -161,12 +178,14 @@ interface CollageStyleParams {
   layoutId?: string;
   decorations?: CollageStyleDecoration[];
   textLayers?: CollageStyleTextLayer[];
+  photoArea?: CollageStylePhotoArea;
 }
 
 function toLayerDefaults(params: CollageStyleParams): CollageStyleDefaults {
   return {
     backgroundAssetId: params.backgroundAssetId,
     frameAssetId: params.frameAssetId,
+    backgroundColor: params.backgroundColor,
     accentColor: params.accentColor,
     accentFont: params.accentFont,
     accentYOffset: params.accentYOffset,
@@ -177,6 +196,7 @@ function toLayerDefaults(params: CollageStyleParams): CollageStyleDefaults {
     version: params.layoutId ? COLLAGE_TEMPLATE_SCHEMA_VERSION : undefined,
     decorations: params.decorations,
     textLayers: params.textLayers,
+    photoArea: params.photoArea,
   };
 }
 
