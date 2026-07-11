@@ -419,6 +419,29 @@ async function drawPhotoCard(
   ctx.restore();
 }
 
+// 写真を白カード（縁取り・影・角丸）無しで、指定矩形にそのままcover-fitで描く。
+// フレーム画像側で余白・縁取りをすべて表現する「完成テンプレート」の自由配置用。
+async function drawPlainPhoto(
+  ctx: CanvasRenderingContext2D,
+  uri: string,
+  area: { x: number; y: number; w: number; h: number }
+) {
+  const img = await loadImage(uri);
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(area.x, area.y, area.w, area.h);
+  ctx.clip();
+  const cover = Math.max(area.w / img.width, area.h / img.height);
+  ctx.drawImage(
+    img,
+    area.x + (area.w - img.width * cover) / 2,
+    area.y + (area.h - img.height * cover) / 2,
+    img.width * cover,
+    img.height * cover
+  );
+  ctx.restore();
+}
+
 // ===== 13種類のレイアウト（写真の並べ方）=====
 // テーマ（色）とは独立しているので、テーマ4色 × レイアウト13種 = 52通りの見た目になる。
 export const COLLAGE_LAYOUTS: CollageLayout[] = [
@@ -723,8 +746,16 @@ export interface CollageTextLayer {
 export interface CollageStyleAssets {
   /** 全面に敷く背景テクスチャ画像（cover-fit）。指定時はテーマのグラデーションを使わない */
   backgroundUrl?: string;
+  /** 単色背景（例: "#FFFFFF"）。backgroundUrlが無い場合、テーマのグラデーションの代わりにこの色を敷く */
+  backgroundColor?: string;
   /** 写真・装飾の上に全面（1080×1920）で重ねる縁取り画像。中央は透過している前提 */
   frameUrl?: string;
+  /**
+   * 写真を白カード（縁取り・影・角丸）なしで、この矩形にそのままcover-fitで描く。
+   * 写真1枚のレイアウト専用。指定時はlayoutのdrawPhotos/drawDecorationを使わない
+   * （フレーム画像側で余白・縁取りをすべて表現する運用を想定）。
+   */
+  photoArea?: { x: number; y: number; w: number; h: number };
   /** あしらい文字の色。指定時はテーマの色より優先する */
   accentColor?: string;
   /** あしらい文字のフォント（COLLAGE_FONT_PRESETSのid）。未指定はデフォルトのゴシック */
@@ -776,6 +807,9 @@ export async function composeCollage(
       bg.width * cover,
       bg.height * cover
     );
+  } else if (styleAssets?.backgroundColor) {
+    ctx.fillStyle = styleAssets.backgroundColor;
+    ctx.fillRect(0, 0, COLLAGE_W, COLLAGE_H);
   } else {
     drawGradientBackground(ctx, theme);
   }
@@ -785,6 +819,9 @@ export async function composeCollage(
   const gridBottom = COLLAGE_H - 260;
   const area: CollageArea = { x: margin, y: gridTop, w: COLLAGE_W - margin * 2, h: gridBottom - gridTop };
   const accentColor = styleAssets?.accentColor ?? theme.accent;
+  // 写真1枚のレイアウトで、白カード無しの自由配置指定がある場合はそちらを使う
+  // （フレーム画像側に余白・縁取りをすべて任せる運用のため）
+  const usePlainPhotoArea = photos.length === 1 && !!styleAssets?.photoArea;
 
   if (styleAssets?.version === COLLAGE_TEMPLATE_SCHEMA_VERSION) {
     // 完成テンプレート: 写真・レイアウト装飾・カスタム装飾・フレーム・テキストを
@@ -792,8 +829,10 @@ export async function composeCollage(
     // 30-39写真前面装飾/40-49フレーム/50-59テキストが目安。背景は既に描画済み）
     type Layer = { zIndex: number; run: () => Promise<void> | void };
     const layers: Layer[] = [
-      { zIndex: COLLAGE_Z_BANDS.photos, run: () => layout.drawPhotos(ctx, photos, area) },
-      { zIndex: COLLAGE_Z_BANDS.photos + 1, run: () => layout.drawDecoration?.(ctx, area, accentColor) },
+      usePlainPhotoArea
+        ? { zIndex: COLLAGE_Z_BANDS.photos, run: () => drawPlainPhoto(ctx, photos[0], styleAssets!.photoArea!) }
+        : { zIndex: COLLAGE_Z_BANDS.photos, run: () => layout.drawPhotos(ctx, photos, area) },
+      ...(usePlainPhotoArea ? [] : [{ zIndex: COLLAGE_Z_BANDS.photos + 1, run: () => layout.drawDecoration?.(ctx, area, accentColor) }]),
       ...(styleAssets?.decorations ?? []).map((dec): Layer => ({
         zIndex: dec.zIndex ?? COLLAGE_Z_BANDS.decorationFrontPhotos,
         run: () => drawDecorationImage(ctx, dec),

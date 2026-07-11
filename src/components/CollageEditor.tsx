@@ -97,6 +97,7 @@ export default function CollageEditor({ onDone }: Props) {
       if (!layout) return;
       const styleAssets: CollageStyleAssets = {
         backgroundUrl: s.backgroundUrl,
+        backgroundColor: s.backgroundColor,
         frameUrl: s.frameUrl,
         accentColor: s.accentColor,
         accentFont: s.accentFont,
@@ -107,8 +108,11 @@ export default function CollageEditor({ onDone }: Props) {
         version: s.version,
         decorations: s.decorations,
         textLayers: s.textLayers,
+        photoArea: s.photoArea,
       };
-      const dummyTheme: CollageTheme = { name: s.name, background: '#000000', background2: '#000000', accent: s.accentColor ?? '#FFFFFF' };
+      // backgroundUrl/backgroundColorが無い完成テンプレートのみ使うフォールバック
+      // （管理画面のプレビューと見た目を揃えるため、黒ではなく薄グレーにする）
+      const dummyTheme: CollageTheme = { name: s.name, background: '#F5F5F5', background2: '#E2E2E2', accent: s.accentColor ?? '#FFFFFF' };
       full.push({
         key: `tmpl::${s.id}`,
         name: s.name,
