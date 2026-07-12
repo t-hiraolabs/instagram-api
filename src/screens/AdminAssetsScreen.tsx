@@ -76,6 +76,27 @@ function PositionToolRow({ onNudge, onAlign, onDuplicate }: {
   );
 }
 
+const TEXT_COLOR_OPTIONS = ['#FFFFFF', '#000000', '#B5651D', '#D6597A', '#3E8E6E', '#333333'];
+
+/** 文字色選択用のタップ可能なスウォッチ行。TextInputでの任意hex指定と併用する */
+function ColorSwatchPicker({ value, onChange }: { value: string; onChange: (hex: string) => void }) {
+  return (
+    <View style={styles.swatchRow}>
+      {TEXT_COLOR_OPTIONS.map((hex) => (
+        <TouchableOpacity
+          key={hex}
+          onPress={() => onChange(hex)}
+          style={[
+            styles.swatchOption,
+            { backgroundColor: hex },
+            value.toUpperCase() === hex && styles.swatchOptionActive,
+          ]}
+        />
+      ))}
+    </View>
+  );
+}
+
 const STATUS_LABEL: Record<AssetSheet['status'], string> = {
   uploaded: 'アップロード済み',
   processing: '処理中',
@@ -884,6 +905,7 @@ export default function AdminAssetsScreen({ navigation }: any) {
                   autoCorrect={false}
                 />
               </View>
+              <ColorSwatchPicker value={styleAccentColor} onChange={setStyleAccentColor} />
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipRow}>
                 {COLLAGE_FONT_PRESETS.map((f) => (
                   <TouchableOpacity
@@ -917,6 +939,7 @@ export default function AdminAssetsScreen({ navigation }: any) {
                   autoCorrect={false}
                 />
               </View>
+              <ColorSwatchPicker value={styleCaptionColor} onChange={setStyleCaptionColor} />
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipRow}>
                 {COLLAGE_FONT_PRESETS.map((f) => (
                   <TouchableOpacity
@@ -1084,6 +1107,7 @@ export default function AdminAssetsScreen({ navigation }: any) {
                         <View style={[styles.colorSwatch, { backgroundColor: t.color }]} />
                         <TextInput style={[styles.input, { flex: 1 }]} value={t.color} onChangeText={(v) => updateTextLayer(t.key, { color: v })} placeholder="#FFFFFF" placeholderTextColor={COLORS.textMuted} autoCapitalize="none" autoCorrect={false} />
                       </View>
+                      <ColorSwatchPicker value={t.color} onChange={(hex) => updateTextLayer(t.key, { color: hex })} />
                       <View style={styles.chipRow}>
                         {COLLAGE_FONT_PRESETS.map((f) => (
                           <TouchableOpacity key={f.id} style={[styles.chip, t.font === f.id && styles.chipActive]} onPress={() => updateTextLayer(t.key, { font: f.id })}>
@@ -1306,6 +1330,9 @@ const styles = StyleSheet.create({
   },
   colorRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
   colorSwatch: { width: 28, height: 28, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border },
+  swatchRow: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.xs, marginBottom: SPACING.xs },
+  swatchOption: { width: 28, height: 28, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border },
+  swatchOptionActive: { borderWidth: 3, borderColor: COLORS.primary },
   styleThumb: { width: 40, height: 40, borderRadius: RADIUS.sm, marginRight: SPACING.sm },
   layoutThumb: { width: 84, height: (84 * 1920) / 1080, borderRadius: RADIUS.sm, marginBottom: SPACING.xs },
   draftRow: {
