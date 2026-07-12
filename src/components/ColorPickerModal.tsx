@@ -63,28 +63,40 @@ export default function ColorPickerModal({ visible, initialColor, onChange, onCl
   const [s, setS] = useState(1);
   const [v, setV] = useState(1);
   // ドラッグハンドラはPanResponder生成時（初回レンダー）のクロージャに固定されるため、
-  // 最新のh/s/vはstateではなくrefで読み書きする
+  // 最新のh/s/vやonChangeプロップ自体もstateやpropsの直接参照ではなくrefで読み書きする
   const hsvRef = useRef({ h: 0, s: 1, v: 1 });
+  const onChangeRef = useRef(onChange);
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  });
 
   const svRef = useRef<View>(null);
   const hueRef = useRef<View>(null);
   const svOrigin = useRef({ x: 0, y: 0 });
   const hueOrigin = useRef({ x: 0, y: 0 });
 
+  // ドラッグ中はonChange経由でinitialColorも変化するが、そのたびにここで
+  // 再同期するとhex→HSV→hexの丸め込みで色相が失われ操作と競合するため、
+  // 「モーダルを開いた瞬間」だけ最新のinitialColorから初期値を取り込む
+  const initialColorRef = useRef(initialColor);
+  useEffect(() => {
+    initialColorRef.current = initialColor;
+  });
   useEffect(() => {
     if (!visible) return;
-    const parsed = hexToHsv(initialColor) ?? { h: 0, s: 1, v: 1 };
+    const src = initialColorRef.current;
+    const parsed = hexToHsv(src) ?? { h: 0, s: 1, v: 1 };
     hsvRef.current = parsed;
     setH(parsed.h); setS(parsed.s); setV(parsed.v);
-    setHex((initialColor || '#FFFFFF').toUpperCase());
-  }, [visible, initialColor]);
+    setHex((src || '#FFFFFF').toUpperCase());
+  }, [visible]);
 
   const applyHsv = (nh: number, ns: number, nv: number) => {
     hsvRef.current = { h: nh, s: ns, v: nv };
     setH(nh); setS(ns); setV(nv);
     const newHex = hsvToHex(nh, ns, nv);
     setHex(newHex);
-    onChange(newHex);
+    onChangeRef.current(newHex);
   };
 
   const handleSvMove = (pageX: number, pageY: number) => {
@@ -132,7 +144,7 @@ export default function ColorPickerModal({ visible, initialColor, onChange, onCl
     if (parsed) {
       hsvRef.current = parsed;
       setH(parsed.h); setS(parsed.s); setV(parsed.v);
-      onChange(`#${text.trim().replace(/^#/, '').toUpperCase()}`);
+      onChangeRef.current(`#${text.trim().replace(/^#/, '').toUpperCase()}`);
     }
   };
 
@@ -150,7 +162,7 @@ export default function ColorPickerModal({ visible, initialColor, onChange, onCl
             style={{ width: SV_SIZE, height: SV_SIZE }}
             {...svResponder.panHandlers}
           >
-            <Svg width={SV_SIZE} height={SV_SIZE}>
+            <Svg width={SV_SIZE} height={SV_SIZE} pointerEvents="none">
               <Defs>
                 <LinearGradient id="satGrad" x1="0" y1="0" x2="1" y2="0">
                   <Stop offset="0" stopColor="#FFFFFF" stopOpacity={1} />
@@ -178,7 +190,7 @@ export default function ColorPickerModal({ visible, initialColor, onChange, onCl
             style={{ width: SV_SIZE, height: HUE_HEIGHT, marginTop: SPACING.md }}
             {...hueResponder.panHandlers}
           >
-            <Svg width={SV_SIZE} height={HUE_HEIGHT}>
+            <Svg width={SV_SIZE} height={HUE_HEIGHT} pointerEvents="none">
               <Defs>
                 <LinearGradient id="hueGrad" x1="0" y1="0" x2="1" y2="0">
                   <Stop offset="0" stopColor="#FF0000" />
