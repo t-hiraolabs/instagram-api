@@ -23,6 +23,7 @@ import {
   COLLAGE_W, COLLAGE_H, COLLAGE_Z_BANDS, COLLAGE_TEMPLATE_SCHEMA_VERSION,
   CollageStyleAssets, CollageDecoration, CollageTextLayer,
 } from '../utils/collageCompositor';
+import ColorPickerModal from '../components/ColorPickerModal';
 
 type Tab = 'sheets' | 'assets' | 'styles';
 const PLAN_OPTIONS: Plan[] = ['free', 'pro', 'business'];
@@ -135,6 +136,9 @@ export default function AdminAssetsScreen({ navigation }: any) {
   const [stylePlan, setStylePlan] = useState<Plan>('free');
   const [styleTags, setStyleTags] = useState('');
   const [styleAccentColor, setStyleAccentColor] = useState('#FFFFFF');
+  const [colorPickerTarget, setColorPickerTarget] = useState<
+    { kind: 'accent' } | { kind: 'caption' } | { kind: 'text'; key: string } | null
+  >(null);
   const [styleAccentFont, setStyleAccentFont] = useState<string>(COLLAGE_FONT_PRESETS[0].id);
   const [styleAccentYOffset, setStyleAccentYOffset] = useState('0');
   const [styleCaptionColor, setStyleCaptionColor] = useState('#FFFFFF');
@@ -539,6 +543,16 @@ export default function AdminAssetsScreen({ navigation }: any) {
   const updateTextLayer = (key: string, patch: Partial<TextLayerDraft>) => {
     setStyleTextLayers((p) => p.map((t) => (t.key === key ? { ...t, ...patch } : t)));
   };
+  const colorPickerValue = !colorPickerTarget ? '#FFFFFF'
+    : colorPickerTarget.kind === 'accent' ? styleAccentColor
+    : colorPickerTarget.kind === 'caption' ? styleCaptionColor
+    : (styleTextLayers.find((t) => t.key === colorPickerTarget.key)?.color ?? '#FFFFFF');
+  const handleColorPickerChange = (hex: string) => {
+    if (!colorPickerTarget) return;
+    if (colorPickerTarget.kind === 'accent') setStyleAccentColor(hex);
+    else if (colorPickerTarget.kind === 'caption') setStyleCaptionColor(hex);
+    else updateTextLayer(colorPickerTarget.key, { color: hex });
+  };
   const removeTextLayer = (key: string) => setStyleTextLayers((p) => p.filter((t) => t.key !== key));
   const nudgeTextLayer = (key: string, dx: number, dy: number) => {
     setStyleTextLayers((p) => p.map((t) => (t.key === key
@@ -894,7 +908,10 @@ export default function AdminAssetsScreen({ navigation }: any) {
 
               <Text style={styles.sectionLabel}>あしらい文字（年号など）の色・フォント・位置</Text>
               <View style={styles.colorRow}>
-                <View style={[styles.colorSwatch, { backgroundColor: styleAccentColor }]} />
+                <TouchableOpacity
+                  style={[styles.colorSwatch, { backgroundColor: styleAccentColor }]}
+                  onPress={() => setColorPickerTarget({ kind: 'accent' })}
+                />
                 <TextInput
                   style={[styles.input, { flex: 1 }]}
                   value={styleAccentColor}
@@ -928,7 +945,10 @@ export default function AdminAssetsScreen({ navigation }: any) {
 
               <Text style={styles.sectionLabel}>キャプション（下部の説明文）の色・フォント・位置</Text>
               <View style={styles.colorRow}>
-                <View style={[styles.colorSwatch, { backgroundColor: styleCaptionColor }]} />
+                <TouchableOpacity
+                  style={[styles.colorSwatch, { backgroundColor: styleCaptionColor }]}
+                  onPress={() => setColorPickerTarget({ kind: 'caption' })}
+                />
                 <TextInput
                   style={[styles.input, { flex: 1 }]}
                   value={styleCaptionColor}
@@ -1104,7 +1124,10 @@ export default function AdminAssetsScreen({ navigation }: any) {
                         </TouchableOpacity>
                       </View>
                       <View style={styles.colorRow}>
-                        <View style={[styles.colorSwatch, { backgroundColor: t.color }]} />
+                        <TouchableOpacity
+                          style={[styles.colorSwatch, { backgroundColor: t.color }]}
+                          onPress={() => setColorPickerTarget({ kind: 'text', key: t.key })}
+                        />
                         <TextInput style={[styles.input, { flex: 1 }]} value={t.color} onChangeText={(v) => updateTextLayer(t.key, { color: v })} placeholder="#FFFFFF" placeholderTextColor={COLORS.textMuted} autoCapitalize="none" autoCorrect={false} />
                       </View>
                       <ColorSwatchPicker value={t.color} onChange={(hex) => updateTextLayer(t.key, { color: hex })} />
@@ -1255,6 +1278,13 @@ export default function AdminAssetsScreen({ navigation }: any) {
           </View>
         </View>
       </Modal>
+
+      <ColorPickerModal
+        visible={!!colorPickerTarget}
+        initialColor={colorPickerValue}
+        onChange={handleColorPickerChange}
+        onClose={() => setColorPickerTarget(null)}
+      />
     </View>
   );
 }
