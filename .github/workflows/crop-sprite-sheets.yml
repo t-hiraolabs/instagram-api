@@ -1,9 +1,9 @@
-# 素材シートの自動切り出し（10分おきに未処理分を処理する）
+# 素材シートの自動切り出し（30分おきに未処理分を処理する）
 name: Crop pending sprite sheets
 
 on:
   schedule:
-    - cron: '7-59/10 * * * *'
+    - cron: '7,37 * * * *'
   workflow_dispatch: {}
 
 jobs:
