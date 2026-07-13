@@ -129,6 +129,16 @@ export default function TemplatePositionEditor({
   const [colorPickerOpen, setColorPickerOpen] = useState(false);
   const [fontPickerOpen, setFontPickerOpen] = useState(false);
   const [canvasArea, setCanvasArea] = useState({ width: 0, height: 0 });
+  // パラメータパネルの高さは要素の種類（写真エリア／装飾画像／テキスト）ごとに項目数が
+  // 違うため、素直に中身の高さに合わせるとキャンバスの残り高さ・つまり縮尺が選択中の
+  // 要素によって変わってしまい、同じサイズの値でもプレビュー上の見た目の大きさが
+  // 一致しなくなる。そこでパネル領域の高さは「これまでに表示した中で一番背の高い
+  // パネル」に固定し、キャンバスの縮尺を常に一定に保つ。
+  const [panelHeight, setPanelHeight] = useState(280);
+  const onPanelLayout = (e: LayoutChangeEvent) => {
+    const h = Math.ceil(e.nativeEvent.layout.height);
+    setPanelHeight((prev) => Math.max(prev, h));
+  };
 
   // フォント選択メニューでプルダウンを開いた瞬間に選択肢の文字がそのフォントで
   // プレビュー表示されるよう、候補全件のWebフォントを先読みしておく
@@ -455,9 +465,9 @@ export default function TemplatePositionEditor({
           )}
         </View>
 
-        <View style={styles.panelWrap}>
+        <View style={[styles.panelWrap, { height: panelHeight }]}>
           {selectedPhoto && (
-            <View style={styles.panel}>
+            <View style={styles.panel} onLayout={onPanelLayout}>
               <Text style={styles.panelTitle}>写真エリア（枠）</Text>
               <View style={styles.numRow}>
                 <Text style={styles.smallLabel}>サイズ</Text>
@@ -477,7 +487,7 @@ export default function TemplatePositionEditor({
           )}
 
           {selectedDecoration && (
-            <View style={styles.panel}>
+            <View style={styles.panel} onLayout={onPanelLayout}>
               <Text style={styles.panelTitle}>写真（装飾画像）</Text>
               <View style={styles.decorationRow}>
                 <TouchableOpacity style={styles.decorationImgBtn} onPress={() => pickDecorationImage(selectedDecoration.key)} disabled={selectedDecoration.uploading}>
@@ -508,7 +518,7 @@ export default function TemplatePositionEditor({
           )}
 
           {selectedText && (
-            <View style={styles.panel}>
+            <View style={styles.panel} onLayout={onPanelLayout}>
               <Text style={styles.panelTitle}>テキストレイヤー</Text>
               <View style={styles.numRow}>
                 <TextInput style={[styles.input, { flex: 1 }]} value={selectedText.label} onChangeText={(v) => updateTextLayer(selectedText.key, { label: v })} placeholder="ラベル" placeholderTextColor={COLORS.textMuted} />
