@@ -204,7 +204,37 @@ export async function toggleCollageStyleActive(id: string, isActive: boolean): P
   if (error) throw error;
 }
 
+const POST_IMAGES_BUCKET = 'post-images';
+
+/** uploadBlob()が返す公開URLから、Storage削除に使うオブジェクトパスを取り出す */
+function extractStoragePath(publicUrl: string, bucket: string): string | null {
+  const marker = `/object/public/${bucket}/`;
+  const idx = publicUrl.indexOf(marker);
+  if (idx === -1) return null;
+  return publicUrl.slice(idx + marker.length);
+}
+
+/**
+ * テンプレートを削除する。個人用テンプレート（backgroundImageUrlを持つもの）の場合、
+ * Storageへ直接アップロードした背景画像も一緒に削除し、Storage容量にゴミが
+ * 溜まり続けるのを防ぐ（管理者テンプレートのbackgroundAssetIdはassetsテーブル側で
+ * 管理される共有素材のため、ここでは削除しない）。
+ */
 export async function deleteCollageStyle(id: string): Promise<void> {
+  const { data: row } = await supabase
+    .from('templates')
+    .select('layer_defaults')
+    .eq('id', id)
+    .maybeSingle();
+  const backgroundImageUrl = (row?.layer_defaults as CollageStyleDefaults | undefined)?.backgroundImageUrl;
+
   const { error } = await supabase.from('templates').delete().eq('id', id);
   if (error) throw error;
+
+  if (backgroundImageUrl) {
+    const path = extractStoragePath(backgroundImageUrl, POST_IMAGES_BUCKET);
+    if (path) {
+      await supabase.storage.from(POST_IMAGES_BUCKET).remove([path]).catch(() => {});
+    }
+  }
 }
