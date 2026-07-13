@@ -51,10 +51,14 @@ export interface CollageStyle {
   /** ユーザーが文言を編集できるテキストレイヤー（任意） */
   textLayers?: CollageStyleTextLayer[];
   thumbnailUrl: string | null;
+  /** 設定時は、このユーザー本人だけが使える個人用テンプレート（他ユーザーには公開されない） */
+  ownerUserId?: string;
 }
 
 interface CollageStyleDefaults {
   backgroundAssetId?: string;
+  /** 個人用テンプレート向け: Storageへ直接アップロードした背景画像の公開URL */
+  backgroundImageUrl?: string;
   photoAreas?: CollageStylePhotoArea[];
   textLayers?: CollageStyleTextLayer[];
 }
@@ -75,20 +79,24 @@ async function rowsToStyles(rows: any[]): Promise<CollageStyle[]> {
       isActive: r.is_active,
       tags: (r.tags ?? []) as string[],
       backgroundAssetId: d.backgroundAssetId,
-      backgroundUrl: d.backgroundAssetId ? assetsById[d.backgroundAssetId]?.storageUrl : undefined,
+      backgroundUrl: d.backgroundAssetId ? assetsById[d.backgroundAssetId]?.storageUrl : d.backgroundImageUrl,
       photoAreas: d.photoAreas ?? [],
       textLayers: d.textLayers,
       thumbnailUrl: r.thumbnail_url,
+      ownerUserId: r.owner_user_id ?? undefined,
     };
   });
 }
 
-/** コラージュ編集画面向け: 有効かつ自分のプランで使えるテンプレートのみ */
+const STYLE_COLUMNS = 'id, name, plan, is_active, layer_defaults, thumbnail_url, tags, owner_user_id';
+
+/** コラージュ編集画面向け: 有効かつ自分のプランで使えるテンプレートのみ
+ *  （RLSにより、管理者が作成した公開テンプレートに加え、呼び出し本人の個人用テンプレートも含まれる） */
 export async function listCollageStyles(plan: Plan): Promise<CollageStyle[]> {
   const plans = allowedPlans(plan);
   const { data, error } = await supabase
     .from('templates')
-    .select('id, name, plan, is_active, layer_defaults, thumbnail_url, tags')
+    .select(STYLE_COLUMNS)
     .eq('type', 'collage')
     .eq('is_active', true)
     .in('plan', plans);
@@ -96,12 +104,27 @@ export async function listCollageStyles(plan: Plan): Promise<CollageStyle[]> {
   return rowsToStyles(data ?? []);
 }
 
-/** 管理画面向け: 無効化済み・全プランを含む一覧 */
+/** 管理画面向け: 無効化済み・全プランを含む一覧（管理者が作成した公開テンプレートのみ） */
 export async function listAllCollageStyles(): Promise<CollageStyle[]> {
   const { data, error } = await supabase
     .from('templates')
-    .select('id, name, plan, is_active, layer_defaults, thumbnail_url, tags')
+    .select(STYLE_COLUMNS)
     .eq('type', 'collage')
+    .is('owner_user_id', null)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return rowsToStyles(data ?? []);
+}
+
+/** 自分が作成した個人用テンプレートの一覧（他ユーザーには公開されない） */
+export async function listMyCollageTemplates(): Promise<CollageStyle[]> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+  const { data, error } = await supabase
+    .from('templates')
+    .select(STYLE_COLUMNS)
+    .eq('type', 'collage')
+    .eq('owner_user_id', user.id)
     .order('created_at', { ascending: false });
   if (error) throw error;
   return rowsToStyles(data ?? []);
@@ -131,6 +154,34 @@ export async function createCollageStyle(params: CollageStyleParams): Promise<vo
     plan: params.plan,
     tags: params.tags ?? [],
     layer_defaults: toLayerDefaults(params),
+  });
+  if (error) throw error;
+}
+
+interface CreateMyTemplateParams {
+  name: string;
+  tags?: string[];
+  /** ImagePickerで選んだ画像をuploadBlob等でStorageへ直接アップロードした公開URL */
+  backgroundImageUrl: string;
+  photoAreas: CollageStylePhotoArea[];
+  textLayers?: CollageStyleTextLayer[];
+}
+
+/** 自分専用の個人用テンプレートを作成する（他ユーザーには公開されない） */
+export async function createMyCollageTemplate(params: CreateMyTemplateParams): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('ログインが必要です');
+  const { error } = await supabase.from('templates').insert({
+    type: 'collage',
+    name: params.name,
+    plan: 'free',
+    tags: params.tags ?? [],
+    owner_user_id: user.id,
+    layer_defaults: {
+      backgroundImageUrl: params.backgroundImageUrl,
+      photoAreas: params.photoAreas,
+      textLayers: params.textLayers,
+    },
   });
   if (error) throw error;
 }
