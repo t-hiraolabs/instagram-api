@@ -68,8 +68,9 @@ export interface CollageStyle {
 }
 
 interface CollageStyleDefaults {
+  /** 旧方式: 「背景」カテゴリに登録された素材への参照（後方互換のため読み込みのみ対応） */
   backgroundAssetId?: string;
-  /** 個人用テンプレート向け: Storageへ直接アップロードした背景画像の公開URL */
+  /** ImagePickerで選んだ画像をuploadBlob等でStorageへ直接アップロードした公開URL */
   backgroundImageUrl?: string;
   photoAreas?: CollageStylePhotoArea[];
   textLayers?: CollageStyleTextLayer[];
@@ -148,7 +149,8 @@ interface CollageStyleParams {
   name: string;
   plan: Plan;
   tags?: string[];
-  backgroundAssetId?: string;
+  /** ImagePickerで選んだ画像をuploadBlob等でStorageへ直接アップロードした公開URL */
+  backgroundImageUrl?: string;
   photoAreas: CollageStylePhotoArea[];
   textLayers?: CollageStyleTextLayer[];
   decorations?: CollageStyleDecoration[];
@@ -156,7 +158,7 @@ interface CollageStyleParams {
 
 function toLayerDefaults(params: CollageStyleParams): CollageStyleDefaults {
   return {
-    backgroundAssetId: params.backgroundAssetId,
+    backgroundImageUrl: params.backgroundImageUrl,
     photoAreas: params.photoAreas,
     textLayers: params.textLayers,
     decorations: params.decorations,
@@ -233,10 +235,9 @@ function extractStoragePath(publicUrl: string, bucket: string): string | null {
 }
 
 /**
- * テンプレートを削除する。個人用テンプレート（backgroundImageUrl/decorationsを持つもの）の場合、
- * Storageへ直接アップロードした背景画像・装飾画像も一緒に削除し、Storage容量にゴミが
- * 溜まり続けるのを防ぐ（管理者テンプレートのbackgroundAssetIdはassetsテーブル側で
- * 管理される共有素材のため、ここでは削除しない）。
+ * テンプレートを削除する。backgroundImageUrl/decorationsでStorageへ直接アップロードした
+ * 画像を持つ場合は、それらも一緒に削除し、Storage容量にゴミが溜まり続けるのを防ぐ
+ * （旧方式のbackgroundAssetIdはassetsテーブル側で管理される共有素材のため、ここでは削除しない）。
  */
 export async function deleteCollageStyle(id: string): Promise<void> {
   const { data: row } = await supabase
