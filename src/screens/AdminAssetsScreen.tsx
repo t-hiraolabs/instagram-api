@@ -23,6 +23,7 @@ import {
   COLLAGE_Z_BANDS,
   CollageTemplateAssets, CollageTextLayer, CollageDecoration,
 } from '../utils/collageCompositor';
+import { uploadBlob } from '../services/storage';
 import TemplatePositionEditor, {
   PhotoAreaDraft, TextLayerDraft, DecorationDraft,
 } from '../components/TemplatePositionEditor';
@@ -74,8 +75,8 @@ export default function AdminAssetsScreen({ navigation }: any) {
   // ドラッグ操作が競合して画面がスクロールしてしまう不具合を避けるため、
   // 専用の全画面モーダル（TemplatePositionEditor）で行う
   const [positionEditorOpen, setPositionEditorOpen] = useState(false);
-  const [styleBackgroundAssetId, setStyleBackgroundAssetId] = useState<string | null>(null);
-  const [backgroundAssets, setBackgroundAssets] = useState<AdminAsset[]>([]);
+  const [styleBackgroundImageUrl, setStyleBackgroundImageUrl] = useState<string | null>(null);
+  const [styleBackgroundUploading, setStyleBackgroundUploading] = useState(false);
   const [savingStyle, setSavingStyle] = useState(false);
 
   const [stylePhotoAreas, setStylePhotoAreas] = useState<PhotoAreaDraft[]>([]);
@@ -142,12 +143,10 @@ export default function AdminAssetsScreen({ navigation }: any) {
   }, []);
 
   useEffect(() => {
-    if (!isAdmin || tab !== 'styles' || categories.length === 0) return;
+    if (!isAdmin || tab !== 'styles') return;
     loadStyles();
-    const backgroundCategoryId = categories.find((c) => c.name === '背景')?.id;
-    if (backgroundCategoryId) listAllAssets({ categoryId: backgroundCategoryId, isActive: true }).then(setBackgroundAssets).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAdmin, tab, categories, loadStyles]);
+  }, [isAdmin, tab, loadStyles]);
 
   // フォームの内容が変わるたびにプレビューを再生成する。
   // キー入力のたびに毎回生成するとカクつくため、400ms操作が止まってから生成する（デバウンス）。
@@ -159,9 +158,8 @@ export default function AdminAssetsScreen({ navigation }: any) {
     let alive = true;
     setLivePreviewLoading(true);
     const timer = setTimeout(() => {
-      const bg = backgroundAssets.find((a) => a.id === styleBackgroundAssetId);
       const template: CollageTemplateAssets = {
-        backgroundUrl: bg?.storageUrl,
+        backgroundUrl: styleBackgroundImageUrl ?? undefined,
         photoAreas: stylePhotoAreas.map((p) => ({
           x: Number(p.x) || 0, y: Number(p.y) || 0, w: Number(p.w) || 100, h: Number(p.h) || 100,
         })),
@@ -190,7 +188,7 @@ export default function AdminAssetsScreen({ navigation }: any) {
     return () => { alive = false; clearTimeout(timer); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    isAdmin, tab, styleBackgroundAssetId, backgroundAssets, stylePhotoAreas, styleTextLayers, styleDecorations,
+    isAdmin, tab, styleBackgroundImageUrl, stylePhotoAreas, styleTextLayers, styleDecorations,
   ]);
 
   const categoryName = (id: string) => categories.find((c) => c.id === id)?.name ?? id;
@@ -302,10 +300,33 @@ export default function AdminAssetsScreen({ navigation }: any) {
     setStyleName('');
     setStylePlan('free');
     setStyleTags('');
-    setStyleBackgroundAssetId(null);
+    setStyleBackgroundImageUrl(null);
     setStylePhotoAreas([]);
     setStyleTextLayers([]);
     setStyleDecorations([]);
+  };
+
+  const pickBackgroundImage = async () => {
+    if (Platform.OS !== 'web') {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') { alertMsg('写真へのアクセスを許可してください', '権限エラー'); return; }
+    }
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.95,
+    });
+    if (res.canceled) return;
+    setStyleBackgroundUploading(true);
+    try {
+      const blob = await (await fetch(res.assets[0].uri)).blob();
+      const url = await uploadBlob(blob);
+      setStyleBackgroundImageUrl(url);
+      setPositionEditorOpen(true);
+    } catch (e) {
+      alertMsg((e as { message?: string })?.message || '画像のアップロードに失敗しました', 'エラー');
+    } finally {
+      setStyleBackgroundUploading(false);
+    }
   };
 
   const startEditStyle = (s: CollageStyle) => {
@@ -313,7 +334,7 @@ export default function AdminAssetsScreen({ navigation }: any) {
     setStyleName(s.name);
     setStylePlan(s.plan);
     setStyleTags(s.tags.join(', '));
-    setStyleBackgroundAssetId(s.backgroundAssetId ?? null);
+    setStyleBackgroundImageUrl(s.backgroundUrl ?? null);
     setStylePhotoAreas(
       (s.photoAreas ?? []).map((p) => ({
         key: nextDraftKey(),
@@ -354,7 +375,7 @@ export default function AdminAssetsScreen({ navigation }: any) {
       alertMsg('テンプレート名を入力してください');
       return;
     }
-    if (!styleBackgroundAssetId) {
+    if (!styleBackgroundImageUrl) {
       alertMsg('背景画像（完成デザイン）を選んでください');
       return;
     }
@@ -368,7 +389,7 @@ export default function AdminAssetsScreen({ navigation }: any) {
         name: styleName.trim(),
         plan: stylePlan,
         tags: parseTags(styleTags),
-        backgroundAssetId: styleBackgroundAssetId,
+        backgroundImageUrl: styleBackgroundImageUrl,
         photoAreas: stylePhotoAreas.map((p) => ({
           x: Number(p.x) || 0, y: Number(p.y) || 0, w: Number(p.w) || 100, h: Number(p.h) || 100,
         })),
@@ -607,32 +628,24 @@ export default function AdminAssetsScreen({ navigation }: any) {
                 placeholderTextColor={COLORS.textMuted}
               />
 
-              <Text style={styles.sectionLabel}>背景画像（Canva等で作成した完成デザイン。写真の差し込み場所もこの画像内にデザインしてください）</Text>
-              <View style={styles.grid}>
-                <TouchableOpacity onPress={() => setStyleBackgroundAssetId(null)}>
-                  <View style={[styles.assetCard, !styleBackgroundAssetId && styles.assetCardSelected]}>
-                    <View style={[styles.assetImg, styles.assetImgEmpty]}>
-                      <Text style={{ color: COLORS.textMuted, fontSize: 12 }}>なし</Text>
-                    </View>
-                  </View>
-                </TouchableOpacity>
-                {backgroundAssets.map((a) => (
-                  <TouchableOpacity key={a.id} onPress={() => { setStyleBackgroundAssetId(a.id); setPositionEditorOpen(true); }}>
-                    <View style={[styles.assetCard, styleBackgroundAssetId === a.id && styles.assetCardSelected]}>
-                      <Image source={{ uri: a.thumbnailUrl ?? a.storageUrl }} style={styles.assetImg} resizeMode="cover" />
-                      <Text style={styles.assetName} numberOfLines={1}>{a.name}</Text>
-                    </View>
-                  </TouchableOpacity>
-                ))}
-                {backgroundAssets.length === 0 && (
-                  <Text style={styles.emptyText}>「背景」カテゴリの素材がありません（先にシートアップロードから登録してください）</Text>
+              <Text style={styles.sectionLabel}>背景画像（写真ライブラリから選んだ完成デザイン。写真の差し込み場所もこの画像内にデザインしてください）</Text>
+              <TouchableOpacity style={styles.bgPickBtn} onPress={pickBackgroundImage} disabled={styleBackgroundUploading} activeOpacity={0.85}>
+                {styleBackgroundUploading ? (
+                  <ActivityIndicator color={COLORS.primary} />
+                ) : styleBackgroundImageUrl ? (
+                  <Image source={{ uri: styleBackgroundImageUrl }} style={styles.bgPickImg} resizeMode="cover" />
+                ) : (
+                  <>
+                    <Ionicons name="image-outline" size={22} color={COLORS.textSecondary} />
+                    <Text style={styles.bgPickText}>画像を選ぶ</Text>
+                  </>
                 )}
-              </View>
+              </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.uploadBtn, !styleBackgroundAssetId && { opacity: 0.6 }]}
+                style={[styles.uploadBtn, !styleBackgroundImageUrl && { opacity: 0.6 }]}
                 onPress={() => setPositionEditorOpen(true)}
-                disabled={!styleBackgroundAssetId}
+                disabled={!styleBackgroundImageUrl}
               >
                 <Ionicons name="move-outline" size={18} color="#fff" />
                 <Text style={styles.uploadBtnText}>
@@ -643,7 +656,7 @@ export default function AdminAssetsScreen({ navigation }: any) {
               <TemplatePositionEditor
                 visible={positionEditorOpen}
                 onClose={() => setPositionEditorOpen(false)}
-                backgroundUri={backgroundAssets.find((a) => a.id === styleBackgroundAssetId)?.storageUrl}
+                backgroundUri={styleBackgroundImageUrl}
                 photoAreas={stylePhotoAreas}
                 onPhotoAreasChange={setStylePhotoAreas}
                 textLayers={styleTextLayers}
@@ -807,10 +820,8 @@ const styles = StyleSheet.create({
     width: 100, backgroundColor: COLORS.surface, borderRadius: RADIUS.md, padding: SPACING.xs, alignItems: 'center',
   },
   assetImg: { width: 84, height: 84, marginBottom: SPACING.xs },
-  assetImgEmpty: { alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.background, borderRadius: RADIUS.sm },
   assetName: { color: COLORS.text, fontSize: 11, fontWeight: '600', maxWidth: 90 },
   assetCategoryLabel: { color: COLORS.textMuted, fontSize: 10, maxWidth: 90 },
-  assetCardSelected: { borderWidth: 2, borderColor: COLORS.primary },
   detailOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: SPACING.lg },
   detailCard: {
     width: '100%', maxWidth: 360, maxHeight: '85%', backgroundColor: COLORS.surface, borderRadius: RADIUS.lg,
@@ -833,6 +844,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, color: COLORS.text, backgroundColor: COLORS.surface,
   },
   styleThumb: { width: 40, height: 40, borderRadius: RADIUS.sm, marginRight: SPACING.sm },
+  bgPickBtn: {
+    width: 140, height: (140 * 1920) / 1080, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.border,
+    backgroundColor: COLORS.surface, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', gap: SPACING.xs,
+  },
+  bgPickImg: { width: '100%', height: '100%' },
+  bgPickText: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '600' },
   livePreviewWrap: {
     width: 180, height: (180 * 1920) / 1080, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.border,
     backgroundColor: COLORS.surface, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', marginBottom: SPACING.sm,
