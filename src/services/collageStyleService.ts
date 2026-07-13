@@ -37,6 +37,16 @@ export interface CollageStyleTextLayer {
   zIndex?: number;
 }
 
+/** ロゴ・スタンプ等、固定表示する装飾画像1件（キャンバス1080×1920px基準） */
+export interface CollageStyleDecoration {
+  /** ImagePickerで選んだ画像をuploadBlob等でStorageへ直接アップロードした公開URL */
+  imageUrl: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 export interface CollageStyle {
   id: string;
   name: string;
@@ -50,6 +60,8 @@ export interface CollageStyle {
   photoAreas: CollageStylePhotoArea[];
   /** ユーザーが文言を編集できるテキストレイヤー（任意） */
   textLayers?: CollageStyleTextLayer[];
+  /** ロゴ・スタンプ等、固定表示する装飾画像（任意） */
+  decorations?: CollageStyleDecoration[];
   thumbnailUrl: string | null;
   /** 設定時は、このユーザー本人だけが使える個人用テンプレート（他ユーザーには公開されない） */
   ownerUserId?: string;
@@ -61,6 +73,7 @@ interface CollageStyleDefaults {
   backgroundImageUrl?: string;
   photoAreas?: CollageStylePhotoArea[];
   textLayers?: CollageStyleTextLayer[];
+  decorations?: CollageStyleDecoration[];
 }
 
 async function rowsToStyles(rows: any[]): Promise<CollageStyle[]> {
@@ -82,6 +95,7 @@ async function rowsToStyles(rows: any[]): Promise<CollageStyle[]> {
       backgroundUrl: d.backgroundAssetId ? assetsById[d.backgroundAssetId]?.storageUrl : d.backgroundImageUrl,
       photoAreas: d.photoAreas ?? [],
       textLayers: d.textLayers,
+      decorations: d.decorations,
       thumbnailUrl: r.thumbnail_url,
       ownerUserId: r.owner_user_id ?? undefined,
     };
@@ -137,6 +151,7 @@ interface CollageStyleParams {
   backgroundAssetId?: string;
   photoAreas: CollageStylePhotoArea[];
   textLayers?: CollageStyleTextLayer[];
+  decorations?: CollageStyleDecoration[];
 }
 
 function toLayerDefaults(params: CollageStyleParams): CollageStyleDefaults {
@@ -144,6 +159,7 @@ function toLayerDefaults(params: CollageStyleParams): CollageStyleDefaults {
     backgroundAssetId: params.backgroundAssetId,
     photoAreas: params.photoAreas,
     textLayers: params.textLayers,
+    decorations: params.decorations,
   };
 }
 
@@ -165,6 +181,7 @@ interface CreateMyTemplateParams {
   backgroundImageUrl: string;
   photoAreas: CollageStylePhotoArea[];
   textLayers?: CollageStyleTextLayer[];
+  decorations?: CollageStyleDecoration[];
 }
 
 /** 自分専用の個人用テンプレートを作成する（他ユーザーには公開されない） */
@@ -181,6 +198,7 @@ export async function createMyCollageTemplate(params: CreateMyTemplateParams): P
       backgroundImageUrl: params.backgroundImageUrl,
       photoAreas: params.photoAreas,
       textLayers: params.textLayers,
+      decorations: params.decorations,
     },
   });
   if (error) throw error;
@@ -215,8 +233,8 @@ function extractStoragePath(publicUrl: string, bucket: string): string | null {
 }
 
 /**
- * テンプレートを削除する。個人用テンプレート（backgroundImageUrlを持つもの）の場合、
- * Storageへ直接アップロードした背景画像も一緒に削除し、Storage容量にゴミが
+ * テンプレートを削除する。個人用テンプレート（backgroundImageUrl/decorationsを持つもの）の場合、
+ * Storageへ直接アップロードした背景画像・装飾画像も一緒に削除し、Storage容量にゴミが
  * 溜まり続けるのを防ぐ（管理者テンプレートのbackgroundAssetIdはassetsテーブル側で
  * 管理される共有素材のため、ここでは削除しない）。
  */
@@ -226,15 +244,19 @@ export async function deleteCollageStyle(id: string): Promise<void> {
     .select('layer_defaults')
     .eq('id', id)
     .maybeSingle();
-  const backgroundImageUrl = (row?.layer_defaults as CollageStyleDefaults | undefined)?.backgroundImageUrl;
+  const defaults = row?.layer_defaults as CollageStyleDefaults | undefined;
+  const imageUrls = [
+    defaults?.backgroundImageUrl,
+    ...(defaults?.decorations ?? []).map((d) => d.imageUrl),
+  ].filter((u): u is string => !!u);
 
   const { error } = await supabase.from('templates').delete().eq('id', id);
   if (error) throw error;
 
-  if (backgroundImageUrl) {
-    const path = extractStoragePath(backgroundImageUrl, POST_IMAGES_BUCKET);
-    if (path) {
-      await supabase.storage.from(POST_IMAGES_BUCKET).remove([path]).catch(() => {});
-    }
+  const paths = imageUrls
+    .map((u) => extractStoragePath(u, POST_IMAGES_BUCKET))
+    .filter((p): p is string => !!p);
+  if (paths.length > 0) {
+    await supabase.storage.from(POST_IMAGES_BUCKET).remove(paths).catch(() => {});
   }
 }

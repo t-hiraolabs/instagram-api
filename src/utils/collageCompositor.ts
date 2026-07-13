@@ -111,11 +111,21 @@ export const COLLAGE_H = 1920;
  */
 export const COLLAGE_Z_BANDS = {
   photos: 25,
+  decoration: 40,
   text: 55,
 } as const;
 
 /** 写真を差し込む矩形（キャンバス1080×1920px基準） */
 export interface CollagePhotoArea {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** 装飾用の画像（ロゴ・スタンプ等）を固定表示する矩形。写真の上・テキストの下に描く */
+export interface CollageDecoration {
+  imageUrl: string;
   x: number;
   y: number;
   w: number;
@@ -158,6 +168,8 @@ export interface CollageTemplateAssets {
   photoAreas: CollagePhotoArea[];
   /** ユーザーが文言を編集できるテキストレイヤー（任意） */
   textLayers?: CollageTextLayer[];
+  /** ロゴ・スタンプ等、固定表示する装飾画像（任意） */
+  decorations?: CollageDecoration[];
 }
 
 // 写真を白カード等の装飾なしで、指定矩形にそのままcover-fitで描く。
@@ -177,6 +189,24 @@ async function drawPlainPhoto(
     img,
     area.x + (area.w - img.width * cover) / 2,
     area.y + (area.h - img.height * cover) / 2,
+    img.width * cover,
+    img.height * cover
+  );
+  ctx.restore();
+}
+
+// 装飾画像1件を指定矩形にそのままcover-fitで描く（ロゴ・スタンプ等の固定表示用）
+async function drawDecoration(ctx: CanvasRenderingContext2D, dec: CollageDecoration) {
+  const img = await loadImage(dec.imageUrl);
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(dec.x, dec.y, dec.w, dec.h);
+  ctx.clip();
+  const cover = Math.max(dec.w / img.width, dec.h / img.height);
+  ctx.drawImage(
+    img,
+    dec.x + (dec.w - img.width * cover) / 2,
+    dec.y + (dec.h - img.height * cover) / 2,
     img.width * cover,
     img.height * cover
   );
@@ -273,6 +303,10 @@ export async function composeCollage(
     ...template.photoAreas.map((area, i): Layer => ({
       zIndex: COLLAGE_Z_BANDS.photos,
       run: () => (photos[i] ? drawPlainPhoto(ctx, photos[i], area) : undefined),
+    })),
+    ...(template.decorations ?? []).map((dec): Layer => ({
+      zIndex: COLLAGE_Z_BANDS.decoration,
+      run: () => drawDecoration(ctx, dec),
     })),
     ...(template.textLayers ?? []).map((layer): Layer => ({
       zIndex: layer.zIndex ?? COLLAGE_Z_BANDS.text,

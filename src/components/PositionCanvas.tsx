@@ -1,4 +1,4 @@
-// 写真エリア・テキストレイヤーの位置を、背景画像の上に重ねたボックスを指で
+// 写真エリア・テキストレイヤー・装飾画像の位置を、背景画像の上に重ねたボックスを指で
 // ドラッグして直感的に調整できるキャンバス。主要機種がスマホであることを踏まえ、
 // 数値入力＋10px単位の矢印ボタンだけに頼らず、ドラッグでの大まかな移動を可能にする。
 import React, { useEffect, useRef } from 'react';
@@ -12,8 +12,12 @@ export interface PositionCanvasBox {
   y: number;
   w: number;
   h: number;
-  /** 枠線・塗りの色（写真エリアとテキストレイヤーを色分けする用）。未指定はプライマリカラー */
+  /** 枠線・塗りの色（要素の種類ごとに色分けする用）。未指定はプライマリカラー */
   color?: string;
+  /** trueの場合のみ右下にリサイズハンドルを表示する（写真エリア・装飾画像用。テキストは不可） */
+  resizable?: boolean;
+  /** 選択中かどうか（選択中は枠を太く表示する） */
+  selected?: boolean;
 }
 
 interface PositionCanvasProps {
@@ -21,8 +25,10 @@ interface PositionCanvasProps {
   backgroundUri?: string | null;
   boxes: PositionCanvasBox[];
   onMove: (key: string, x: number, y: number) => void;
-  /** 指定時、各ボックス右下にリサイズハンドルを表示しドラッグで幅・高さも変更できる */
+  /** resizable:trueのボックスのみに右下のリサイズハンドルを表示し、ドラッグで幅・高さも変更できる */
   onResize?: (key: string, w: number, h: number) => void;
+  /** ボックスをタップ（ドラッグ開始）した時に呼ばれる。選択状態の管理に使う */
+  onSelect?: (key: string) => void;
   maxWidth?: number;
   /**
    * ドラッグの開始・終了を親に通知する。キャンバスを囲むScrollViewのscrollEnabledを
@@ -35,7 +41,7 @@ interface PositionCanvasProps {
 const MIN_SIZE = 30;
 const HANDLE_SIZE = 24;
 
-export default function PositionCanvas({ backgroundUri, boxes, onMove, onResize, maxWidth = 420, onDragStateChange }: PositionCanvasProps) {
+export default function PositionCanvas({ backgroundUri, boxes, onMove, onResize, onSelect, maxWidth = 420, onDragStateChange }: PositionCanvasProps) {
   const { width: windowWidth } = useWindowDimensions();
   const canvasWidth = Math.min(windowWidth - SPACING.md * 4, maxWidth);
   const canvasHeight = (canvasWidth * COLLAGE_H) / COLLAGE_W;
@@ -52,12 +58,13 @@ export default function PositionCanvas({ backgroundUri, boxes, onMove, onResize,
           box={box}
           scale={scale}
           onMove={(x, y) => onMove(box.key, x, y)}
+          onSelect={onSelect ? () => onSelect(box.key) : undefined}
           onDragStateChange={onDragStateChange}
         />
       ))}
       {/* リサイズハンドルはボックスの子ではなく兄弟として描画する。ネストしたPanResponder同士は
           Web上でタッチの取り合いが不安定になり、ドラッグ中に親（移動）側へ横取りされることがあるため。 */}
-      {onResize && boxes.map((box) => (
+      {onResize && boxes.filter((b) => b.resizable).map((box) => (
         <ResizeHandle
           key={`resize-${box.key}`}
           box={box}
@@ -70,10 +77,11 @@ export default function PositionCanvas({ backgroundUri, boxes, onMove, onResize,
   );
 }
 
-function DraggableBox({ box, scale, onMove, onDragStateChange }: {
+function DraggableBox({ box, scale, onMove, onSelect, onDragStateChange }: {
   box: PositionCanvasBox;
   scale: number;
   onMove: (x: number, y: number) => void;
+  onSelect?: () => void;
   onDragStateChange?: (dragging: boolean) => void;
 }) {
   // PanResponderは初回マウント時のクロージャに固定されるため、最新のbox/コールバックは
@@ -82,6 +90,8 @@ function DraggableBox({ box, scale, onMove, onDragStateChange }: {
   useEffect(() => { boxRef.current = box; });
   const onMoveRef = useRef(onMove);
   useEffect(() => { onMoveRef.current = onMove; });
+  const onSelectRef = useRef(onSelect);
+  useEffect(() => { onSelectRef.current = onSelect; });
   const onDragStateChangeRef = useRef(onDragStateChange);
   useEffect(() => { onDragStateChangeRef.current = onDragStateChange; });
 
@@ -91,6 +101,7 @@ function DraggableBox({ box, scale, onMove, onDragStateChange }: {
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
       onPanResponderGrant: (evt: GestureResponderEvent) => {
+        onSelectRef.current?.();
         onDragStateChangeRef.current?.(true);
         moveStart.current = {
           pageX: evt.nativeEvent.pageX, pageY: evt.nativeEvent.pageY,
@@ -114,6 +125,8 @@ function DraggableBox({ box, scale, onMove, onDragStateChange }: {
         {
           left: box.x * scale, top: box.y * scale, width: box.w * scale, height: box.h * scale,
           borderColor: box.color ?? COLORS.primary,
+          borderWidth: box.selected ? 3 : 2,
+          borderStyle: box.selected ? 'solid' : 'dashed',
         },
       ]}
       {...moveResponder.panHandlers}
@@ -180,7 +193,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surface, overflow: 'hidden', alignSelf: 'center', marginBottom: SPACING.sm,
   },
   box: {
-    position: 'absolute', borderWidth: 2, borderStyle: 'dashed',
+    position: 'absolute',
     backgroundColor: 'rgba(225,48,108,0.15)',
   },
   resizeHandle: {
