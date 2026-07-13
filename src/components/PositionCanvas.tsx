@@ -24,6 +24,9 @@ export interface PositionCanvasBox {
   previewTextColor?: string;
   previewFontSize?: number;
   previewAlign?: 'left' | 'center' | 'right';
+  /** 選択中フォントのCSSフォントファミリー名（Google Fontsの<link>読み込み後に反映される） */
+  previewFontFamily?: string;
+  previewFontWeight?: string;
 }
 
 /** 2本指ピンチの指間距離（PanResponderのtouches配列から算出。scaleに関わらず
@@ -191,6 +194,8 @@ function DraggableBox({ box, scale, onMove, onResize, onSelect, onDragStateChang
             color: box.previewTextColor ?? '#fff',
             fontSize: Math.max(8, (box.previewFontSize ?? 40) * scale),
             textAlign: box.previewAlign ?? 'left',
+            fontFamily: box.previewFontFamily,
+            fontWeight: box.previewFontWeight as any,
           }}
           numberOfLines={2}
         >
