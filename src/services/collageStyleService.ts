@@ -1,25 +1,16 @@
-// コラージュの画像ベース「スタイル」（背景・フレーム画像＋アクセントカラー）のデータアクセス層。
+// コラージュの「完成テンプレート」（管理者があらかじめ作成した1枚のデザイン画像＋
+// 写真を差し込む透明な窓＋任意のテキストレイヤー）のデータアクセス層。
 // Story Studioのtemplatesテーブルをtype='collage'として流用する。
 import { supabase } from './supabaseClient';
 import { Plan } from '../utils/plans';
 import { allowedPlans, getAssetsByIds } from './storyStudioService';
 
-/** 完成テンプレートのJSONスキーマバージョン。将来スキーマを変える時のためのもの */
-export const COLLAGE_TEMPLATE_SCHEMA_VERSION = 1;
-
-/**
- * 装飾画像1件（矢印・キラキラ等）。座標はキャンバス1080×1920px基準。
- * zIndexで描画順を決める（背景0-9 / 写真背面装飾10-19 / 写真20-29 / 写真前面装飾30-39 / フレーム40-49 / テキスト50-59が目安）。
- */
-export interface CollageStyleDecoration {
-  assetId: string;
-  url?: string;
+/** 写真を差し込む矩形（キャンバス1080×1920px基準）。1テンプレートに複数個持てる */
+export interface CollageStylePhotoArea {
   x: number;
   y: number;
   w: number;
   h: number;
-  rotate?: number;
-  zIndex?: number;
 }
 
 /** テキストレイヤー1件。座標はキャンバス1080×1920px基準 */
@@ -42,15 +33,8 @@ export interface CollageStyleTextLayer {
   maxLines?: number;
   /** 回転（度）。未指定は0 */
   rotation?: number;
+  /** 描画順（昇順）。未指定は写真より前面のテキスト帯扱い */
   zIndex?: number;
-}
-
-/** 写真1枚のレイアウトで、白カードなしの自由配置で写真を描く矩形（キャンバス1080×1920px基準） */
-export interface CollageStylePhotoArea {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
 }
 
 export interface CollageStyle {
@@ -59,44 +43,20 @@ export interface CollageStyle {
   plan: Plan;
   isActive: boolean;
   tags: string[];
+  /** 管理者が作成した完成デザイン画像（写真の差し込み場所もこの画像内にデザイン済み） */
   backgroundAssetId?: string;
-  frameAssetId?: string;
   backgroundUrl?: string;
-  frameUrl?: string;
-  /** 単色背景（例: "#FFFFFF"）。backgroundAssetIdが無い場合に使う */
-  backgroundColor?: string;
-  accentColor?: string;
-  accentFont?: string;
-  accentYOffset?: number;
-  captionColor?: string;
-  captionFont?: string;
-  captionYOffset?: number;
-  /** 指定時は「完成テンプレート」。COLLAGE_LAYOUTSのidを参照し、単体タイルとしてギャラリーに並ぶ */
-  layoutId?: string;
-  /** 完成テンプレートのJSONスキーマバージョン。layoutId指定時のみ意味を持つ */
-  version?: number;
-  decorations?: CollageStyleDecoration[];
+  /** 写真を差し込む矩形（1つ以上） */
+  photoAreas: CollageStylePhotoArea[];
+  /** ユーザーが文言を編集できるテキストレイヤー（任意） */
   textLayers?: CollageStyleTextLayer[];
-  /** 指定時、写真を白カードなしでこの矩形にそのまま描く（写真1枚のレイアウト専用） */
-  photoArea?: CollageStylePhotoArea;
   thumbnailUrl: string | null;
 }
 
 interface CollageStyleDefaults {
   backgroundAssetId?: string;
-  frameAssetId?: string;
-  backgroundColor?: string;
-  accentColor?: string;
-  accentFont?: string;
-  accentYOffset?: number;
-  captionColor?: string;
-  captionFont?: string;
-  captionYOffset?: number;
-  layoutId?: string;
-  version?: number;
-  decorations?: CollageStyleDecoration[];
+  photoAreas?: CollageStylePhotoArea[];
   textLayers?: CollageStyleTextLayer[];
-  photoArea?: CollageStylePhotoArea;
 }
 
 async function rowsToStyles(rows: any[]): Promise<CollageStyle[]> {
@@ -104,8 +64,6 @@ async function rowsToStyles(rows: any[]): Promise<CollageStyle[]> {
   rows.forEach((r) => {
     const d = (r.layer_defaults ?? {}) as CollageStyleDefaults;
     if (d.backgroundAssetId) assetIds.add(d.backgroundAssetId);
-    if (d.frameAssetId) assetIds.add(d.frameAssetId);
-    (d.decorations ?? []).forEach((dec) => assetIds.add(dec.assetId));
   });
   const assetsById = assetIds.size > 0 ? await getAssetsByIds(Array.from(assetIds)) : {};
   return rows.map((r) => {
@@ -117,27 +75,15 @@ async function rowsToStyles(rows: any[]): Promise<CollageStyle[]> {
       isActive: r.is_active,
       tags: (r.tags ?? []) as string[],
       backgroundAssetId: d.backgroundAssetId,
-      frameAssetId: d.frameAssetId,
       backgroundUrl: d.backgroundAssetId ? assetsById[d.backgroundAssetId]?.storageUrl : undefined,
-      frameUrl: d.frameAssetId ? assetsById[d.frameAssetId]?.storageUrl : undefined,
-      backgroundColor: d.backgroundColor,
-      accentColor: d.accentColor,
-      accentFont: d.accentFont,
-      accentYOffset: d.accentYOffset,
-      captionColor: d.captionColor,
-      captionFont: d.captionFont,
-      captionYOffset: d.captionYOffset,
-      layoutId: d.layoutId,
-      version: d.version,
-      decorations: d.decorations?.map((dec) => ({ ...dec, url: assetsById[dec.assetId]?.storageUrl })),
+      photoAreas: d.photoAreas ?? [],
       textLayers: d.textLayers,
-      photoArea: d.photoArea,
       thumbnailUrl: r.thumbnail_url,
     };
   });
 }
 
-/** コラージュ編集画面向け: 有効かつ自分のプランで使えるスタイルのみ */
+/** コラージュ編集画面向け: 有効かつ自分のプランで使えるテンプレートのみ */
 export async function listCollageStyles(plan: Plan): Promise<CollageStyle[]> {
   const plans = allowedPlans(plan);
   const { data, error } = await supabase
@@ -166,37 +112,15 @@ interface CollageStyleParams {
   plan: Plan;
   tags?: string[];
   backgroundAssetId?: string;
-  frameAssetId?: string;
-  backgroundColor?: string;
-  accentColor?: string;
-  accentFont?: string;
-  accentYOffset?: number;
-  captionColor?: string;
-  captionFont?: string;
-  captionYOffset?: number;
-  /** 完成テンプレート（レイアウト・装飾・テキストを指定するもの）を作る場合は必須 */
-  layoutId?: string;
-  decorations?: CollageStyleDecoration[];
+  photoAreas: CollageStylePhotoArea[];
   textLayers?: CollageStyleTextLayer[];
-  photoArea?: CollageStylePhotoArea;
 }
 
 function toLayerDefaults(params: CollageStyleParams): CollageStyleDefaults {
   return {
     backgroundAssetId: params.backgroundAssetId,
-    frameAssetId: params.frameAssetId,
-    backgroundColor: params.backgroundColor,
-    accentColor: params.accentColor,
-    accentFont: params.accentFont,
-    accentYOffset: params.accentYOffset,
-    captionColor: params.captionColor,
-    captionFont: params.captionFont,
-    captionYOffset: params.captionYOffset,
-    layoutId: params.layoutId,
-    version: params.layoutId ? COLLAGE_TEMPLATE_SCHEMA_VERSION : undefined,
-    decorations: params.decorations,
+    photoAreas: params.photoAreas,
     textLayers: params.textLayers,
-    photoArea: params.photoArea,
   };
 }
 
