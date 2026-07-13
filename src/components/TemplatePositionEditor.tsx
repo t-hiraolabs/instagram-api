@@ -150,6 +150,11 @@ export default function TemplatePositionEditor({
     setSelected((s) => (s?.key === key ? null : s));
   };
   const moveTextLayer = (key: string, x: number, y: number) => updateTextLayer(key, { x: String(Math.round(x)), y: String(Math.round(y)) });
+  // テキストは矩形の幅・高さそのものではなく、最大幅と文字サイズとして保持しているため、
+  // リサイズ操作（ハンドルドラッグ・2本指ピンチ）で来たw/hをそちらに変換する
+  const resizeTextLayer = (key: string, w: number, h: number) => {
+    updateTextLayer(key, { maxWidth: String(Math.round(w)), fontSize: String(Math.max(8, Math.round(h / 1.4))) });
+  };
   const alignTextLayer = (key: string, where: AlignWhere) => {
     if (where === 'centerX') updateTextLayer(key, { x: String(Math.round(COLLAGE_W / 2)) });
     else if (where === 'left') updateTextLayer(key, { x: '0' });
@@ -254,7 +259,7 @@ export default function TemplatePositionEditor({
       return {
         key: t.key, x: Number(t.x) || 0, y: (Number(t.y) || 0) - fontSize,
         w: Number(t.maxWidth) || 300, h: fontSize * 1.4,
-        color: '#3E8E6E', resizable: false, selected: selected?.type === 'text' && selected.key === t.key,
+        color: '#3E8E6E', resizable: true, selected: selected?.type === 'text' && selected.key === t.key,
         previewText: t.sampleText || t.label || 'テキスト',
         previewTextColor: t.color,
         previewFontSize: fontSize,
@@ -275,6 +280,7 @@ export default function TemplatePositionEditor({
   const handleCanvasResize = (key: string, w: number, h: number) => {
     if (photoAreas.some((a) => a.key === key)) return resizePhotoArea(key, w, h);
     if (decorations.some((d) => d.key === key)) return resizeDecoration(key, w, h);
+    if (textLayers.some((t) => t.key === key)) return resizeTextLayer(key, w, h);
   };
   const handleCanvasSelect = (key: string) => {
     if (photoAreas.some((a) => a.key === key)) return setSelected({ type: 'photo', key });
