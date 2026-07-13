@@ -18,6 +18,7 @@ import {
 import { uploadBlob } from '../services/storage';
 import ColorPickerModal from './ColorPickerModal';
 import PositionToolRow from './PositionToolRow';
+import PositionCanvas from './PositionCanvas';
 
 interface Props {
   onDone: (dataUrl: string) => void;
@@ -267,10 +268,11 @@ export default function CollageEditor({ onDone }: Props) {
     setCreatePhotoAreas((p) => p.map((a) => (a.key === key ? { ...a, ...patch } : a)));
   };
   const removePhotoArea = (key: string) => setCreatePhotoAreas((p) => p.filter((a) => a.key !== key));
-  const nudgePhotoArea = (key: string, dx: number, dy: number) => {
-    setCreatePhotoAreas((p) => p.map((a) => (a.key === key
-      ? { ...a, x: String((Number(a.x) || 0) + dx), y: String((Number(a.y) || 0) + dy) }
-      : a)));
+  const movePhotoArea = (key: string, x: number, y: number) => {
+    setCreatePhotoAreas((p) => p.map((a) => (a.key === key ? { ...a, x: String(Math.round(x)), y: String(Math.round(y)) } : a)));
+  };
+  const resizePhotoArea = (key: string, w: number, h: number) => {
+    setCreatePhotoAreas((p) => p.map((a) => (a.key === key ? { ...a, w: String(Math.round(w)), h: String(Math.round(h)) } : a)));
   };
   const alignPhotoArea = (key: string, where: 'centerX' | 'left' | 'right' | 'top' | 'bottom') => {
     setCreatePhotoAreas((p) => p.map((a) => {
@@ -305,10 +307,8 @@ export default function CollageEditor({ onDone }: Props) {
     setCreateTextLayers((p) => p.map((t) => (t.key === key ? { ...t, ...patch } : t)));
   };
   const removeTextLayer = (key: string) => setCreateTextLayers((p) => p.filter((t) => t.key !== key));
-  const nudgeTextLayer = (key: string, dx: number, dy: number) => {
-    setCreateTextLayers((p) => p.map((t) => (t.key === key
-      ? { ...t, x: String((Number(t.x) || 0) + dx), y: String((Number(t.y) || 0) + dy) }
-      : t)));
+  const moveTextLayer = (key: string, x: number, y: number) => {
+    setCreateTextLayers((p) => p.map((t) => (t.key === key ? { ...t, x: String(Math.round(x)), y: String(Math.round(y)) } : t)));
   };
   const alignTextLayer = (key: string, where: 'centerX' | 'left' | 'right' | 'top' | 'bottom') => {
     setCreateTextLayers((p) => p.map((t) => {
@@ -468,7 +468,17 @@ export default function CollageEditor({ onDone }: Props) {
           )}
         </TouchableOpacity>
 
-        <Text style={styles.label}>写真エリア（写真を差し込む透明な窓。キャンバスは1080×1920pxです）</Text>
+        <Text style={styles.label}>写真エリア（写真を差し込む透明な窓。キャンバスは1080×1920pxです。ドラッグで移動、右下の丸をドラッグでサイズ変更できます）</Text>
+        {createPhotoAreas.length > 0 && (
+          <PositionCanvas
+            backgroundUri={createBackgroundUrl}
+            boxes={createPhotoAreas.map((a) => ({
+              key: a.key, x: Number(a.x) || 0, y: Number(a.y) || 0, w: Number(a.w) || 100, h: Number(a.h) || 100,
+            }))}
+            onMove={movePhotoArea}
+            onResize={resizePhotoArea}
+          />
+        )}
         {createPhotoAreas.map((a) => (
           <View key={a.key} style={styles.draftRow}>
             <View style={styles.numRow}>
@@ -481,7 +491,6 @@ export default function CollageEditor({ onDone }: Props) {
               </TouchableOpacity>
             </View>
             <PositionToolRow
-              onNudge={(dx, dy) => nudgePhotoArea(a.key, dx, dy)}
               onAlign={(where) => alignPhotoArea(a.key, where)}
               onDuplicate={() => duplicatePhotoArea(a.key)}
             />
@@ -492,7 +501,23 @@ export default function CollageEditor({ onDone }: Props) {
           <Text style={styles.addRowBtnText}>写真エリアを追加</Text>
         </TouchableOpacity>
 
-        <Text style={styles.label}>テキストレイヤー（あとで編集したい文言。任意）</Text>
+        <Text style={styles.label}>テキストレイヤー（あとで編集したい文言。任意。ドラッグで移動できます）</Text>
+        {createTextLayers.length > 0 && (
+          <PositionCanvas
+            backgroundUri={createBackgroundUrl}
+            boxes={createTextLayers.map((t) => {
+              const fontSize = Number(t.fontSize) || 40;
+              return {
+                key: t.key, x: Number(t.x) || 0, y: (Number(t.y) || 0) - fontSize,
+                w: Number(t.maxWidth) || 300, h: fontSize * 1.4, color: '#3E8E6E',
+              };
+            })}
+            onMove={(key, x, y) => {
+              const fontSize = Number(createTextLayers.find((t) => t.key === key)?.fontSize) || 40;
+              moveTextLayer(key, x, y + fontSize);
+            }}
+          />
+        )}
         {createTextLayers.map((t) => (
           <View key={t.key} style={styles.draftRow}>
             <TextInput style={styles.input} value={t.label} onChangeText={(v) => updateTextLayer(t.key, { label: v })} placeholder="ラベル（例: 見出し）" placeholderTextColor={COLORS.textMuted} />
@@ -525,7 +550,6 @@ export default function CollageEditor({ onDone }: Props) {
               ))}
             </View>
             <PositionToolRow
-              onNudge={(dx, dy) => nudgeTextLayer(t.key, dx, dy)}
               onAlign={(where) => alignTextLayer(t.key, where)}
             />
           </View>

@@ -25,6 +25,7 @@ import {
 } from '../utils/collageCompositor';
 import ColorPickerModal from '../components/ColorPickerModal';
 import PositionToolRow from '../components/PositionToolRow';
+import PositionCanvas from '../components/PositionCanvas';
 
 type Tab = 'sheets' | 'assets' | 'styles';
 const PLAN_OPTIONS: Plan[] = ['free', 'pro', 'business'];
@@ -356,10 +357,11 @@ export default function AdminAssetsScreen({ navigation }: any) {
     setStylePhotoAreas((p) => p.map((a) => (a.key === key ? { ...a, ...patch } : a)));
   };
   const removePhotoArea = (key: string) => setStylePhotoAreas((p) => p.filter((a) => a.key !== key));
-  const nudgePhotoArea = (key: string, dx: number, dy: number) => {
-    setStylePhotoAreas((p) => p.map((a) => (a.key === key
-      ? { ...a, x: String((Number(a.x) || 0) + dx), y: String((Number(a.y) || 0) + dy) }
-      : a)));
+  const movePhotoArea = (key: string, x: number, y: number) => {
+    setStylePhotoAreas((p) => p.map((a) => (a.key === key ? { ...a, x: String(Math.round(x)), y: String(Math.round(y)) } : a)));
+  };
+  const resizePhotoArea = (key: string, w: number, h: number) => {
+    setStylePhotoAreas((p) => p.map((a) => (a.key === key ? { ...a, w: String(Math.round(w)), h: String(Math.round(h)) } : a)));
   };
   const alignPhotoArea = (key: string, where: 'centerX' | 'left' | 'right' | 'top' | 'bottom') => {
     setStylePhotoAreas((p) => p.map((a) => {
@@ -402,10 +404,8 @@ export default function AdminAssetsScreen({ navigation }: any) {
     updateTextLayer(colorPickerTargetKey, { color: hex });
   };
   const removeTextLayer = (key: string) => setStyleTextLayers((p) => p.filter((t) => t.key !== key));
-  const nudgeTextLayer = (key: string, dx: number, dy: number) => {
-    setStyleTextLayers((p) => p.map((t) => (t.key === key
-      ? { ...t, x: String((Number(t.x) || 0) + dx), y: String((Number(t.y) || 0) + dy) }
-      : t)));
+  const moveTextLayer = (key: string, x: number, y: number) => {
+    setStyleTextLayers((p) => p.map((t) => (t.key === key ? { ...t, x: String(Math.round(x)), y: String(Math.round(y)) } : t)));
   };
   const alignTextLayer = (key: string, where: 'centerX' | 'left' | 'right' | 'top' | 'bottom') => {
     setStyleTextLayers((p) => p.map((t) => {
@@ -708,6 +708,16 @@ export default function AdminAssetsScreen({ navigation }: any) {
               </View>
 
               <Text style={styles.sectionLabel}>写真エリア（写真を差し込む透明な窓。キャンバスは1080×1920pxです。複数追加できます）</Text>
+              {stylePhotoAreas.length > 0 && (
+                <PositionCanvas
+                  backgroundUri={backgroundAssets.find((a) => a.id === styleBackgroundAssetId)?.storageUrl}
+                  boxes={stylePhotoAreas.map((a) => ({
+                    key: a.key, x: Number(a.x) || 0, y: Number(a.y) || 0, w: Number(a.w) || 100, h: Number(a.h) || 100,
+                  }))}
+                  onMove={movePhotoArea}
+                  onResize={resizePhotoArea}
+                />
+              )}
               {stylePhotoAreas.map((a) => (
                 <View key={a.key} style={styles.draftRow}>
                   <View style={styles.numRow}>
@@ -720,7 +730,6 @@ export default function AdminAssetsScreen({ navigation }: any) {
                     </TouchableOpacity>
                   </View>
                   <PositionToolRow
-                    onNudge={(dx, dy) => nudgePhotoArea(a.key, dx, dy)}
                     onAlign={(where) => alignPhotoArea(a.key, where)}
                     onDuplicate={() => duplicatePhotoArea(a.key)}
                   />
@@ -732,6 +741,22 @@ export default function AdminAssetsScreen({ navigation }: any) {
               </TouchableOpacity>
 
               <Text style={styles.sectionLabel}>テキストレイヤー（ユーザーが編集できる文言。任意）</Text>
+                  {styleTextLayers.length > 0 && (
+                    <PositionCanvas
+                      backgroundUri={backgroundAssets.find((a) => a.id === styleBackgroundAssetId)?.storageUrl}
+                      boxes={styleTextLayers.map((t) => {
+                        const fontSize = Number(t.fontSize) || 40;
+                        return {
+                          key: t.key, x: Number(t.x) || 0, y: (Number(t.y) || 0) - fontSize,
+                          w: Number(t.maxWidth) || 300, h: fontSize * 1.4, color: '#3E8E6E',
+                        };
+                      })}
+                      onMove={(key, x, y) => {
+                        const fontSize = Number(styleTextLayers.find((t) => t.key === key)?.fontSize) || 40;
+                        moveTextLayer(key, x, y + fontSize);
+                      }}
+                    />
+                  )}
                   {styleTextLayers.map((t) => (
                     <View key={t.key} style={styles.draftRow}>
                       <TextInput style={styles.input} value={t.label} onChangeText={(v) => updateTextLayer(t.key, { label: v })} placeholder="ラベル（例: 見出し）" placeholderTextColor={COLORS.textMuted} />
@@ -781,7 +806,6 @@ export default function AdminAssetsScreen({ navigation }: any) {
                         <TextInput style={styles.numInput} value={t.zIndex} onChangeText={(v) => updateTextLayer(t.key, { zIndex: v })} placeholder="zIndex" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
                       </View>
                       <PositionToolRow
-                        onNudge={(dx, dy) => nudgeTextLayer(t.key, dx, dy)}
                         onAlign={(where) => alignTextLayer(t.key, where)}
                         onDuplicate={() => duplicateTextLayer(t.key)}
                       />
