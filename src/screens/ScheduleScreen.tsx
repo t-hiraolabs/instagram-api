@@ -1414,7 +1414,7 @@ export default function ScheduleScreen() {
       <Modal visible={collageVisible} animationType="slide" presentationStyle="pageSheet">
         <KeyboardAvoidingView style={styles.modal} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => { setCollageVisible(false); setModalVisible(true); }}>
+            <TouchableOpacity onPress={() => setCollageVisible(false)}>
               <Text style={styles.modalCancel}>戻る</Text>
             </TouchableOpacity>
             <Text style={styles.modalTitle}>コラージュを作る</Text>
@@ -1429,7 +1429,7 @@ export default function ScheduleScreen() {
       {/* Story Studio: 写真を選ぶだけでストーリーを完成させる */}
       <StoryStudioScreen
         visible={storyStudioVisible}
-        onClose={() => { setStoryStudioVisible(false); setModalVisible(true); }}
+        onClose={() => setStoryStudioVisible(false)}
         onFinish={handleStoryStudioFinish}
       />
 
