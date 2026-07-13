@@ -67,6 +67,37 @@ const LAYER_ICON: Record<LayerType, keyof typeof Ionicons.glyphMap> = {
   text: 'text-outline',
 };
 
+/** 「サイズ」欄の数値入力＋上下ボタン（キーボード入力なしでも1タップで増減できるようにする） */
+function SizeField({ value, onFocus, onChangeText, onStepUp, onStepDown }: {
+  value: string;
+  onFocus?: () => void;
+  onChangeText: (v: string) => void;
+  onStepUp: () => void;
+  onStepDown: () => void;
+}) {
+  return (
+    <View style={styles.sizeFieldRow}>
+      <TextInput
+        style={styles.numInput}
+        value={value}
+        onFocus={onFocus}
+        onChangeText={onChangeText}
+        placeholder="サイズ"
+        keyboardType="numeric"
+        placeholderTextColor={COLORS.textMuted}
+      />
+      <View style={styles.stepperCol}>
+        <TouchableOpacity style={styles.stepperBtn} onPress={onStepUp} hitSlop={{ top: 4, bottom: 1, left: 4, right: 4 }}>
+          <Ionicons name="caret-up" size={11} color={COLORS.textSecondary} />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.stepperBtn} onPress={onStepDown} hitSlop={{ top: 1, bottom: 4, left: 4, right: 4 }}>
+          <Ionicons name="caret-down" size={11} color={COLORS.textSecondary} />
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
 interface Props {
   visible: boolean;
   onClose: () => void;
@@ -158,6 +189,14 @@ export default function TemplatePositionEditor({
     const newH = photoSizeAspect.current > 0 ? newW / photoSizeAspect.current : newW;
     updatePhotoArea(key, { w: v, h: String(Math.round(newH)) });
   };
+  const PHOTO_SIZE_STEP = 20;
+  const stepPhotoSize = (key: string, delta: number) => {
+    handlePhotoSizeFocus(key);
+    const a = photoAreas.find((x) => x.key === key);
+    if (!a) return;
+    const newW = Math.max(20, (Number(a.w) || 0) + delta);
+    handlePhotoSizeChange(key, String(newW));
+  };
 
   // ==== テキストレイヤー ====
   const addTextLayer = () => {
@@ -173,10 +212,18 @@ export default function TemplatePositionEditor({
     setSelected((s) => (s?.key === key ? null : s));
   };
   const moveTextLayer = (key: string, x: number, y: number) => updateTextLayer(key, { x: String(Math.round(x)), y: String(Math.round(y)) });
-  // テキストは矩形の幅・高さそのものではなく、最大幅と文字サイズとして保持しているため、
-  // リサイズ操作（ハンドルドラッグ・2本指ピンチ）で来たw/hをそちらに変換する
-  const resizeTextLayer = (key: string, w: number, h: number) => {
-    updateTextLayer(key, { maxWidth: String(Math.round(w)), fontSize: String(Math.max(8, Math.round(h / 1.4))) });
+  // キャンバス上での枠のリサイズ（ハンドルドラッグ・2本指ピンチ）は折り返し幅(maxWidth)
+  // だけを変える。文字サイズは「サイズ」欄（数値入力・上下ボタン）でのみ変更する
+  // ——枠を広げるたびに文字まで拡大されると意図せずレイアウトが崩れるため、分離している。
+  const resizeTextLayer = (key: string, w: number) => {
+    updateTextLayer(key, { maxWidth: String(Math.round(w)) });
+  };
+  const TEXT_SIZE_STEP = 2;
+  const stepTextFontSize = (key: string, delta: number) => {
+    const t = textLayers.find((x) => x.key === key);
+    if (!t) return;
+    const newSize = Math.max(8, (Number(t.fontSize) || 40) + delta);
+    updateTextLayer(key, { fontSize: String(newSize) });
   };
   const alignTextLayer = (key: string, where: AlignWhere) => {
     if (where === 'centerX') updateTextLayer(key, { x: String(Math.round(COLLAGE_W / 2)) });
@@ -263,6 +310,13 @@ export default function TemplatePositionEditor({
     const newH = decorationSizeAspect.current > 0 ? newW / decorationSizeAspect.current : newW;
     updateDecoration(key, { w: v, h: String(Math.round(newH)) });
   };
+  const stepDecorationSize = (key: string, delta: number) => {
+    handleDecorationSizeFocus(key);
+    const d = decorations.find((x) => x.key === key);
+    if (!d) return;
+    const newW = Math.max(20, (Number(d.w) || 0) + delta);
+    handleDecorationSizeChange(key, String(newW));
+  };
 
   // ==== レイヤー一覧（メニューから選択・削除するための統合リスト） ====
   const layersList = [
@@ -319,7 +373,7 @@ export default function TemplatePositionEditor({
   const handleCanvasResize = (key: string, w: number, h: number) => {
     if (photoAreas.some((a) => a.key === key)) return resizePhotoArea(key, w, h);
     if (decorations.some((d) => d.key === key)) return resizeDecoration(key, w, h);
-    if (textLayers.some((t) => t.key === key)) return resizeTextLayer(key, w, h);
+    if (textLayers.some((t) => t.key === key)) return resizeTextLayer(key, w);
   };
   const handleCanvasSelect = (key: string) => {
     if (photoAreas.some((a) => a.key === key)) return setSelected({ type: 'photo', key });
@@ -370,14 +424,12 @@ export default function TemplatePositionEditor({
               <Text style={styles.panelTitle}>写真エリア（枠）</Text>
               <View style={styles.numRow}>
                 <Text style={styles.smallLabel}>サイズ</Text>
-                <TextInput
-                  style={styles.numInput}
+                <SizeField
                   value={selectedPhoto.w}
                   onFocus={() => handlePhotoSizeFocus(selectedPhoto.key)}
                   onChangeText={(v) => handlePhotoSizeChange(selectedPhoto.key, v)}
-                  placeholder="サイズ"
-                  keyboardType="numeric"
-                  placeholderTextColor={COLORS.textMuted}
+                  onStepUp={() => stepPhotoSize(selectedPhoto.key, PHOTO_SIZE_STEP)}
+                  onStepDown={() => stepPhotoSize(selectedPhoto.key, -PHOTO_SIZE_STEP)}
                 />
                 <TouchableOpacity onPress={() => removePhotoArea(selectedPhoto.key)}>
                   <Ionicons name="trash-outline" size={20} color={COLORS.error} />
@@ -402,14 +454,12 @@ export default function TemplatePositionEditor({
                 </TouchableOpacity>
                 <View style={styles.numRow}>
                   <Text style={styles.smallLabel}>サイズ</Text>
-                  <TextInput
-                    style={styles.numInput}
+                  <SizeField
                     value={selectedDecoration.w}
                     onFocus={() => handleDecorationSizeFocus(selectedDecoration.key)}
                     onChangeText={(v) => handleDecorationSizeChange(selectedDecoration.key, v)}
-                    placeholder="サイズ"
-                    keyboardType="numeric"
-                    placeholderTextColor={COLORS.textMuted}
+                    onStepUp={() => stepDecorationSize(selectedDecoration.key, PHOTO_SIZE_STEP)}
+                    onStepDown={() => stepDecorationSize(selectedDecoration.key, -PHOTO_SIZE_STEP)}
                   />
                   <TouchableOpacity onPress={() => removeDecoration(selectedDecoration.key)}>
                     <Ionicons name="trash-outline" size={20} color={COLORS.error} />
@@ -429,7 +479,12 @@ export default function TemplatePositionEditor({
               </View>
               <View style={styles.numRow}>
                 <Text style={styles.smallLabel}>サイズ</Text>
-                <TextInput style={styles.numInput} value={selectedText.fontSize} onChangeText={(v) => updateTextLayer(selectedText.key, { fontSize: v })} placeholder="サイズ" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
+                <SizeField
+                  value={selectedText.fontSize}
+                  onChangeText={(v) => updateTextLayer(selectedText.key, { fontSize: v })}
+                  onStepUp={() => stepTextFontSize(selectedText.key, TEXT_SIZE_STEP)}
+                  onStepDown={() => stepTextFontSize(selectedText.key, -TEXT_SIZE_STEP)}
+                />
                 <Text style={styles.smallLabel}>幅</Text>
                 <TextInput style={styles.numInput} value={selectedText.maxWidth} onChangeText={(v) => updateTextLayer(selectedText.key, { maxWidth: v })} placeholder="幅" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
                 <TouchableOpacity onPress={() => removeTextLayer(selectedText.key)}>
@@ -587,6 +642,12 @@ const styles = StyleSheet.create({
   numInput: {
     width: 56, borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.sm,
     paddingHorizontal: SPACING.xs, paddingVertical: 6, color: COLORS.text, backgroundColor: COLORS.background, fontSize: 12,
+  },
+  sizeFieldRow: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  stepperCol: { justifyContent: 'space-between', height: 26 },
+  stepperBtn: {
+    width: 18, height: 12, borderRadius: 3, borderWidth: 1, borderColor: COLORS.border,
+    backgroundColor: COLORS.background, alignItems: 'center', justifyContent: 'center',
   },
   smallLabel: { color: COLORS.textSecondary, fontSize: 11, fontWeight: '600' },
   colorRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.xs, flexWrap: 'wrap' },
