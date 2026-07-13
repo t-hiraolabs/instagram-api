@@ -11,7 +11,7 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, RADIUS, SPACING } from '../utils/theme';
-import { COLLAGE_FONT_PRESETS, COLLAGE_W, COLLAGE_H, COLLAGE_Z_BANDS } from '../utils/collageCompositor';
+import { COLLAGE_FONT_PRESETS, COLLAGE_W, COLLAGE_H, COLLAGE_Z_BANDS, ensureFontLink } from '../utils/collageCompositor';
 import { uploadBlob } from '../services/storage';
 import ColorPickerModal from './ColorPickerModal';
 import PositionToolRow from './PositionToolRow';
@@ -88,7 +88,14 @@ export default function TemplatePositionEditor({
   const [selected, setSelected] = useState<Selected>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [colorPickerOpen, setColorPickerOpen] = useState(false);
+  const [fontPickerOpen, setFontPickerOpen] = useState(false);
   const [canvasArea, setCanvasArea] = useState({ width: 0, height: 0 });
+
+  // フォント選択メニューでプルダウンを開いた瞬間に選択肢の文字がそのフォントで
+  // プレビュー表示されるよう、候補全件のWebフォントを先読みしておく
+  useEffect(() => {
+    COLLAGE_FONT_PRESETS.forEach((preset) => ensureFontLink(preset));
+  }, []);
 
   // pickDecorationImage()は画像選択待ちで長時間非同期処理が続くため、その間に
   // 追加された装飾要素を含む最新のdecorationsをrefで参照する（PanResponderの
@@ -134,6 +141,22 @@ export default function TemplatePositionEditor({
     const copy: PhotoAreaDraft = { ...src, key: nextDraftKey(), x: String((Number(src.x) || 0) + 20), y: String((Number(src.y) || 0) + 20) };
     onPhotoAreasChange([...photoAreas.slice(0, idx + 1), copy, ...photoAreas.slice(idx + 1)]);
     setSelected({ type: 'photo', key: copy.key });
+  };
+  // 「サイズ」欄はエクセルの文字サイズのように、1つの数値を上げるだけで矩形全体が
+  // 大きくなるようにする（幅の値として表示し、高さは編集開始時点の縦横比を保って追従させる）。
+  // 縦横比は入力にフォーカスした瞬間の値を基準にする（キー入力のたびに現在値から
+  // 比率を取り直すと、1桁ずつ入力する間に誤差が積み重なってしまうため）。
+  const photoSizeAspect = useRef(1);
+  const handlePhotoSizeFocus = (key: string) => {
+    const a = photoAreas.find((x) => x.key === key);
+    if (!a) return;
+    const w = Number(a.w) || 100, h = Number(a.h) || 100;
+    photoSizeAspect.current = h > 0 ? w / h : 1;
+  };
+  const handlePhotoSizeChange = (key: string, v: string) => {
+    const newW = Number(v) || 0;
+    const newH = photoSizeAspect.current > 0 ? newW / photoSizeAspect.current : newW;
+    updatePhotoArea(key, { w: v, h: String(Math.round(newH)) });
   };
 
   // ==== テキストレイヤー ====
@@ -226,6 +249,19 @@ export default function TemplatePositionEditor({
     const copy: DecorationDraft = { ...src, key: nextDraftKey(), x: String((Number(src.x) || 0) + 20), y: String((Number(src.y) || 0) + 20) };
     onDecorationsChange([...decorations.slice(0, idx + 1), copy, ...decorations.slice(idx + 1)]);
     setSelected({ type: 'decoration', key: copy.key });
+  };
+  // 写真エリアと同じ「サイズ」欄（幅の値・高さは縦横比を保って追従）
+  const decorationSizeAspect = useRef(1);
+  const handleDecorationSizeFocus = (key: string) => {
+    const d = decorations.find((x) => x.key === key);
+    if (!d) return;
+    const w = Number(d.w) || 100, h = Number(d.h) || 100;
+    decorationSizeAspect.current = h > 0 ? w / h : 1;
+  };
+  const handleDecorationSizeChange = (key: string, v: string) => {
+    const newW = Number(v) || 0;
+    const newH = decorationSizeAspect.current > 0 ? newW / decorationSizeAspect.current : newW;
+    updateDecoration(key, { w: v, h: String(Math.round(newH)) });
   };
 
   // ==== レイヤー一覧（メニューから選択・削除するための統合リスト） ====
@@ -330,10 +366,16 @@ export default function TemplatePositionEditor({
             <View style={styles.panel}>
               <Text style={styles.panelTitle}>写真エリア（枠）</Text>
               <View style={styles.numRow}>
-                <TextInput style={styles.numInput} value={selectedPhoto.x} onChangeText={(v) => updatePhotoArea(selectedPhoto.key, { x: v })} placeholder="x" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
-                <TextInput style={styles.numInput} value={selectedPhoto.y} onChangeText={(v) => updatePhotoArea(selectedPhoto.key, { y: v })} placeholder="y" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
-                <TextInput style={styles.numInput} value={selectedPhoto.w} onChangeText={(v) => updatePhotoArea(selectedPhoto.key, { w: v })} placeholder="幅" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
-                <TextInput style={styles.numInput} value={selectedPhoto.h} onChangeText={(v) => updatePhotoArea(selectedPhoto.key, { h: v })} placeholder="高さ" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
+                <Text style={styles.smallLabel}>サイズ</Text>
+                <TextInput
+                  style={styles.numInput}
+                  value={selectedPhoto.w}
+                  onFocus={() => handlePhotoSizeFocus(selectedPhoto.key)}
+                  onChangeText={(v) => handlePhotoSizeChange(selectedPhoto.key, v)}
+                  placeholder="サイズ"
+                  keyboardType="numeric"
+                  placeholderTextColor={COLORS.textMuted}
+                />
                 <TouchableOpacity onPress={() => removePhotoArea(selectedPhoto.key)}>
                   <Ionicons name="trash-outline" size={20} color={COLORS.error} />
                 </TouchableOpacity>
@@ -356,10 +398,16 @@ export default function TemplatePositionEditor({
                   )}
                 </TouchableOpacity>
                 <View style={styles.numRow}>
-                  <TextInput style={styles.numInput} value={selectedDecoration.x} onChangeText={(v) => updateDecoration(selectedDecoration.key, { x: v })} placeholder="x" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
-                  <TextInput style={styles.numInput} value={selectedDecoration.y} onChangeText={(v) => updateDecoration(selectedDecoration.key, { y: v })} placeholder="y" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
-                  <TextInput style={styles.numInput} value={selectedDecoration.w} onChangeText={(v) => updateDecoration(selectedDecoration.key, { w: v })} placeholder="幅" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
-                  <TextInput style={styles.numInput} value={selectedDecoration.h} onChangeText={(v) => updateDecoration(selectedDecoration.key, { h: v })} placeholder="高さ" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
+                  <Text style={styles.smallLabel}>サイズ</Text>
+                  <TextInput
+                    style={styles.numInput}
+                    value={selectedDecoration.w}
+                    onFocus={() => handleDecorationSizeFocus(selectedDecoration.key)}
+                    onChangeText={(v) => handleDecorationSizeChange(selectedDecoration.key, v)}
+                    placeholder="サイズ"
+                    keyboardType="numeric"
+                    placeholderTextColor={COLORS.textMuted}
+                  />
                   <TouchableOpacity onPress={() => removeDecoration(selectedDecoration.key)}>
                     <Ionicons name="trash-outline" size={20} color={COLORS.error} />
                   </TouchableOpacity>
@@ -377,10 +425,10 @@ export default function TemplatePositionEditor({
                 <TextInput style={[styles.input, { flex: 1 }]} value={selectedText.sampleText} onChangeText={(v) => updateTextLayer(selectedText.key, { sampleText: v })} placeholder="サンプル文言" placeholderTextColor={COLORS.textMuted} />
               </View>
               <View style={styles.numRow}>
-                <TextInput style={styles.numInput} value={selectedText.x} onChangeText={(v) => updateTextLayer(selectedText.key, { x: v })} placeholder="x" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
-                <TextInput style={styles.numInput} value={selectedText.y} onChangeText={(v) => updateTextLayer(selectedText.key, { y: v })} placeholder="y" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
-                <TextInput style={styles.numInput} value={selectedText.maxWidth} onChangeText={(v) => updateTextLayer(selectedText.key, { maxWidth: v })} placeholder="最大幅" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
-                <TextInput style={styles.numInput} value={selectedText.fontSize} onChangeText={(v) => updateTextLayer(selectedText.key, { fontSize: v })} placeholder="文字サイズ" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
+                <Text style={styles.smallLabel}>サイズ</Text>
+                <TextInput style={styles.numInput} value={selectedText.fontSize} onChangeText={(v) => updateTextLayer(selectedText.key, { fontSize: v })} placeholder="サイズ" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
+                <Text style={styles.smallLabel}>幅</Text>
+                <TextInput style={styles.numInput} value={selectedText.maxWidth} onChangeText={(v) => updateTextLayer(selectedText.key, { maxWidth: v })} placeholder="幅" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
                 <TouchableOpacity onPress={() => removeTextLayer(selectedText.key)}>
                   <Ionicons name="trash-outline" size={20} color={COLORS.error} />
                 </TouchableOpacity>
@@ -393,19 +441,19 @@ export default function TemplatePositionEditor({
                 <Text style={styles.smallLabel}>順</Text>
                 <TextInput style={styles.numInput} value={selectedText.zIndex} onChangeText={(v) => updateTextLayer(selectedText.key, { zIndex: v })} placeholder="zIndex" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
               </View>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-                {COLLAGE_FONT_PRESETS.map((f) => (
-                  <TouchableOpacity key={f.id} style={[styles.chip, selectedText.font === f.id && styles.chipActive]} onPress={() => updateTextLayer(selectedText.key, { font: f.id })}>
-                    <Text style={[styles.chipText, selectedText.font === f.id && styles.chipTextActive]}>{f.label}</Text>
-                  </TouchableOpacity>
-                ))}
-                <View style={styles.chipDivider} />
+              <View style={styles.numRow}>
+                <TouchableOpacity style={styles.fontDropdownBtn} onPress={() => setFontPickerOpen(true)}>
+                  <Text style={styles.fontDropdownBtnText} numberOfLines={1}>
+                    {COLLAGE_FONT_PRESETS.find((f) => f.id === selectedText.font)?.label ?? 'フォントを選ぶ'}
+                  </Text>
+                  <Ionicons name="chevron-down" size={16} color={COLORS.textSecondary} />
+                </TouchableOpacity>
                 {(['left', 'center', 'right'] as const).map((al) => (
                   <TouchableOpacity key={al} style={[styles.chip, selectedText.align === al && styles.chipActive]} onPress={() => updateTextLayer(selectedText.key, { align: al })}>
                     <Text style={[styles.chipText, selectedText.align === al && styles.chipTextActive]}>{al === 'left' ? '左' : al === 'center' ? '中央' : '右'}</Text>
                   </TouchableOpacity>
                 ))}
-              </ScrollView>
+              </View>
               <View style={styles.numRow}>
                 <Text style={styles.smallLabel}>行間</Text>
                 <TextInput style={styles.numInput} value={selectedText.lineHeight} onChangeText={(v) => updateTextLayer(selectedText.key, { lineHeight: v })} placeholder="1.25" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
@@ -445,6 +493,36 @@ export default function TemplatePositionEditor({
             onChange={(hex) => updateTextLayer(selectedText.key, { color: hex })}
             onClose={() => setColorPickerOpen(false)}
           />
+        )}
+
+        {selectedText && (
+          <Modal visible={fontPickerOpen} animationType="fade" transparent onRequestClose={() => setFontPickerOpen(false)}>
+            <TouchableOpacity style={styles.fontOverlay} activeOpacity={1} onPress={() => setFontPickerOpen(false)}>
+              <TouchableOpacity style={styles.fontCard} activeOpacity={1} onPress={() => {}}>
+                <Text style={styles.fontCardTitle}>フォントを選ぶ</Text>
+                <ScrollView style={styles.fontList}>
+                  {COLLAGE_FONT_PRESETS.map((f) => {
+                    const isSelected = selectedText.font === f.id;
+                    return (
+                      <TouchableOpacity
+                        key={f.id}
+                        style={[styles.menuRow, isSelected && styles.menuRowActive]}
+                        onPress={() => { updateTextLayer(selectedText.key, { font: f.id }); setFontPickerOpen(false); }}
+                      >
+                        <Text
+                          style={[styles.fontListRowText, { fontFamily: f.family, fontWeight: f.weight as any }, isSelected && styles.menuRowTextActive]}
+                          numberOfLines={1}
+                        >
+                          {f.label}
+                        </Text>
+                        {isSelected && <Ionicons name="checkmark" size={16} color={COLORS.primary} />}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </TouchableOpacity>
+            </TouchableOpacity>
+          </Modal>
         )}
 
         <Modal visible={menuOpen} animationType="fade" transparent onRequestClose={() => setMenuOpen(false)}>
@@ -510,8 +588,6 @@ const styles = StyleSheet.create({
   smallLabel: { color: COLORS.textSecondary, fontSize: 11, fontWeight: '600' },
   colorRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.xs, flexWrap: 'wrap' },
   colorSwatch: { width: 28, height: 28, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border },
-  chipRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.xs },
-  chipDivider: { width: 1, alignSelf: 'stretch', backgroundColor: COLORS.border, marginHorizontal: 2 },
   chip: {
     paddingHorizontal: SPACING.sm, paddingVertical: 6, borderRadius: RADIUS.full,
     backgroundColor: COLORS.background, borderWidth: 1, borderColor: COLORS.border,
@@ -519,6 +595,20 @@ const styles = StyleSheet.create({
   chipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   chipText: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '600' },
   chipTextActive: { color: '#fff' },
+  fontDropdownBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 4,
+    paddingHorizontal: SPACING.sm, paddingVertical: 6, borderRadius: RADIUS.full,
+    backgroundColor: COLORS.background, borderWidth: 1, borderColor: COLORS.border,
+  },
+  fontDropdownBtnText: { color: COLORS.text, fontSize: 12, fontWeight: '600', flexShrink: 1 },
+  fontOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: SPACING.lg },
+  fontCard: {
+    width: '100%', maxWidth: 360, maxHeight: '75%', backgroundColor: COLORS.surface, borderRadius: RADIUS.lg,
+    padding: SPACING.lg,
+  },
+  fontCardTitle: { color: COLORS.text, fontWeight: '800', fontSize: 16, marginBottom: SPACING.sm },
+  fontList: { maxHeight: 420 },
+  fontListRowText: { flex: 1, fontSize: 15, color: COLORS.text },
   decorationRow: { flexDirection: 'row', gap: SPACING.sm, alignItems: 'flex-start' },
   decorationImgBtn: {
     width: 64, height: 64, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.border,
