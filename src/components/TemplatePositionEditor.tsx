@@ -42,19 +42,27 @@ export interface DecorationDraft {
 let draftKeySeq = 0;
 const nextDraftKey = () => `tpe-${draftKeySeq++}`;
 
+// 追加直後のプレビューサイズは、要素の種類によって印象が大きく変わらないよう
+// 幅・高さ（テキストは折り返し幅）をすべて揃えている（NEW_ELEMENT_SIZE基準・中央寄せ）
+const NEW_ELEMENT_SIZE = 500;
+const NEW_ELEMENT_X = Math.round((COLLAGE_W - NEW_ELEMENT_SIZE) / 2);
+const NEW_ELEMENT_Y = Math.round((COLLAGE_H - NEW_ELEMENT_SIZE) / 2);
+
 export function newPhotoAreaDraft(): PhotoAreaDraft {
-  return { key: nextDraftKey(), x: '48', y: '200', w: '984', h: '760' };
+  return { key: nextDraftKey(), x: String(NEW_ELEMENT_X), y: String(NEW_ELEMENT_Y), w: String(NEW_ELEMENT_SIZE), h: String(NEW_ELEMENT_SIZE) };
 }
 export function newTextLayerDraft(n: number): TextLayerDraft {
+  const fontSize = 40;
   return {
     key: nextDraftKey(), id: `text_${n}`, label: '', sampleText: '',
-    x: '100', y: '200', maxWidth: '600', fontSize: '40', color: '#FFFFFF',
+    // yはテキストのベースライン。ボックスの見た目の上端(y - fontSize)が他の要素と揃うようにする
+    x: String(NEW_ELEMENT_X), y: String(NEW_ELEMENT_Y + fontSize), maxWidth: String(NEW_ELEMENT_SIZE), fontSize: String(fontSize), color: '#FFFFFF',
     font: COLLAGE_FONT_PRESETS[0].id, align: 'left',
     lineHeight: '1.25', letterSpacing: '0', maxLines: '3', rotation: '0', zIndex: String(COLLAGE_Z_BANDS.text),
   };
 }
 export function newDecorationDraft(): DecorationDraft {
-  return { key: nextDraftKey(), imageUrl: null, uploading: false, x: '400', y: '800', w: '200', h: '200' };
+  return { key: nextDraftKey(), imageUrl: null, uploading: false, x: String(NEW_ELEMENT_X), y: String(NEW_ELEMENT_Y), w: String(NEW_ELEMENT_SIZE), h: String(NEW_ELEMENT_SIZE) };
 }
 
 type LayerType = 'photo' | 'text' | 'decoration';
@@ -135,6 +143,22 @@ export default function TemplatePositionEditor({
   const decorationsLatest = useRef(decorations);
   useEffect(() => { decorationsLatest.current = decorations; });
 
+  // 追加ボタンで足したばかりで一切編集していない要素のkeyを覚えておき、別の追加ボタンが
+  // 押された時点でまだ手つかずなら自動的に削除する（下タブを連打して試しただけの空要素が
+  // 溜まり続けるのを防ぐ）。いずれかのプロパティを変更した時点でmarkTouchedして対象から外す。
+  const untouchedRef = useRef<{ type: LayerType; key: string } | null>(null);
+  const markTouched = (key: string) => {
+    if (untouchedRef.current?.key === key) untouchedRef.current = null;
+  };
+  const discardUntouched = () => {
+    const u = untouchedRef.current;
+    untouchedRef.current = null;
+    if (!u) return;
+    if (u.type === 'photo') removePhotoArea(u.key);
+    else if (u.type === 'decoration') removeDecoration(u.key);
+    else removeTextLayer(u.key);
+  };
+
   const alertMsg = (msg: string) => {
     if (Platform.OS === 'web') window.alert(msg);
     else Alert.alert('お知らせ', msg);
@@ -142,14 +166,18 @@ export default function TemplatePositionEditor({
 
   // ==== 写真エリア（枠） ====
   const addPhotoArea = () => {
+    discardUntouched();
     const draft = newPhotoAreaDraft();
     onPhotoAreasChange([...photoAreas, draft]);
     setSelected({ type: 'photo', key: draft.key });
+    untouchedRef.current = { type: 'photo', key: draft.key };
   };
   const updatePhotoArea = (key: string, patch: Partial<PhotoAreaDraft>) => {
+    markTouched(key);
     onPhotoAreasChange(photoAreas.map((a) => (a.key === key ? { ...a, ...patch } : a)));
   };
   const removePhotoArea = (key: string) => {
+    markTouched(key);
     onPhotoAreasChange(photoAreas.filter((a) => a.key !== key));
     setSelected((s) => (s?.key === key ? null : s));
   };
@@ -200,14 +228,18 @@ export default function TemplatePositionEditor({
 
   // ==== テキストレイヤー ====
   const addTextLayer = () => {
+    discardUntouched();
     const draft = newTextLayerDraft(textLayers.length + 1);
     onTextLayersChange([...textLayers, draft]);
     setSelected({ type: 'text', key: draft.key });
+    untouchedRef.current = { type: 'text', key: draft.key };
   };
   const updateTextLayer = (key: string, patch: Partial<TextLayerDraft>) => {
+    markTouched(key);
     onTextLayersChange(textLayers.map((t) => (t.key === key ? { ...t, ...patch } : t)));
   };
   const removeTextLayer = (key: string) => {
+    markTouched(key);
     onTextLayersChange(textLayers.filter((t) => t.key !== key));
     setSelected((s) => (s?.key === key ? null : s));
   };
@@ -249,6 +281,7 @@ export default function TemplatePositionEditor({
     }
     const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.95 });
     if (res.canceled) return;
+    markTouched(key);
     onDecorationsChange(decorationsRef(key, { uploading: true }));
     try {
       const blob = await (await fetch(res.assets[0].uri)).blob();
@@ -265,15 +298,19 @@ export default function TemplatePositionEditor({
     decorationsLatest.current.map((d) => (d.key === key ? { ...d, ...patch } : d));
 
   const addDecoration = () => {
+    discardUntouched();
     const draft = newDecorationDraft();
     onDecorationsChange([...decorations, draft]);
     setSelected({ type: 'decoration', key: draft.key });
+    untouchedRef.current = { type: 'decoration', key: draft.key };
     pickDecorationImage(draft.key);
   };
   const updateDecoration = (key: string, patch: Partial<DecorationDraft>) => {
+    markTouched(key);
     onDecorationsChange(decorations.map((d) => (d.key === key ? { ...d, ...patch } : d)));
   };
   const removeDecoration = (key: string) => {
+    markTouched(key);
     onDecorationsChange(decorations.filter((d) => d.key !== key));
     setSelected((s) => (s?.key === key ? null : s));
   };
