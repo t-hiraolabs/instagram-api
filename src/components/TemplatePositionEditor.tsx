@@ -292,6 +292,7 @@ export default function TemplatePositionEditor({
     })),
     ...textLayers.map((t): PositionCanvasBox => {
       const fontSize = Number(t.fontSize) || 40;
+      const fontPreset = COLLAGE_FONT_PRESETS.find((f) => f.id === t.font) ?? COLLAGE_FONT_PRESETS[0];
       return {
         key: t.key, x: Number(t.x) || 0, y: (Number(t.y) || 0) - fontSize,
         w: Number(t.maxWidth) || 300, h: fontSize * 1.4,
@@ -300,6 +301,8 @@ export default function TemplatePositionEditor({
         previewTextColor: t.color,
         previewFontSize: fontSize,
         previewAlign: t.align,
+        previewFontFamily: fontPreset.family,
+        previewFontWeight: fontPreset.weight,
       };
     }),
   ];
