@@ -97,6 +97,23 @@ export default function AdminAssetsScreen({ navigation }: any) {
     });
   }, []);
 
+  // この画面はナビゲーションのURL連携（linking）がないSPA上で、通常のpush遷移ではなく
+  // navigationRef.navigate()で開かれるため、ブラウザの実際の履歴エントリが1つも増えない。
+  // そのままだとブラウザの「戻る」ボタンを押した時にアプリの画面遷移が一切効かず、
+  // このSPAより前のページ（無関係な画面）に飛んでしまう。マウント時にダミーの履歴を1つ
+  // 積んでおき、popstate（戻るボタン）を検知したらアプリ内のgoBack()を呼ぶことで、
+  // ブラウザの戻るボタンでも正しくこの画面の前の画面に戻れるようにする。
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    window.history.pushState({ adminAssets: true }, '');
+    const onPopState = () => {
+      navigation?.goBack?.();
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const loadCategories = useCallback(async () => {
     const cats = await getCategories();
     setCategories(cats);
