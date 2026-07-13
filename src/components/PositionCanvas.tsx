@@ -24,12 +24,18 @@ interface PositionCanvasProps {
   /** 指定時、各ボックス右下にリサイズハンドルを表示しドラッグで幅・高さも変更できる */
   onResize?: (key: string, w: number, h: number) => void;
   maxWidth?: number;
+  /**
+   * ドラッグの開始・終了を親に通知する。キャンバスを囲むScrollViewのscrollEnabledを
+   * ドラッグ中だけfalseにするために使う（そうしないとWeb上でドラッグ中に画面が
+   * スクロールしてしまう不具合が起きる）。
+   */
+  onDragStateChange?: (dragging: boolean) => void;
 }
 
 const MIN_SIZE = 30;
 const HANDLE_SIZE = 24;
 
-export default function PositionCanvas({ backgroundUri, boxes, onMove, onResize, maxWidth = 420 }: PositionCanvasProps) {
+export default function PositionCanvas({ backgroundUri, boxes, onMove, onResize, maxWidth = 420, onDragStateChange }: PositionCanvasProps) {
   const { width: windowWidth } = useWindowDimensions();
   const canvasWidth = Math.min(windowWidth - SPACING.md * 4, maxWidth);
   const canvasHeight = (canvasWidth * COLLAGE_H) / COLLAGE_W;
@@ -46,6 +52,7 @@ export default function PositionCanvas({ backgroundUri, boxes, onMove, onResize,
           box={box}
           scale={scale}
           onMove={(x, y) => onMove(box.key, x, y)}
+          onDragStateChange={onDragStateChange}
         />
       ))}
       {/* リサイズハンドルはボックスの子ではなく兄弟として描画する。ネストしたPanResponder同士は
@@ -56,16 +63,18 @@ export default function PositionCanvas({ backgroundUri, boxes, onMove, onResize,
           box={box}
           scale={scale}
           onResize={(w, h) => onResize(box.key, w, h)}
+          onDragStateChange={onDragStateChange}
         />
       ))}
     </View>
   );
 }
 
-function DraggableBox({ box, scale, onMove }: {
+function DraggableBox({ box, scale, onMove, onDragStateChange }: {
   box: PositionCanvasBox;
   scale: number;
   onMove: (x: number, y: number) => void;
+  onDragStateChange?: (dragging: boolean) => void;
 }) {
   // PanResponderは初回マウント時のクロージャに固定されるため、最新のbox/コールバックは
   // refで読み書きする（ColorPickerModalのドラッグ不具合修正と同じ手法）
@@ -73,6 +82,8 @@ function DraggableBox({ box, scale, onMove }: {
   useEffect(() => { boxRef.current = box; });
   const onMoveRef = useRef(onMove);
   useEffect(() => { onMoveRef.current = onMove; });
+  const onDragStateChangeRef = useRef(onDragStateChange);
+  useEffect(() => { onDragStateChangeRef.current = onDragStateChange; });
 
   const moveStart = useRef({ pageX: 0, pageY: 0, x: 0, y: 0 });
   const moveResponder = useRef(
@@ -80,6 +91,7 @@ function DraggableBox({ box, scale, onMove }: {
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
       onPanResponderGrant: (evt: GestureResponderEvent) => {
+        onDragStateChangeRef.current?.(true);
         moveStart.current = {
           pageX: evt.nativeEvent.pageX, pageY: evt.nativeEvent.pageY,
           x: boxRef.current.x, y: boxRef.current.y,
@@ -90,6 +102,8 @@ function DraggableBox({ box, scale, onMove }: {
         const dy = (evt.nativeEvent.pageY - moveStart.current.pageY) / scale;
         onMoveRef.current(moveStart.current.x + dx, moveStart.current.y + dy);
       },
+      onPanResponderRelease: () => onDragStateChangeRef.current?.(false),
+      onPanResponderTerminate: () => onDragStateChangeRef.current?.(false),
     })
   ).current;
 
@@ -107,15 +121,18 @@ function DraggableBox({ box, scale, onMove }: {
   );
 }
 
-function ResizeHandle({ box, scale, onResize }: {
+function ResizeHandle({ box, scale, onResize, onDragStateChange }: {
   box: PositionCanvasBox;
   scale: number;
   onResize: (w: number, h: number) => void;
+  onDragStateChange?: (dragging: boolean) => void;
 }) {
   const boxRef = useRef(box);
   useEffect(() => { boxRef.current = box; });
   const onResizeRef = useRef(onResize);
   useEffect(() => { onResizeRef.current = onResize; });
+  const onDragStateChangeRef = useRef(onDragStateChange);
+  useEffect(() => { onDragStateChangeRef.current = onDragStateChange; });
 
   const resizeStart = useRef({ pageX: 0, pageY: 0, w: 0, h: 0 });
   const resizeResponder = useRef(
@@ -123,6 +140,7 @@ function ResizeHandle({ box, scale, onResize }: {
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
       onPanResponderGrant: (evt: GestureResponderEvent) => {
+        onDragStateChangeRef.current?.(true);
         resizeStart.current = {
           pageX: evt.nativeEvent.pageX, pageY: evt.nativeEvent.pageY,
           w: boxRef.current.w, h: boxRef.current.h,
@@ -136,6 +154,8 @@ function ResizeHandle({ box, scale, onResize }: {
           Math.max(MIN_SIZE, resizeStart.current.h + dh)
         );
       },
+      onPanResponderRelease: () => onDragStateChangeRef.current?.(false),
+      onPanResponderTerminate: () => onDragStateChangeRef.current?.(false),
     })
   ).current;
 

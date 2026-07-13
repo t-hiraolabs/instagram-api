@@ -2,7 +2,7 @@
 // 保存したテンプレートを1つ選び、写真とテキストを入れて仕上げる。
 // 自分のテンプレートは他ユーザーには公開されない（著作権上のリスクを避けるため）。
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Image, TextInput, ActivityIndicator, Platform, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Image, TextInput, ActivityIndicator, Platform, Alert, Modal, ScrollView } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, RADIUS, SPACING } from '../utils/theme';
@@ -84,6 +84,11 @@ export default function CollageEditor({ onDone }: Props) {
   const [createLivePreviewLoading, setCreateLivePreviewLoading] = useState(false);
   const [createSaving, setCreateSaving] = useState(false);
   const [colorPickerTargetKey, setColorPickerTargetKey] = useState<string | null>(null);
+  // 写真エリア・テキストレイヤーの配置編集は、フォーム全体のScrollViewと
+  // ドラッグ操作が競合して画面がスクロールしてしまう不具合を避けるため、
+  // 専用の全画面モーダルで行う
+  const [positionEditorOpen, setPositionEditorOpen] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
 
   const alertMsg = (msg: string, title = 'お知らせ') => {
     if (Platform.OS === 'web') window.alert(msg);
@@ -254,6 +259,7 @@ export default function CollageEditor({ onDone }: Props) {
       const blob = await (await fetch(res.assets[0].uri)).blob();
       const url = await uploadBlob(blob);
       setCreateBackgroundUrl(url);
+      setPositionEditorOpen(true);
     } catch (e) {
       alertMsg(e instanceof Error ? e.message : '画像のアップロードに失敗しました');
     } finally {
@@ -468,96 +474,136 @@ export default function CollageEditor({ onDone }: Props) {
           )}
         </TouchableOpacity>
 
-        <Text style={styles.label}>写真エリア（写真を差し込む透明な窓。キャンバスは1080×1920pxです。ドラッグで移動、右下の丸をドラッグでサイズ変更できます）</Text>
-        {createPhotoAreas.length > 0 && (
-          <PositionCanvas
-            backgroundUri={createBackgroundUrl}
-            boxes={createPhotoAreas.map((a) => ({
-              key: a.key, x: Number(a.x) || 0, y: Number(a.y) || 0, w: Number(a.w) || 100, h: Number(a.h) || 100,
-            }))}
-            onMove={movePhotoArea}
-            onResize={resizePhotoArea}
-          />
-        )}
-        {createPhotoAreas.map((a) => (
-          <View key={a.key} style={styles.draftRow}>
-            <View style={styles.numRow}>
-              <TextInput style={styles.numInput} value={a.x} onChangeText={(v) => updatePhotoArea(a.key, { x: v })} placeholder="x" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
-              <TextInput style={styles.numInput} value={a.y} onChangeText={(v) => updatePhotoArea(a.key, { y: v })} placeholder="y" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
-              <TextInput style={styles.numInput} value={a.w} onChangeText={(v) => updatePhotoArea(a.key, { w: v })} placeholder="幅" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
-              <TextInput style={styles.numInput} value={a.h} onChangeText={(v) => updatePhotoArea(a.key, { h: v })} placeholder="高さ" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
-              <TouchableOpacity onPress={() => removePhotoArea(a.key)}>
-                <Ionicons name="trash-outline" size={20} color={COLORS.error} />
-              </TouchableOpacity>
-            </View>
-            <PositionToolRow
-              onAlign={(where) => alignPhotoArea(a.key, where)}
-              onDuplicate={() => duplicatePhotoArea(a.key)}
-            />
-          </View>
-        ))}
-        <TouchableOpacity style={styles.addRowBtn} onPress={addPhotoArea}>
-          <Ionicons name="add" size={16} color={COLORS.primary} />
-          <Text style={styles.addRowBtnText}>写真エリアを追加</Text>
+        <TouchableOpacity
+          style={[styles.createTemplateBtn, !createBackgroundUrl && styles.genBtnDisabled]}
+          onPress={() => setPositionEditorOpen(true)}
+          disabled={!createBackgroundUrl}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="move-outline" size={18} color={COLORS.primary} />
+          <Text style={styles.createTemplateBtnText}>
+            写真エリア・テキストの配置を編集（写真エリア{createPhotoAreas.length}件・テキスト{createTextLayers.length}件）
+          </Text>
         </TouchableOpacity>
 
-        <Text style={styles.label}>テキストレイヤー（あとで編集したい文言。任意。ドラッグで移動できます）</Text>
-        {createTextLayers.length > 0 && (
-          <PositionCanvas
-            backgroundUri={createBackgroundUrl}
-            boxes={createTextLayers.map((t) => {
-              const fontSize = Number(t.fontSize) || 40;
-              return {
-                key: t.key, x: Number(t.x) || 0, y: (Number(t.y) || 0) - fontSize,
-                w: Number(t.maxWidth) || 300, h: fontSize * 1.4, color: '#3E8E6E',
-              };
-            })}
-            onMove={(key, x, y) => {
-              const fontSize = Number(createTextLayers.find((t) => t.key === key)?.fontSize) || 40;
-              moveTextLayer(key, x, y + fontSize);
-            }}
-          />
-        )}
-        {createTextLayers.map((t) => (
-          <View key={t.key} style={styles.draftRow}>
-            <TextInput style={styles.input} value={t.label} onChangeText={(v) => updateTextLayer(t.key, { label: v })} placeholder="ラベル（例: 見出し）" placeholderTextColor={COLORS.textMuted} />
-            <TextInput style={styles.input} value={t.sampleText} onChangeText={(v) => updateTextLayer(t.key, { sampleText: v })} placeholder="サンプル文言" placeholderTextColor={COLORS.textMuted} />
-            <View style={styles.numRow}>
-              <TextInput style={styles.numInput} value={t.x} onChangeText={(v) => updateTextLayer(t.key, { x: v })} placeholder="x" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
-              <TextInput style={styles.numInput} value={t.y} onChangeText={(v) => updateTextLayer(t.key, { y: v })} placeholder="y" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
-              <TextInput style={styles.numInput} value={t.maxWidth} onChangeText={(v) => updateTextLayer(t.key, { maxWidth: v })} placeholder="最大幅" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
-              <TextInput style={styles.numInput} value={t.fontSize} onChangeText={(v) => updateTextLayer(t.key, { fontSize: v })} placeholder="文字サイズ" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
-              <TouchableOpacity onPress={() => removeTextLayer(t.key)}>
-                <Ionicons name="trash-outline" size={20} color={COLORS.error} />
+        <Modal visible={positionEditorOpen} animationType="slide" onRequestClose={() => setPositionEditorOpen(false)}>
+          <View style={styles.positionModalWrap}>
+            <View style={styles.positionModalHeader}>
+              <TouchableOpacity onPress={() => setPositionEditorOpen(false)} style={styles.positionModalCloseBtn}>
+                <Ionicons name="checkmark" size={20} color="#fff" />
+                <Text style={styles.positionModalCloseBtnText}>完了</Text>
               </TouchableOpacity>
             </View>
-            <View style={styles.colorRow}>
-              <TouchableOpacity style={[styles.colorSwatch, { backgroundColor: t.color }]} onPress={() => setColorPickerTargetKey(t.key)} />
-              <TextInput style={[styles.input, { flex: 1 }]} value={t.color} onChangeText={(v) => updateTextLayer(t.key, { color: v })} placeholder="#FFFFFF" placeholderTextColor={COLORS.textMuted} autoCapitalize="none" autoCorrect={false} />
-            </View>
-            <View style={styles.chipRow}>
-              {COLLAGE_FONT_PRESETS.map((f) => (
-                <TouchableOpacity key={f.id} style={[styles.chip, t.font === f.id && styles.chipActive]} onPress={() => updateTextLayer(t.key, { font: f.id })}>
-                  <Text style={[styles.chipText, t.font === f.id && styles.chipTextActive]}>{f.label}</Text>
-                </TouchableOpacity>
+            <ScrollView
+              style={{ flex: 1 }}
+              contentContainerStyle={styles.positionModalBody}
+              scrollEnabled={!isDragging}
+              keyboardShouldPersistTaps="handled"
+            >
+              <Text style={styles.label}>写真エリア（写真を差し込む透明な窓。キャンバスは1080×1920pxです。ドラッグで移動、右下の丸をドラッグでサイズ変更できます）</Text>
+              {createPhotoAreas.length > 0 && (
+                <PositionCanvas
+                  backgroundUri={createBackgroundUrl}
+                  maxWidth={520}
+                  boxes={createPhotoAreas.map((a) => ({
+                    key: a.key, x: Number(a.x) || 0, y: Number(a.y) || 0, w: Number(a.w) || 100, h: Number(a.h) || 100,
+                  }))}
+                  onMove={movePhotoArea}
+                  onResize={resizePhotoArea}
+                  onDragStateChange={setIsDragging}
+                />
+              )}
+              {createPhotoAreas.map((a) => (
+                <View key={a.key} style={styles.draftRow}>
+                  <View style={styles.numRow}>
+                    <TextInput style={styles.numInput} value={a.x} onChangeText={(v) => updatePhotoArea(a.key, { x: v })} placeholder="x" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
+                    <TextInput style={styles.numInput} value={a.y} onChangeText={(v) => updatePhotoArea(a.key, { y: v })} placeholder="y" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
+                    <TextInput style={styles.numInput} value={a.w} onChangeText={(v) => updatePhotoArea(a.key, { w: v })} placeholder="幅" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
+                    <TextInput style={styles.numInput} value={a.h} onChangeText={(v) => updatePhotoArea(a.key, { h: v })} placeholder="高さ" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
+                    <TouchableOpacity onPress={() => removePhotoArea(a.key)}>
+                      <Ionicons name="trash-outline" size={20} color={COLORS.error} />
+                    </TouchableOpacity>
+                  </View>
+                  <PositionToolRow
+                    onAlign={(where) => alignPhotoArea(a.key, where)}
+                    onDuplicate={() => duplicatePhotoArea(a.key)}
+                  />
+                </View>
               ))}
-            </View>
-            <View style={styles.chipRow}>
-              {(['left', 'center', 'right'] as const).map((al) => (
-                <TouchableOpacity key={al} style={[styles.chip, t.align === al && styles.chipActive]} onPress={() => updateTextLayer(t.key, { align: al })}>
-                  <Text style={[styles.chipText, t.align === al && styles.chipTextActive]}>{al === 'left' ? '左揃え' : al === 'center' ? '中央揃え' : '右揃え'}</Text>
-                </TouchableOpacity>
+              <TouchableOpacity style={styles.addRowBtn} onPress={addPhotoArea}>
+                <Ionicons name="add" size={16} color={COLORS.primary} />
+                <Text style={styles.addRowBtnText}>写真エリアを追加</Text>
+              </TouchableOpacity>
+
+              <Text style={styles.label}>テキストレイヤー（あとで編集したい文言。任意。ドラッグで移動できます）</Text>
+              {createTextLayers.length > 0 && (
+                <PositionCanvas
+                  backgroundUri={createBackgroundUrl}
+                  maxWidth={520}
+                  boxes={createTextLayers.map((t) => {
+                    const fontSize = Number(t.fontSize) || 40;
+                    return {
+                      key: t.key, x: Number(t.x) || 0, y: (Number(t.y) || 0) - fontSize,
+                      w: Number(t.maxWidth) || 300, h: fontSize * 1.4, color: '#3E8E6E',
+                    };
+                  })}
+                  onMove={(key, x, y) => {
+                    const fontSize = Number(createTextLayers.find((t) => t.key === key)?.fontSize) || 40;
+                    moveTextLayer(key, x, y + fontSize);
+                  }}
+                  onDragStateChange={setIsDragging}
+                />
+              )}
+              {createTextLayers.map((t) => (
+                <View key={t.key} style={styles.draftRow}>
+                  <TextInput style={styles.input} value={t.label} onChangeText={(v) => updateTextLayer(t.key, { label: v })} placeholder="ラベル（例: 見出し）" placeholderTextColor={COLORS.textMuted} />
+                  <TextInput style={styles.input} value={t.sampleText} onChangeText={(v) => updateTextLayer(t.key, { sampleText: v })} placeholder="サンプル文言" placeholderTextColor={COLORS.textMuted} />
+                  <View style={styles.numRow}>
+                    <TextInput style={styles.numInput} value={t.x} onChangeText={(v) => updateTextLayer(t.key, { x: v })} placeholder="x" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
+                    <TextInput style={styles.numInput} value={t.y} onChangeText={(v) => updateTextLayer(t.key, { y: v })} placeholder="y" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
+                    <TextInput style={styles.numInput} value={t.maxWidth} onChangeText={(v) => updateTextLayer(t.key, { maxWidth: v })} placeholder="最大幅" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
+                    <TextInput style={styles.numInput} value={t.fontSize} onChangeText={(v) => updateTextLayer(t.key, { fontSize: v })} placeholder="文字サイズ" keyboardType="numeric" placeholderTextColor={COLORS.textMuted} />
+                    <TouchableOpacity onPress={() => removeTextLayer(t.key)}>
+                      <Ionicons name="trash-outline" size={20} color={COLORS.error} />
+                    </TouchableOpacity>
+                  </View>
+                  <View style={styles.colorRow}>
+                    <TouchableOpacity style={[styles.colorSwatch, { backgroundColor: t.color }]} onPress={() => setColorPickerTargetKey(t.key)} />
+                    <TextInput style={[styles.input, { flex: 1 }]} value={t.color} onChangeText={(v) => updateTextLayer(t.key, { color: v })} placeholder="#FFFFFF" placeholderTextColor={COLORS.textMuted} autoCapitalize="none" autoCorrect={false} />
+                  </View>
+                  <View style={styles.chipRow}>
+                    {COLLAGE_FONT_PRESETS.map((f) => (
+                      <TouchableOpacity key={f.id} style={[styles.chip, t.font === f.id && styles.chipActive]} onPress={() => updateTextLayer(t.key, { font: f.id })}>
+                        <Text style={[styles.chipText, t.font === f.id && styles.chipTextActive]}>{f.label}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <View style={styles.chipRow}>
+                    {(['left', 'center', 'right'] as const).map((al) => (
+                      <TouchableOpacity key={al} style={[styles.chip, t.align === al && styles.chipActive]} onPress={() => updateTextLayer(t.key, { align: al })}>
+                        <Text style={[styles.chipText, t.align === al && styles.chipTextActive]}>{al === 'left' ? '左揃え' : al === 'center' ? '中央揃え' : '右揃え'}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <PositionToolRow
+                    onAlign={(where) => alignTextLayer(t.key, where)}
+                  />
+                </View>
               ))}
-            </View>
-            <PositionToolRow
-              onAlign={(where) => alignTextLayer(t.key, where)}
+              <TouchableOpacity style={styles.addRowBtn} onPress={addTextLayer}>
+                <Ionicons name="add" size={16} color={COLORS.primary} />
+                <Text style={styles.addRowBtnText}>テキストを追加</Text>
+              </TouchableOpacity>
+            </ScrollView>
+
+            <ColorPickerModal
+              visible={!!colorPickerTargetKey}
+              initialColor={colorPickerValue}
+              onChange={(hex) => { if (colorPickerTargetKey) updateTextLayer(colorPickerTargetKey, { color: hex }); }}
+              onClose={() => setColorPickerTargetKey(null)}
             />
           </View>
-        ))}
-        <TouchableOpacity style={styles.addRowBtn} onPress={addTextLayer}>
-          <Ionicons name="add" size={16} color={COLORS.primary} />
-          <Text style={styles.addRowBtnText}>テキストを追加</Text>
-        </TouchableOpacity>
+        </Modal>
 
         <Text style={styles.label}>プレビュー</Text>
         <View style={styles.livePreviewWrap}>
@@ -578,13 +624,6 @@ export default function CollageEditor({ onDone }: Props) {
         >
           {createSaving ? <ActivityIndicator color="#fff" /> : <Text style={styles.genBtnText}>保存する</Text>}
         </TouchableOpacity>
-
-        <ColorPickerModal
-          visible={!!colorPickerTargetKey}
-          initialColor={colorPickerValue}
-          onChange={(hex) => { if (colorPickerTargetKey) updateTextLayer(colorPickerTargetKey, { color: hex }); }}
-          onClose={() => setColorPickerTargetKey(null)}
-        />
       </View>
     );
   }
@@ -724,7 +763,18 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: COLORS.primary, borderRadius: RADIUS.full,
     paddingVertical: SPACING.sm, marginTop: SPACING.xs, marginBottom: SPACING.sm,
   },
-  createTemplateBtnText: { color: COLORS.primary, fontWeight: '700', fontSize: 13 },
+  createTemplateBtnText: { color: COLORS.primary, fontWeight: '700', fontSize: 13, flexShrink: 1 },
+  positionModalWrap: { flex: 1, backgroundColor: COLORS.background },
+  positionModalHeader: {
+    flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center',
+    paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, borderBottomWidth: 1, borderBottomColor: COLORS.border,
+  },
+  positionModalCloseBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: COLORS.primary, borderRadius: RADIUS.full, paddingHorizontal: SPACING.md, paddingVertical: SPACING.xs,
+  },
+  positionModalCloseBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
+  positionModalBody: { padding: SPACING.md, paddingBottom: SPACING.xxl },
   templateGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.md },
   templateCard: { width: 140, alignItems: 'center' },
   templateThumbWrap: {
