@@ -23,13 +23,40 @@ export const COLLAGE_FONT_PRESETS: FontPreset[] = [
   { id: 'mincho', label: '明朝（上品）', family: 'Shippori Mincho', weight: '800', googleParam: 'Shippori+Mincho:wght@800' },
   { id: 'rounded', label: '丸ゴシック（やわらか）', family: 'M PLUS Rounded 1c', weight: '800', googleParam: 'M+PLUS+Rounded+1c:wght@800' },
   { id: 'decor', label: '装飾セリフ', family: 'Kaisei Decol', weight: '700', googleParam: 'Kaisei+Decol:wght@700' },
+  { id: 'zenmaru', label: '丸ゴシック（Zen）', family: 'Zen Maru Gothic', weight: '900', googleParam: 'Zen+Maru+Gothic:wght@900' },
+  { id: 'zenoldmincho', label: '明朝（Zen Old）', family: 'Zen Old Mincho', weight: '900', googleParam: 'Zen+Old+Mincho:wght@900' },
+  { id: 'zenantique', label: 'アンティーク（Zen）', family: 'Zen Antique', weight: '400', googleParam: 'Zen+Antique' },
+  { id: 'zenantiquesoft', label: 'アンティーク（やわらか）', family: 'Zen Antique Soft', weight: '400', googleParam: 'Zen+Antique+Soft' },
+  { id: 'zenkurenaido', label: '紅（Zen紅）', family: 'Zen Kurenaido', weight: '400', googleParam: 'Zen+Kurenaido' },
+  { id: 'kaiseiopti', label: '明朝（オプティ）', family: 'Kaisei Opti', weight: '700', googleParam: 'Kaisei+Opti:wght@700' },
+  { id: 'kaiseiharuno', label: '明朝（春の海）', family: 'Kaisei HarunoUmi', weight: '700', googleParam: 'Kaisei+HarunoUmi:wght@700' },
+  { id: 'kaiseitokumin', label: '明朝（特明）', family: 'Kaisei Tokumin', weight: '800', googleParam: 'Kaisei+Tokumin:wght@800' },
+  { id: 'yusei', label: 'ポップ（Yusei）', family: 'Yusei Magic', weight: '400', googleParam: 'Yusei+Magic' },
+  { id: 'kosugimaru', label: '丸ゴシック（コスギ）', family: 'Kosugi Maru', weight: '400', googleParam: 'Kosugi+Maru' },
+  { id: 'sawarabigothic', label: 'ゴシック（さわらび）', family: 'Sawarabi Gothic', weight: '400', googleParam: 'Sawarabi+Gothic' },
+  { id: 'sawarabimincho', label: '明朝（さわらび）', family: 'Sawarabi Mincho', weight: '400', googleParam: 'Sawarabi+Mincho' },
+  { id: 'hachimaru', label: 'キュート（はちまる）', family: 'Hachi Maru Pop', weight: '400', googleParam: 'Hachi+Maru+Pop' },
+  { id: 'yomogi', label: '手書き風（よもぎ）', family: 'Yomogi', weight: '400', googleParam: 'Yomogi' },
+  { id: 'kleeone', label: '手書き風（クレー）', family: 'Klee One', weight: '600', googleParam: 'Klee+One:wght@600' },
+  { id: 'kiwimaru', label: '手書き風（キウイ丸）', family: 'Kiwi Maru', weight: '500', googleParam: 'Kiwi+Maru:wght@500' },
+  { id: 'reggae', label: 'レトロ（レゲエ）', family: 'Reggae One', weight: '400', googleParam: 'Reggae+One' },
+  { id: 'rocknroll', label: 'ロック（ロックンロール）', family: 'RocknRoll One', weight: '400', googleParam: 'RocknRoll+One' },
+  { id: 'dotgothic16', label: 'ドット（16px）', family: 'DotGothic16', weight: '400', googleParam: 'DotGothic16' },
+  { id: 'mochiypop', label: 'もちぷっくり', family: 'Mochiy Pop One', weight: '400', googleParam: 'Mochiy+Pop+One' },
+  { id: 'delagothic', label: 'インパクト（Dela）', family: 'Dela Gothic One', weight: '400', googleParam: 'Dela+Gothic+One' },
+  { id: 'rampart', label: '立体装飾（Rampart）', family: 'Rampart One', weight: '400', googleParam: 'Rampart+One' },
+  { id: 'shipporiantique', label: 'アンティーク（しっぽり）', family: 'Shippori Antique', weight: '400', googleParam: 'Shippori+Antique' },
+  { id: 'bizudgothic', label: '実用ゴシック（BIZ UD）', family: 'BIZ UDGothic', weight: '700', googleParam: 'BIZ+UDGothic:wght@700' },
+  { id: 'hinamincho', label: '明朝（雛）', family: 'Hina Mincho', weight: '400', googleParam: 'Hina+Mincho' },
 ];
 function getFontPreset(id?: string): FontPreset {
   return COLLAGE_FONT_PRESETS.find((f) => f.id === id) ?? COLLAGE_FONT_PRESETS[0];
 }
 
 const loadedFontLinkIds = new Set<string>();
-function ensureFontLink(preset: FontPreset) {
+/** 指定フォントのGoogle Fonts <link>をhead要素に追加する（未読み込みの場合のみ）。
+ *  フォント選択UIでのプレビュー表示にも使うため公開している。 */
+export function ensureFontLink(preset: FontPreset) {
   if (typeof document === 'undefined') return;
   const id = `collage-font-link-${preset.id}`;
   if (loadedFontLinkIds.has(id) || document.getElementById(id)) return;
