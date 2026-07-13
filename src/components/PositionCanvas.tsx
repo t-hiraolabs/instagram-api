@@ -30,6 +30,9 @@ interface PositionCanvasProps {
   /** ボックスをタップ（ドラッグ開始）した時に呼ばれる。選択状態の管理に使う */
   onSelect?: (key: string) => void;
   maxWidth?: number;
+  /** 指定時は、幅だけでなく高さもこの値に収まるようアスペクト比を保ったまま縮小する
+   *  （プロパティパネルとあわせて画面内に収まる高さを親から計算して渡す用途） */
+  maxHeight?: number;
   /**
    * ドラッグの開始・終了を親に通知する。キャンバスを囲むScrollViewのscrollEnabledを
    * ドラッグ中だけfalseにするために使う（そうしないとWeb上でドラッグ中に画面が
@@ -41,10 +44,14 @@ interface PositionCanvasProps {
 const MIN_SIZE = 30;
 const HANDLE_SIZE = 24;
 
-export default function PositionCanvas({ backgroundUri, boxes, onMove, onResize, onSelect, maxWidth = 420, onDragStateChange }: PositionCanvasProps) {
+export default function PositionCanvas({ backgroundUri, boxes, onMove, onResize, onSelect, maxWidth = 420, maxHeight, onDragStateChange }: PositionCanvasProps) {
   const { width: windowWidth } = useWindowDimensions();
-  const canvasWidth = Math.min(windowWidth - SPACING.md * 4, maxWidth);
-  const canvasHeight = (canvasWidth * COLLAGE_H) / COLLAGE_W;
+  let canvasWidth = Math.min(windowWidth - SPACING.md * 4, maxWidth);
+  let canvasHeight = (canvasWidth * COLLAGE_H) / COLLAGE_W;
+  if (maxHeight && canvasHeight > maxHeight) {
+    canvasHeight = maxHeight;
+    canvasWidth = (canvasHeight * COLLAGE_W) / COLLAGE_H;
+  }
   const scale = canvasWidth / COLLAGE_W;
 
   return (
