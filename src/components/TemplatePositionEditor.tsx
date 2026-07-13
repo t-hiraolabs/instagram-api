@@ -255,6 +255,10 @@ export default function TemplatePositionEditor({
         key: t.key, x: Number(t.x) || 0, y: (Number(t.y) || 0) - fontSize,
         w: Number(t.maxWidth) || 300, h: fontSize * 1.4,
         color: '#3E8E6E', resizable: false, selected: selected?.type === 'text' && selected.key === t.key,
+        previewText: t.sampleText || t.label || 'テキスト',
+        previewTextColor: t.color,
+        previewFontSize: fontSize,
+        previewAlign: t.align,
       };
     }),
   ];
