@@ -1,11 +1,11 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Image, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { COLORS, SPACING, RADIUS, SHADOWS } from '../utils/theme';
 import { useAppStore } from '../store/appStore';
 import AccountBadge from '../components/AccountBadge';
-import ImageGenChat, { ImageGenChatHandle } from '../components/ImageGenChat';
+import ImageGenChat from '../components/ImageGenChat';
 import { Ionicons } from '@expo/vector-icons';
 
 function getGreeting(): string {
@@ -65,11 +65,13 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const setPendingUseImage = useAppStore((s) => s.setPendingUseImage);
+  const setChatPrefillText = useAppStore((s) => s.setChatPrefillText);
+  const setChatAutoSend = useAppStore((s) => s.setChatAutoSend);
+  const setChatForceNew = useAppStore((s) => s.setChatForceNew);
   const bestTime = useMemo(() => getBestPostingTime(), []);
   const featuredIdeas = useMemo(() => getTodaysIdeas(3), []);
   const moreIdeas = useMemo(() => getTodaysIdeas(IDEA_POOL.length).slice(3), []);
   const todoItems = useMemo(() => getTodoItems(), []);
-  const chatRef = useRef<ImageGenChatHandle>(null);
   const [chatVisible, setChatVisible] = useState(false);
 
   const handleUseImage = (dataUrl: string) => {
@@ -79,9 +81,11 @@ export default function HomeScreen() {
   };
 
   const startIdeaChat = (idea: string) => {
+    // ネタカードからは毎回新しい会話として送る（前の会話の続きにならないように）
+    setChatForceNew(true);
+    setChatPrefillText(`「${idea}」について投稿を作りたいです。`);
+    setChatAutoSend(true);
     setChatVisible(true);
-    // Modalが開いた直後に送信できるよう、少し待ってから送る
-    setTimeout(() => chatRef.current?.sendMessage(`「${idea}」について投稿を作りたいです。`), 150);
   };
 
   const goTodo = (key: string) => {
@@ -165,7 +169,6 @@ export default function HomeScreen() {
       </TouchableOpacity>
 
       <ImageGenChat
-        ref={chatRef}
         visible={chatVisible}
         onClose={() => setChatVisible(false)}
         onUseImage={handleUseImage}
