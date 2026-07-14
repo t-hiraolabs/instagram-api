@@ -52,7 +52,7 @@ export function newPhotoAreaDraft(): PhotoAreaDraft {
   return { key: nextDraftKey(), x: String(NEW_ELEMENT_X), y: String(NEW_ELEMENT_Y), w: String(NEW_ELEMENT_SIZE), h: String(NEW_ELEMENT_SIZE) };
 }
 export function newTextLayerDraft(n: number): TextLayerDraft {
-  const fontSize = 40;
+  const fontSize = 80;
   return {
     key: nextDraftKey(), id: `text_${n}`, label: '', sampleText: '',
     // yはテキストのベースライン。ボックスの見た目の上端(y - fontSize)が他の要素と揃うようにする
@@ -260,7 +260,7 @@ export default function TemplatePositionEditor({
   // 意図せずレイアウトが崩れるため、分離している。
   const resizeTextLayer = (key: string, w: number, h: number) => {
     const t = textLayers.find((x) => x.key === key);
-    const fontSize = Number(t?.fontSize) || 40;
+    const fontSize = Number(t?.fontSize) || 80;
     const lineHeightMul = Number(t?.lineHeight) || 1.25;
     const newMaxLines = Math.max(1, Math.round(h / (fontSize * lineHeightMul)));
     updateTextLayer(key, { maxWidth: String(Math.round(w)), maxLines: String(newMaxLines) });
@@ -397,7 +397,7 @@ export default function TemplatePositionEditor({
       color: '#4A90D9', resizable: true, selected: selected?.type === 'decoration' && selected.key === d.key,
     })),
     ...textLayers.map((t): PositionCanvasBox => {
-      const fontSize = Number(t.fontSize) || 40;
+      const fontSize = Number(t.fontSize) || 80;
       const lineHeightMul = Number(t.lineHeight) || 1.25;
       const maxLines = Math.max(1, Number(t.maxLines) || 3);
       const fontPreset = COLLAGE_FONT_PRESETS.find((f) => f.id === t.font) ?? COLLAGE_FONT_PRESETS[0];
@@ -420,7 +420,7 @@ export default function TemplatePositionEditor({
     if (decorations.some((d) => d.key === key)) return moveDecoration(key, x, y);
     const textLayer = textLayers.find((t) => t.key === key);
     if (textLayer) {
-      const fontSize = Number(textLayer.fontSize) || 40;
+      const fontSize = Number(textLayer.fontSize) || 80;
       moveTextLayer(key, x, y + fontSize);
     }
   };
