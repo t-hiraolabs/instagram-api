@@ -17,6 +17,13 @@ import {
   Gesture,
   GestureDetector,
 } from 'react-native-gesture-handler';
+import { snapValue } from '../../utils/snap';
+
+// きりのいい位置・倍率（中央寄せ、スロットをちょうど覆う倍率など）に近づいたときに
+// 一瞬止まる感触を出すための許容量。位置は画面px基準（displayScaleで論理px換算）、
+// 倍率は比率そのもの（0.04 = 4%以内）。
+const POSITION_SNAP_SCREEN_PX = 8;
+const SCALE_SNAP_ZONE = 0.04;
 
 interface Props {
   x: number;
@@ -33,6 +40,11 @@ interface Props {
    *  倍率」を下限にするため、呼び出し側から動的な値を渡せるようにしている） */
   minScale?: number;
   maxScale?: number;
+  /** 近づいたときに一瞬止まる位置・倍率のスナップ先（論理px／倍率）。写真スロットの中央・
+   *  スロットをちょうど覆う倍率などに使う。未指定ならスナップしない */
+  snapX?: number[];
+  snapY?: number[];
+  snapScale?: number[];
   onSelect: () => void;
   onChange: (patch: { x: number; y: number; scale: number; rotation: number }) => void;
   children: React.ReactNode;
@@ -40,7 +52,7 @@ interface Props {
 
 export default function DraggableLayer({
   x, y, scale, rotation, displayScale, selected, locked, rotatable = true,
-  minScale = 0.2, maxScale = 4, onSelect, onChange, children,
+  minScale = 0.2, maxScale = 4, snapX, snapY, snapScale, onSelect, onChange, children,
 }: Props) {
   const translateX = useSharedValue(x);
   const translateY = useSharedValue(y);
@@ -66,8 +78,13 @@ export default function DraggableLayer({
     .enabled(!locked)
     .onBegin(() => runOnJS(onSelect)())
     .onUpdate((e) => {
-      translateX.value = x + e.translationX / displayScale;
-      translateY.value = y + e.translationY / displayScale;
+      const zone = POSITION_SNAP_SCREEN_PX / displayScale;
+      let nx = x + e.translationX / displayScale;
+      let ny = y + e.translationY / displayScale;
+      if (snapX) nx = snapValue(nx, snapX, zone);
+      if (snapY) ny = snapValue(ny, snapY, zone);
+      translateX.value = nx;
+      translateY.value = ny;
     })
     .onEnd(() => runOnJS(commit)());
 
@@ -75,7 +92,9 @@ export default function DraggableLayer({
     .enabled(!locked)
     .onBegin(() => runOnJS(onSelect)())
     .onUpdate((e) => {
-      savedScale.value = Math.min(maxScale, Math.max(minScale, scale * e.scale));
+      let s = Math.min(maxScale, Math.max(minScale, scale * e.scale));
+      if (snapScale) s = snapValue(s, snapScale, SCALE_SNAP_ZONE);
+      savedScale.value = s;
     })
     .onEnd(() => runOnJS(commit)());
 

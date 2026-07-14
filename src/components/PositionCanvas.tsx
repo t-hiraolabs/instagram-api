@@ -5,6 +5,11 @@ import React, { useEffect, useRef } from 'react';
 import { View, Text, Image, StyleSheet, PanResponder, GestureResponderEvent, useWindowDimensions } from 'react-native';
 import { COLORS, RADIUS, SPACING } from '../utils/theme';
 import { COLLAGE_W, COLLAGE_H } from '../utils/collageCompositor';
+import { snapValue } from '../utils/snap';
+
+// 中央寄せ・端（キャンバスの縁にちょうど揃う位置/サイズ）に近づいたら一瞬止まる
+// スナップの許容量（画面px基準。キャンバスの表示スケールに応じて論理px換算する）
+const SNAP_SCREEN_PX = 8;
 
 export interface PositionCanvasBox {
   key: string;
@@ -157,18 +162,22 @@ function DraggableBox({ box, scale, onMove, onResize, onSelect, onDragStateChang
         const touchCount = touches?.length ?? 1;
         if (touchCount !== lastTouchCount.current) beginGesture(evt);
 
+        const snapZone = SNAP_SCREEN_PX / scale;
         if (touchCount >= 2 && onResizeRef.current) {
           const dist = touchDistance(touches);
           const ratio = pinchStart.current.distance > 0 ? dist / pinchStart.current.distance : 1;
-          onResizeRef.current(
-            Math.max(MIN_SIZE, pinchStart.current.w * ratio),
-            Math.max(MIN_SIZE, pinchStart.current.h * ratio)
-          );
+          const b = boxRef.current;
+          const w = snapValue(Math.max(MIN_SIZE, pinchStart.current.w * ratio), [COLLAGE_W - b.x], snapZone);
+          const h = snapValue(Math.max(MIN_SIZE, pinchStart.current.h * ratio), [COLLAGE_H - b.y], snapZone);
+          onResizeRef.current(w, h);
           return;
         }
         const dx = (evt.nativeEvent.pageX - moveStart.current.pageX) / scale;
         const dy = (evt.nativeEvent.pageY - moveStart.current.pageY) / scale;
-        onMoveRef.current(moveStart.current.x + dx, moveStart.current.y + dy);
+        const b = boxRef.current;
+        const x = snapValue(moveStart.current.x + dx, [0, (COLLAGE_W - b.w) / 2, COLLAGE_W - b.w], snapZone);
+        const y = snapValue(moveStart.current.y + dy, [0, (COLLAGE_H - b.h) / 2, COLLAGE_H - b.h], snapZone);
+        onMoveRef.current(x, y);
       },
       onPanResponderRelease: () => onDragStateChangeRef.current?.(false),
       onPanResponderTerminate: () => onDragStateChangeRef.current?.(false),
@@ -232,12 +241,13 @@ function ResizeHandle({ box, scale, onResize, onDragStateChange }: {
         };
       },
       onPanResponderMove: (evt: GestureResponderEvent) => {
+        const snapZone = SNAP_SCREEN_PX / scale;
         const dw = (evt.nativeEvent.pageX - resizeStart.current.pageX) / scale;
         const dh = (evt.nativeEvent.pageY - resizeStart.current.pageY) / scale;
-        onResizeRef.current(
-          Math.max(MIN_SIZE, resizeStart.current.w + dw),
-          Math.max(MIN_SIZE, resizeStart.current.h + dh)
-        );
+        const b = boxRef.current;
+        const w = snapValue(Math.max(MIN_SIZE, resizeStart.current.w + dw), [COLLAGE_W - b.x], snapZone);
+        const h = snapValue(Math.max(MIN_SIZE, resizeStart.current.h + dh), [COLLAGE_H - b.y], snapZone);
+        onResizeRef.current(w, h);
       },
       onPanResponderRelease: () => onDragStateChangeRef.current?.(false),
       onPanResponderTerminate: () => onDragStateChangeRef.current?.(false),
