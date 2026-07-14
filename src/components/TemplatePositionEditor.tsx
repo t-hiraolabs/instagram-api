@@ -7,6 +7,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, Image, TextInput, ActivityIndicator, Platform, Alert, Modal, ScrollView, LayoutChangeEvent,
+  PanResponder,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,6 +21,8 @@ import PositionCanvas, { PositionCanvasBox } from './PositionCanvas';
 export interface PhotoAreaDraft {
   key: string;
   x: string; y: string; w: string; h: string;
+  /** 描画順（昇順）。レイヤーメニューでのドラッグ並び替えで決まる */
+  zIndex: string;
 }
 export interface TextLayerDraft {
   key: string;
@@ -37,6 +40,8 @@ export interface DecorationDraft {
   imageUrl: string | null;
   uploading: boolean;
   x: string; y: string; w: string; h: string;
+  /** 描画順（昇順）。レイヤーメニューでのドラッグ並び替えで決まる */
+  zIndex: string;
 }
 
 let draftKeySeq = 0;
@@ -47,9 +52,15 @@ const nextDraftKey = () => `tpe-${draftKeySeq++}`;
 const NEW_ELEMENT_SIZE = 500;
 const NEW_ELEMENT_X = Math.round((COLLAGE_W - NEW_ELEMENT_SIZE) / 2);
 const NEW_ELEMENT_Y = Math.round((COLLAGE_H - NEW_ELEMENT_SIZE) / 2);
+// レイヤーメニューの行の高さ（ドラッグ時、指の移動量からどの行の位置まで動かしたかを
+// 割り出すための基準値として使うので、行ごとに高さが変わらないよう固定にしている）
+const MENU_ROW_HEIGHT = 44;
 
 export function newPhotoAreaDraft(): PhotoAreaDraft {
-  return { key: nextDraftKey(), x: String(NEW_ELEMENT_X), y: String(NEW_ELEMENT_Y), w: String(NEW_ELEMENT_SIZE), h: String(NEW_ELEMENT_SIZE) };
+  return {
+    key: nextDraftKey(), x: String(NEW_ELEMENT_X), y: String(NEW_ELEMENT_Y), w: String(NEW_ELEMENT_SIZE), h: String(NEW_ELEMENT_SIZE),
+    zIndex: String(COLLAGE_Z_BANDS.photos),
+  };
 }
 export function newTextLayerDraft(n: number): TextLayerDraft {
   const fontSize = 80;
@@ -62,7 +73,10 @@ export function newTextLayerDraft(n: number): TextLayerDraft {
   };
 }
 export function newDecorationDraft(): DecorationDraft {
-  return { key: nextDraftKey(), imageUrl: null, uploading: false, x: String(NEW_ELEMENT_X), y: String(NEW_ELEMENT_Y), w: String(NEW_ELEMENT_SIZE), h: String(NEW_ELEMENT_SIZE) };
+  return {
+    key: nextDraftKey(), imageUrl: null, uploading: false, x: String(NEW_ELEMENT_X), y: String(NEW_ELEMENT_Y), w: String(NEW_ELEMENT_SIZE), h: String(NEW_ELEMENT_SIZE),
+    zIndex: String(COLLAGE_Z_BANDS.decoration),
+  };
 }
 
 type LayerType = 'photo' | 'text' | 'decoration';
@@ -106,6 +120,68 @@ function SizeField({ value, onFocus, onChangeText, onStepUp, onStepDown }: {
   );
 }
 
+/** レイヤー一覧の1行。左端の並び替えハンドルを指でドラッグすると重なり順を変更できる
+ *  （タップでの選択・ゴミ箱での削除と競合しないよう、ドラッグ操作はハンドル部分だけに絞っている） */
+function DraggableMenuRow({
+  icon, title, isSelected, isDragging, dragY, onSelect, onRemove, onDragMove, onDragEnd,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  isSelected: boolean;
+  isDragging: boolean;
+  dragY: number;
+  onSelect: () => void;
+  onRemove: () => void;
+  onDragMove: (dy: number) => void;
+  onDragEnd: (dy: number) => void;
+}) {
+  // PanResponderは初回生成時のクロージャに固定されるため、最新のコールバックは
+  // refで参照する（PositionCanvas.tsxのDraggableBoxと同じパターン）
+  const onDragMoveRef = useRef(onDragMove);
+  const onDragEndRef = useRef(onDragEnd);
+  useEffect(() => { onDragMoveRef.current = onDragMove; onDragEndRef.current = onDragEnd; });
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: () => onDragMoveRef.current(0),
+      onPanResponderMove: (_evt, gesture) => onDragMoveRef.current(gesture.dy),
+      onPanResponderRelease: (_evt, gesture) => onDragEndRef.current(gesture.dy),
+      onPanResponderTerminate: (_evt, gesture) => onDragEndRef.current(gesture.dy),
+    })
+  ).current;
+
+  return (
+    <View
+      style={[
+        styles.layerMenuRow,
+        isDragging && styles.layerMenuRowDragging,
+        isDragging && { transform: [{ translateY: dragY }] },
+      ]}
+    >
+      <TouchableOpacity
+        style={[styles.layerMenuRowTouchable, isSelected && styles.menuRowActive]}
+        onPress={onSelect}
+        activeOpacity={0.7}
+      >
+        <View style={styles.dragHandle} pointerEvents="none">
+          <Ionicons name="reorder-three-outline" size={18} color={COLORS.textMuted} />
+        </View>
+        <Ionicons name={icon} size={16} color={isSelected ? COLORS.primary : COLORS.textSecondary} />
+        <Text style={[styles.menuRowText, isSelected && styles.menuRowTextActive]} numberOfLines={1}>{title}</Text>
+        <TouchableOpacity onPress={onRemove} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <Ionicons name="trash-outline" size={16} color={COLORS.error} />
+        </TouchableOpacity>
+      </TouchableOpacity>
+      {/* ドラッグ用のタッチ領域は行のTouchableOpacityの兄弟として絶対配置する。ネストした
+          PanResponder同士はWeb上でタッチの取り合いが不安定になり、親（タップ選択）側へ
+          横取りされることがあるため（PositionCanvas.tsxのResizeHandleと同じ理由・パターン）。 */}
+      <View {...panResponder.panHandlers} style={styles.dragHandleOverlay} />
+    </View>
+  );
+}
+
 interface Props {
   visible: boolean;
   onClose: () => void;
@@ -126,6 +202,9 @@ export default function TemplatePositionEditor({
 }: Props) {
   const [selected, setSelected] = useState<Selected>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  // レイヤーメニューでの並び替えドラッグ中の状態（ドラッグ中の行のインデックスと移動量）
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [dragY, setDragY] = useState(0);
   const [colorPickerOpen, setColorPickerOpen] = useState(false);
   const [fontPickerOpen, setFontPickerOpen] = useState(false);
   const [canvasArea, setCanvasArea] = useState({ width: 0, height: 0 });
@@ -370,12 +449,14 @@ export default function TemplatePositionEditor({
     handleDecorationSizeChange(key, String(newW));
   };
 
-  // ==== レイヤー一覧（メニューから選択・削除するための統合リスト） ====
+  // ==== レイヤー一覧（メニューから選択・削除・並び替えするための統合リスト） ====
+  // zIndexの降順（前面が先頭）に並べる。メニュー上でドラッグして並び替えると、その並び順
+  // からzIndexを振り直すので、メニューの表示順とキャンバス上の重なり順は常に一致する。
   const layersList = [
-    ...photoAreas.map((a, i) => ({ type: 'photo' as const, key: a.key, title: `写真エリア ${i + 1}` })),
-    ...decorations.map((d, i) => ({ type: 'decoration' as const, key: d.key, title: `写真(装飾) ${i + 1}` })),
-    ...textLayers.map((t, i) => ({ type: 'text' as const, key: t.key, title: t.label || t.sampleText || `テキスト ${i + 1}` })),
-  ];
+    ...photoAreas.map((a, i) => ({ type: 'photo' as const, key: a.key, title: `写真エリア ${i + 1}`, zIndex: Number(a.zIndex) || COLLAGE_Z_BANDS.photos })),
+    ...decorations.map((d, i) => ({ type: 'decoration' as const, key: d.key, title: `写真(装飾) ${i + 1}`, zIndex: Number(d.zIndex) || COLLAGE_Z_BANDS.decoration })),
+    ...textLayers.map((t, i) => ({ type: 'text' as const, key: t.key, title: t.label || t.sampleText || `テキスト ${i + 1}`, zIndex: Number(t.zIndex) || COLLAGE_Z_BANDS.text })),
+  ].sort((a, b) => b.zIndex - a.zIndex);
   const selectLayer = (type: LayerType, key: string) => {
     setSelected({ type, key });
     setMenuOpen(false);
@@ -385,35 +466,72 @@ export default function TemplatePositionEditor({
     else if (type === 'decoration') removeDecoration(key);
     else removeTextLayer(key);
   };
+  // レイヤーメニュー上でのドラッグ並び替え。新しい並び順（先頭=最前面）に沿って
+  // 全レイヤーのzIndexを振り直す。写真エリア・装飾画像・テキストのどれでも統一的に扱える。
+  const reorderLayers = (fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) return;
+    const list = [...layersList];
+    const [moved] = list.splice(fromIndex, 1);
+    list.splice(toIndex, 0, moved);
+    const n = list.length;
+    list.forEach((item, i) => {
+      const z = String((n - i) * 10);
+      if (item.type === 'photo') updatePhotoArea(item.key, { zIndex: z });
+      else if (item.type === 'decoration') updateDecoration(item.key, { zIndex: z });
+      else updateTextLayer(item.key, { zIndex: z });
+    });
+  };
+  const handleRowDragMove = (index: number, dy: number) => {
+    setDragIndex(index);
+    setDragY(dy);
+  };
+  const handleRowDragEnd = (index: number, dy: number) => {
+    const target = Math.max(0, Math.min(layersList.length - 1, index + Math.round(dy / MENU_ROW_HEIGHT)));
+    reorderLayers(index, target);
+    setDragIndex(null);
+    setDragY(0);
+  };
 
-  // ==== キャンバス（すべての要素を重ねて表示） ====
-  const canvasBoxes: PositionCanvasBox[] = [
-    ...photoAreas.map((a): PositionCanvasBox => ({
-      key: a.key, x: Number(a.x) || 0, y: Number(a.y) || 0, w: Number(a.w) || 100, h: Number(a.h) || 100,
-      color: COLORS.primary, resizable: true, selected: selected?.type === 'photo' && selected.key === a.key,
+  // ==== キャンバス（すべての要素をzIndex昇順=背面から前面の順に重ねて表示） ====
+  // レイヤーメニューでの並び替え結果（zIndex）がキャンバス上の見た目にも反映されるよう、
+  // 描画直前にzIndex昇順でソートする（配列の後ろほど上に重なって描画されるため）。
+  const zSortedBoxes: { z: number; box: PositionCanvasBox }[] = [
+    ...photoAreas.map((a) => ({
+      z: Number(a.zIndex) || COLLAGE_Z_BANDS.photos,
+      box: {
+        key: a.key, x: Number(a.x) || 0, y: Number(a.y) || 0, w: Number(a.w) || 100, h: Number(a.h) || 100,
+        color: COLORS.primary, resizable: true, selected: selected?.type === 'photo' && selected.key === a.key,
+      } as PositionCanvasBox,
     })),
-    ...decorations.map((d): PositionCanvasBox => ({
-      key: d.key, x: Number(d.x) || 0, y: Number(d.y) || 0, w: Number(d.w) || 100, h: Number(d.h) || 100,
-      color: '#4A90D9', resizable: true, selected: selected?.type === 'decoration' && selected.key === d.key,
+    ...decorations.map((d) => ({
+      z: Number(d.zIndex) || COLLAGE_Z_BANDS.decoration,
+      box: {
+        key: d.key, x: Number(d.x) || 0, y: Number(d.y) || 0, w: Number(d.w) || 100, h: Number(d.h) || 100,
+        color: '#4A90D9', resizable: true, selected: selected?.type === 'decoration' && selected.key === d.key,
+      } as PositionCanvasBox,
     })),
-    ...textLayers.map((t): PositionCanvasBox => {
+    ...textLayers.map((t) => {
       const fontSize = Number(t.fontSize) || 80;
       const lineHeightMul = Number(t.lineHeight) || 1.25;
       const maxLines = Math.max(1, Number(t.maxLines) || 3);
       const fontPreset = COLLAGE_FONT_PRESETS.find((f) => f.id === t.font) ?? COLLAGE_FONT_PRESETS[0];
       return {
-        key: t.key, x: Number(t.x) || 0, y: (Number(t.y) || 0) - fontSize,
-        w: Number(t.maxWidth) || 300, h: fontSize * lineHeightMul * maxLines,
-        color: '#3E8E6E', resizable: true, selected: selected?.type === 'text' && selected.key === t.key,
-        previewText: t.sampleText || t.label || 'テキスト',
-        previewTextColor: t.color,
-        previewFontSize: fontSize,
-        previewAlign: t.align,
-        previewFontFamily: fontPreset.family,
-        previewFontWeight: fontPreset.weight,
+        z: Number(t.zIndex) || COLLAGE_Z_BANDS.text,
+        box: {
+          key: t.key, x: Number(t.x) || 0, y: (Number(t.y) || 0) - fontSize,
+          w: Number(t.maxWidth) || 300, h: fontSize * lineHeightMul * maxLines,
+          color: '#3E8E6E', resizable: true, selected: selected?.type === 'text' && selected.key === t.key,
+          previewText: t.sampleText || t.label || 'テキスト',
+          previewTextColor: t.color,
+          previewFontSize: fontSize,
+          previewAlign: t.align,
+          previewFontFamily: fontPreset.family,
+          previewFontWeight: fontPreset.weight,
+        } as PositionCanvasBox,
       };
     }),
   ];
+  const canvasBoxes: PositionCanvasBox[] = [...zSortedBoxes].sort((a, b) => a.z - b.z).map((x) => x.box);
 
   const handleCanvasMove = (key: string, x: number, y: number) => {
     if (photoAreas.some((a) => a.key === key)) return movePhotoArea(key, x, y);
@@ -641,24 +759,23 @@ export default function TemplatePositionEditor({
           <TouchableOpacity style={styles.menuOverlay} activeOpacity={1} onPress={() => setMenuOpen(false)}>
             <TouchableOpacity style={styles.menuPanel} activeOpacity={1} onPress={() => {}}>
               <Text style={styles.menuPanelTitle}>レイヤー</Text>
-              <ScrollView style={styles.menuList}>
+              <Text style={styles.menuPanelHint}>左のハンドルをドラッグすると重なり順を変更できます</Text>
+              <ScrollView style={styles.menuList} scrollEnabled={dragIndex === null}>
                 {layersList.length === 0 && <Text style={styles.emptyHint}>まだ要素がありません</Text>}
-                {layersList.map((item) => {
-                  const isSelected = selected?.type === item.type && selected.key === item.key;
-                  return (
-                    <TouchableOpacity
-                      key={item.key}
-                      style={[styles.menuRow, isSelected && styles.menuRowActive]}
-                      onPress={() => selectLayer(item.type, item.key)}
-                    >
-                      <Ionicons name={LAYER_ICON[item.type]} size={16} color={isSelected ? COLORS.primary : COLORS.textSecondary} />
-                      <Text style={[styles.menuRowText, isSelected && styles.menuRowTextActive]} numberOfLines={1}>{item.title}</Text>
-                      <TouchableOpacity onPress={() => removeLayer(item.type, item.key)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                        <Ionicons name="trash-outline" size={16} color={COLORS.error} />
-                      </TouchableOpacity>
-                    </TouchableOpacity>
-                  );
-                })}
+                {layersList.map((item, index) => (
+                  <DraggableMenuRow
+                    key={item.key}
+                    icon={LAYER_ICON[item.type]}
+                    title={item.title}
+                    isSelected={selected?.type === item.type && selected.key === item.key}
+                    isDragging={dragIndex === index}
+                    dragY={dragIndex === index ? dragY : 0}
+                    onSelect={() => selectLayer(item.type, item.key)}
+                    onRemove={() => removeLayer(item.type, item.key)}
+                    onDragMove={(dy) => handleRowDragMove(index, dy)}
+                    onDragEnd={(dy) => handleRowDragEnd(index, dy)}
+                  />
+                ))}
               </ScrollView>
             </TouchableOpacity>
           </TouchableOpacity>
@@ -743,7 +860,8 @@ const styles = StyleSheet.create({
     position: 'absolute', top: 0, bottom: 0, left: 0, width: '78%', maxWidth: 320,
     backgroundColor: COLORS.surface, paddingTop: SPACING.xxl, paddingHorizontal: SPACING.md,
   },
-  menuPanelTitle: { color: COLORS.text, fontWeight: '800', fontSize: 16, marginBottom: SPACING.sm },
+  menuPanelTitle: { color: COLORS.text, fontWeight: '800', fontSize: 16, marginBottom: 2 },
+  menuPanelHint: { color: COLORS.textMuted, fontSize: 11, marginBottom: SPACING.sm },
   menuList: { flex: 1 },
   menuRow: {
     flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
@@ -752,4 +870,16 @@ const styles = StyleSheet.create({
   menuRowActive: { backgroundColor: 'rgba(225,48,108,0.08)' },
   menuRowText: { flex: 1, color: COLORS.text, fontSize: 13, fontWeight: '600' },
   menuRowTextActive: { color: COLORS.primary },
+  layerMenuRow: {
+    position: 'relative', height: MENU_ROW_HEIGHT, borderBottomWidth: 1, borderBottomColor: COLORS.border,
+  },
+  layerMenuRowDragging: {
+    backgroundColor: COLORS.background, borderRadius: RADIUS.sm, borderBottomColor: 'transparent',
+    zIndex: 10, elevation: 4, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 6, shadowOffset: { width: 0, height: 2 },
+  },
+  layerMenuRowTouchable: {
+    flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, height: '100%',
+  },
+  dragHandle: { padding: 2 },
+  dragHandleOverlay: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 32 },
 });
