@@ -24,6 +24,8 @@ export interface CollageStylePhotoArea {
   y: number;
   w: number;
   h: number;
+  /** 描画順（昇順）。レイヤーメニューでのドラッグ並び替えで決まる */
+  zIndex?: number;
 }
 
 /** テキストレイヤー1件。座標はキャンバス1080×1920px基準 */
@@ -58,6 +60,8 @@ export interface CollageStyleDecoration {
   y: number;
   w: number;
   h: number;
+  /** 描画順（昇順）。レイヤーメニューでのドラッグ並び替えで決まる */
+  zIndex?: number;
 }
 
 export interface CollageStyle {
