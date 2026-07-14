@@ -22,13 +22,14 @@ interface Props {
   displayScale: number;
   selected: boolean;
   locked?: boolean;
+  testID?: string;
   onSelect: () => void;
   onChange: (patch: { offsetX: number; offsetY: number; scale: number }) => void;
   onPickPhoto?: () => void;
 }
 
 export default function DraggablePhotoSlot({
-  slot, assignment, displayScale, selected, locked, onSelect, onChange, onPickPhoto,
+  slot, assignment, displayScale, selected, locked, testID, onSelect, onChange, onPickPhoto,
 }: Props) {
   const clipStyle = {
     position: 'absolute' as const,
@@ -41,7 +42,7 @@ export default function DraggablePhotoSlot({
 
   if (!assignment) {
     return (
-      <TouchableOpacity style={[clipStyle, styles.placeholder]} onPress={onPickPhoto} activeOpacity={0.7}>
+      <TouchableOpacity testID={testID} style={[clipStyle, styles.placeholder]} onPress={onPickPhoto} activeOpacity={0.7}>
         <Ionicons name="image-outline" size={28 * displayScale} color={COLORS.textMuted} />
       </TouchableOpacity>
     );
@@ -67,7 +68,7 @@ export default function DraggablePhotoSlot({
   };
 
   return (
-    <View style={clipStyle}>
+    <View style={clipStyle} testID={testID}>
       <DraggableLayer
         x={centerX + assignment.offsetX}
         y={centerY + assignment.offsetY}
