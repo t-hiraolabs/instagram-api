@@ -24,7 +24,8 @@ import { buildLayersFromTemplate } from './storyLayerBuilder';
 
 type Step = 'photo' | 'purpose' | 'recommend' | 'edit';
 
-const PURPOSES = ['集客', '告知・お知らせ', '商品紹介', '空席・在庫状況', 'シンプルに紹介'];
+// 「ストーリー作成」統合のStoryGalleryScreen.tsxでも投稿目的チップとして流用する
+export const PURPOSES = ['集客', '告知・お知らせ', '商品紹介', '空席・在庫状況', 'シンプルに紹介'];
 // 候補一覧では複数枚を一度に見比べられるよう、通常のプレビューよりさらに小さいサムネイルにする
 const CANDIDATE_THUMB_W = 100;
 
