@@ -12,15 +12,13 @@ import { COLORS, SPACING, RADIUS } from '../../utils/theme';
 import { useAppStore } from '../../store/appStore';
 import { useStoryEditorStore, TextLayer, StoryLayer, serializeLayers } from '../../store/storyEditorStore';
 import {
-  rankTemplatesByTags, getAssetsByIds, recordRecentTemplate, getRecentTemplateIds,
+  rankTemplatesByTags, recordRecentTemplate, getRecentTemplateIds,
   saveStoryDraft, StoryTemplate,
 } from '../../services/storyStudioService';
 import { recommendStoryTemplate } from '../../services/aiService';
 import { getMyPlan } from '../../services/scheduleService';
-import { Plan } from '../../utils/plans';
 import StoryCanvas, { DISPLAY_W, DISPLAY_H, PREVIEW_DISPLAY_W } from './StoryCanvas';
 import LayerListPanel from './LayerListPanel';
-import AssetPickerModal from './AssetPickerModal';
 import TextStyleModal from './TextStyleModal';
 import { buildLayersFromTemplate } from './storyLayerBuilder';
 
@@ -47,14 +45,8 @@ export default function StoryStudioScreen({ visible, onClose, onFinish }: Props)
   const [candidateListVisible, setCandidateListVisible] = useState(false);
   const [recommendLoading, setRecommendLoading] = useState(false);
   const [recommendError, setRecommendError] = useState<string | null>(null);
-  const [assetPickerVisible, setAssetPickerVisible] = useState(false);
   const [textEditVisible, setTextEditVisible] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [plan, setPlan] = useState<Plan>('free');
-
-  React.useEffect(() => {
-    if (visible) getMyPlan().then(setPlan).catch(() => {});
-  }, [visible]);
 
   const canvasShotRef = useRef<ViewShot>(null);
   const brandSettings = useAppStore((s) => s.brandSettings);
@@ -133,18 +125,11 @@ export default function StoryStudioScreen({ visible, onClose, onFinish }: Props)
       setRanked(reordered);
       setRankIndex(0);
 
-      // 候補一覧をまとめて表示できるよう、全候補分の素材を一括取得してプレビュー用レイヤーを作っておく
-      const allIds = Array.from(new Set(reordered.flatMap((t) => [
-        t.layerDefaults.background?.assetId,
-        t.layerDefaults.frame?.assetId,
-        t.layerDefaults.flower?.assetId,
-        t.layerDefaults.decoration?.assetId,
-      ].filter(Boolean) as string[])));
-      const assetsById = await getAssetsByIds(allIds);
+      // 候補一覧をまとめて表示できるよう、全候補分のプレビュー用レイヤーを作っておく
       const map: Record<string, StoryLayer[]> = {};
       reordered.forEach((t) => {
         map[t.id] = buildLayersFromTemplate(
-          t, assetsById, photoUris,
+          t, photoUris,
           t.id === chosen.id ? { font: fontOverride, titleColor: colorOverride } : undefined
         );
       });
@@ -333,10 +318,6 @@ export default function StoryStudioScreen({ visible, onClose, onFinish }: Props)
                   <Ionicons name="text-outline" size={20} color={COLORS.text} />
                   <Text style={styles.toolBtnText}>文字を追加</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.toolBtn} onPress={() => setAssetPickerVisible(true)}>
-                  <Ionicons name="flower-outline" size={20} color={COLORS.text} />
-                  <Text style={styles.toolBtnText}>素材を追加</Text>
-                </TouchableOpacity>
                 {selectedTextLayer && (
                   <TouchableOpacity style={styles.toolBtn} onPress={() => setTextEditVisible(true)}>
                     <Ionicons name="create-outline" size={20} color={COLORS.text} />
@@ -359,15 +340,6 @@ export default function StoryStudioScreen({ visible, onClose, onFinish }: Props)
           </View>
         )}
 
-        <AssetPickerModal
-          visible={assetPickerVisible}
-          plan={plan}
-          onClose={() => setAssetPickerVisible(false)}
-          onSelect={(asset) => {
-            if (!selectedLayerId) return;
-            updateLayer(selectedLayerId, { assetId: asset.id, uri: asset.storageUrl } as any);
-          }}
-        />
         <TextStyleModal
           visible={textEditVisible}
           layer={selectedTextLayer ?? null}

@@ -52,7 +52,7 @@ export function newPhotoAreaDraft(): PhotoAreaDraft {
   return { key: nextDraftKey(), x: String(NEW_ELEMENT_X), y: String(NEW_ELEMENT_Y), w: String(NEW_ELEMENT_SIZE), h: String(NEW_ELEMENT_SIZE) };
 }
 export function newTextLayerDraft(n: number): TextLayerDraft {
-  const fontSize = 40;
+  const fontSize = 80;
   return {
     key: nextDraftKey(), id: `text_${n}`, label: '', sampleText: '',
     // yはテキストのベースライン。ボックスの見た目の上端(y - fontSize)が他の要素と揃うようにする
@@ -254,17 +254,22 @@ export default function TemplatePositionEditor({
     setSelected((s) => (s?.key === key ? null : s));
   };
   const moveTextLayer = (key: string, x: number, y: number) => updateTextLayer(key, { x: String(Math.round(x)), y: String(Math.round(y)) });
-  // キャンバス上での枠のリサイズ（ハンドルドラッグ・2本指ピンチ）は折り返し幅(maxWidth)
-  // だけを変える。文字サイズは「サイズ」欄（数値入力・上下ボタン）でのみ変更する
-  // ——枠を広げるたびに文字まで拡大されると意図せずレイアウトが崩れるため、分離している。
-  const resizeTextLayer = (key: string, w: number) => {
-    updateTextLayer(key, { maxWidth: String(Math.round(w)) });
+  // キャンバス上での枠のリサイズ（ハンドルドラッグ・2本指ピンチ）は、一般的なテキストエリアの
+  // リサイズと同じく幅(maxWidth)と高さ(表示行数=maxLines)を変える。文字サイズ自体は
+  // 「サイズ」欄（数値入力・上下ボタン）でのみ変更する——枠を広げるたびに文字まで拡大されると
+  // 意図せずレイアウトが崩れるため、分離している。
+  const resizeTextLayer = (key: string, w: number, h: number) => {
+    const t = textLayers.find((x) => x.key === key);
+    const fontSize = Number(t?.fontSize) || 80;
+    const lineHeightMul = Number(t?.lineHeight) || 1.25;
+    const newMaxLines = Math.max(1, Math.round(h / (fontSize * lineHeightMul)));
+    updateTextLayer(key, { maxWidth: String(Math.round(w)), maxLines: String(newMaxLines) });
   };
   const TEXT_SIZE_STEP = 2;
   const stepTextFontSize = (key: string, delta: number) => {
     const t = textLayers.find((x) => x.key === key);
     if (!t) return;
-    const newSize = Math.max(8, (Number(t.fontSize) || 40) + delta);
+    const newSize = Math.max(8, (Number(t.fontSize) || 80) + delta);
     updateTextLayer(key, { fontSize: String(newSize) });
   };
   const alignTextLayer = (key: string, where: AlignWhere) => {
@@ -278,7 +283,7 @@ export default function TemplatePositionEditor({
     const idx = textLayers.findIndex((t) => t.key === key);
     if (idx === -1) return;
     const src = textLayers[idx];
-    const copy: TextLayerDraft = { ...src, key: nextDraftKey(), id: `${src.id}_copy${draftKeySeq}`, y: String((Number(src.y) || 0) + 40) };
+    const copy: TextLayerDraft = { ...src, key: nextDraftKey(), id: `${src.id}_copy${draftKeySeq}`, y: String((Number(src.y) || 0) + 80) };
     onTextLayersChange([...textLayers.slice(0, idx + 1), copy, ...textLayers.slice(idx + 1)]);
     setSelected({ type: 'text', key: copy.key });
   };
@@ -392,11 +397,13 @@ export default function TemplatePositionEditor({
       color: '#4A90D9', resizable: true, selected: selected?.type === 'decoration' && selected.key === d.key,
     })),
     ...textLayers.map((t): PositionCanvasBox => {
-      const fontSize = Number(t.fontSize) || 40;
+      const fontSize = Number(t.fontSize) || 80;
+      const lineHeightMul = Number(t.lineHeight) || 1.25;
+      const maxLines = Math.max(1, Number(t.maxLines) || 3);
       const fontPreset = COLLAGE_FONT_PRESETS.find((f) => f.id === t.font) ?? COLLAGE_FONT_PRESETS[0];
       return {
         key: t.key, x: Number(t.x) || 0, y: (Number(t.y) || 0) - fontSize,
-        w: Number(t.maxWidth) || 300, h: fontSize * 1.4,
+        w: Number(t.maxWidth) || 300, h: fontSize * lineHeightMul * maxLines,
         color: '#3E8E6E', resizable: true, selected: selected?.type === 'text' && selected.key === t.key,
         previewText: t.sampleText || t.label || 'テキスト',
         previewTextColor: t.color,
@@ -413,14 +420,14 @@ export default function TemplatePositionEditor({
     if (decorations.some((d) => d.key === key)) return moveDecoration(key, x, y);
     const textLayer = textLayers.find((t) => t.key === key);
     if (textLayer) {
-      const fontSize = Number(textLayer.fontSize) || 40;
+      const fontSize = Number(textLayer.fontSize) || 80;
       moveTextLayer(key, x, y + fontSize);
     }
   };
   const handleCanvasResize = (key: string, w: number, h: number) => {
     if (photoAreas.some((a) => a.key === key)) return resizePhotoArea(key, w, h);
     if (decorations.some((d) => d.key === key)) return resizeDecoration(key, w, h);
-    if (textLayers.some((t) => t.key === key)) return resizeTextLayer(key, w);
+    if (textLayers.some((t) => t.key === key)) return resizeTextLayer(key, w, h);
   };
   const handleCanvasSelect = (key: string) => {
     if (photoAreas.some((a) => a.key === key)) return setSelected({ type: 'photo', key });

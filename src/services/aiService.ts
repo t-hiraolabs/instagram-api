@@ -849,8 +849,8 @@ function detailError(err: unknown): string {
 
 // ===== Story Studio: テンプレート推薦 =====
 // 画像は生成しない。DB側で絞り込んだ候補（最大20件程度）の中から、
-// ブランド情報・業種・目的・過去利用履歴をもとに最適な1件と、差し替える
-// 素材ID・フォント・色をJSONのみで選ばせる（Haikuの軽量呼び出し）。
+// ブランド情報・業種・目的・過去利用履歴をもとに最適な完成テンプレート1件と、
+// フォント・色をJSONのみで選ばせる（Haikuの軽量呼び出し）。
 
 export interface StoryRecommendCandidate {
   id: string;
@@ -860,10 +860,6 @@ export interface StoryRecommendCandidate {
 
 export interface StoryRecommendResult {
   template: string;
-  background?: string;
-  frame?: string;
-  flower?: string;
-  decoration?: string;
   font?: string;
   titleColor?: string;
   reason?: string;
@@ -878,8 +874,8 @@ export async function recommendStoryTemplate(input: {
   const brandCtx = getBrandContext();
   const systemPrompt =
     'あなたはInstagramストーリーのデザイン選定アシスタントです。画像は一切生成しません。' +
-    '与えられたテンプレート候補一覧（id・名前・タグ）の中から、ブランド情報・投稿目的に最も合う1件を選び、' +
-    '差し替えるべき素材（背景・フレーム・花・装飾）のIDやフォント・文字色を判断してください。' +
+    '与えられたテンプレート候補一覧（id・名前・タグ）の中から、ブランド情報・投稿目的に最も合う完成テンプレートを1件選び、' +
+    'フォント・文字色を判断してください。' +
     '候補一覧に無いIDは絶対に作らないでください。必ずJSONのみで返答してください。';
 
   const prompt = `以下のテンプレート候補から、最適な1件を選んでください。${brandCtx}

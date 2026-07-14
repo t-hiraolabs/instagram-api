@@ -33,7 +33,7 @@ import { PLANS, Plan, PLAN_RANK, maxInstagramAccounts } from '../utils/plans';
 import { JP_PREFECTURES, JP_PREFECTURES_CITIES } from '../utils/jpLocations';
 import { registerPush, unregisterPush, isPushSupported, isPushEnabled } from '../services/pushService';
 import { navigationRef } from '../navigation/RootNavigator';
-import { checkIsAdmin } from '../services/adminAssetService';
+import { checkIsAdmin } from '../services/collageStyleService';
 import {
   connectInstagram,
   clearInstagramStorage,
@@ -833,7 +833,7 @@ export default function ProfileScreen() {
             activeOpacity={0.7}
           >
             <Ionicons name="shield-checkmark-outline" size={18} color={COLORS.textSecondary} style={styles.helpEmoji} />
-            <Text style={styles.helpLabel}>素材シート管理（管理者）</Text>
+            <Text style={styles.helpLabel}>テンプレート管理（管理者）</Text>
             <Text style={styles.helpArrow}>›</Text>
           </TouchableOpacity>
         )}
