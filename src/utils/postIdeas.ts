@@ -1,5 +1,9 @@
-// ホーム画面の「今日のおすすめ投稿ネタ」。ブランド設定の業種（aiService.tsのINDUSTRIESの
-// keyと対応）に応じて内容を出し分ける。AIを呼ばず無料で出せるものだけを扱う。
+// ホーム画面の「今日のおすすめ投稿ネタ」。ブランド設定の業種（プロフィール画面の
+// 自由入力欄）に応じて内容を出し分ける。AIを呼ばず無料で出せるものだけを扱う。
+//
+// 業種は自由入力なので、aiService.tsのINDUSTRIESと完全一致しないことが多い
+// （例:「AIマーケティング支援」）。完全一致しない場合はキーワードで近い業種に
+// マッチさせ、それでも該当がなければ業種を問わず使える汎用ネタにフォールバックする。
 import { Ionicons } from '@expo/vector-icons';
 
 export interface PostIdea {
@@ -7,15 +11,15 @@ export interface PostIdea {
   icon: keyof typeof Ionicons.glyphMap;
 }
 
-// 業種が未設定・非対応のときの汎用ネタ
+// 業種が全く特定できないときの、本当に業種を問わない汎用ネタ
 const GENERIC_IDEAS: PostIdea[] = [
-  { text: '新作・季節限定メニューの紹介', icon: 'sparkles-outline' },
-  { text: 'お客様の声・ビフォーアフター', icon: 'chatbox-ellipses-outline' },
-  { text: '期間限定キャンペーンの告知', icon: 'megaphone-outline' },
-  { text: 'スタッフ紹介・お店の裏側', icon: 'people-outline' },
-  { text: '本日のおすすめ・入荷情報', icon: 'today-outline' },
+  { text: 'お客様の声・導入事例の紹介', icon: 'chatbox-ellipses-outline' },
+  { text: '最新のお知らせ・アップデート情報', icon: 'megaphone-outline' },
   { text: 'よくある質問に答える投稿', icon: 'help-circle-outline' },
-  { text: 'リピーター向けの感謝メッセージ', icon: 'heart-outline' },
+  { text: 'サービス・商品の使い方紹介', icon: 'bulb-outline' },
+  { text: 'チーム・メンバー紹介', icon: 'people-outline' },
+  { text: '実績・成果の紹介', icon: 'trophy-outline' },
+  { text: 'キャンペーン・特典のお知らせ', icon: 'gift-outline' },
 ];
 
 const INDUSTRY_IDEAS: Record<string, PostIdea[]> = {
@@ -127,9 +131,45 @@ const INDUSTRY_IDEAS: Record<string, PostIdea[]> = {
     { text: 'コラボ・新企画のお知らせ', icon: 'people-outline' },
     { text: 'グッズ・販売情報', icon: 'pricetag-outline' },
   ],
+  'IT・Web制作・マーケティング支援': [
+    { text: '導入事例・お客様の成果紹介', icon: 'trophy-outline' },
+    { text: '機能アップデート・新機能のお知らせ', icon: 'megaphone-outline' },
+    { text: 'よくある質問に答える投稿', icon: 'help-circle-outline' },
+    { text: '業界トレンド・お役立ち豆知識', icon: 'bulb-outline' },
+    { text: 'サービスの使い方Tips', icon: 'construct-outline' },
+    { text: 'お客様の声・レビュー紹介', icon: 'chatbox-ellipses-outline' },
+    { text: '無料相談・資料請求のご案内', icon: 'calendar-outline' },
+  ],
 };
 
-/** ブランド設定の業種に応じたおすすめ投稿ネタの候補一覧を返す（未設定・非対応時は汎用ネタ） */
+// 業種は自由入力のため、完全一致しない場合に備えたキーワードでの近似マッチング表
+// （先に定義したものが優先。「マーケティング」はコンサル系ではなくIT/Web系に寄せる）
+const INDUSTRY_KEYWORDS: [string, string[]][] = [
+  ['美容・ネイル・まつ毛', ['美容', 'ネイル', 'まつ毛', 'エステ', 'サロン', 'ヘアサロン', '理容']],
+  ['飲食・カフェ・スイーツ', ['飲食', 'カフェ', 'レストラン', 'スイーツ', 'パン', 'ケーキ', '居酒屋', '食堂', '料理']],
+  ['アパレル・ファッション', ['アパレル', 'ファッション', '衣料', 'ブティック']],
+  ['ハンドメイド・クラフト', ['ハンドメイド', 'クラフト', '手作り', '工芸']],
+  ['フィットネス・ヨガ・ピラティス', ['フィットネス', 'ヨガ', 'ピラティス', 'ジム', 'トレーニング', 'トレーナー']],
+  ['フォトグラファー・映像', ['フォト', '写真', 'カメラ', '映像', '動画', '撮影']],
+  ['インテリア・リフォーム・DIY', ['インテリア', 'リフォーム', 'DIY', '工務店', '家具', '建築']],
+  ['IT・Web制作・マーケティング支援', ['IT', 'Web', 'ウェブ', 'マーケティング', '広告', 'SNS', 'DX', 'システム', 'アプリ開発', 'AI', 'SaaS']],
+  ['教育・コーチング・コンサル', ['教育', 'コーチング', 'コンサル', '講座', 'スクール', '塾', '士業', 'セミナー', '研修']],
+  ['健康・ウェルネス・サプリ', ['健康', 'ウェルネス', 'サプリ', '整体', '鍼灸', 'マッサージ', '治療院']],
+  ['旅行・観光・宿泊', ['旅行', '観光', '宿泊', 'ホテル', '旅館', 'ゲストハウス']],
+  ['ペット・動物関連', ['ペット', '動物', 'トリミング', '動物病院']],
+  ['音楽・アート・クリエイター', ['音楽', 'アート', 'クリエイター', 'イラスト', '絵画', 'バンド']],
+];
+
+function matchIndustryKey(industry: string): string | null {
+  if (!industry) return null;
+  if (INDUSTRY_IDEAS[industry]) return industry;
+  const found = INDUSTRY_KEYWORDS.find(([, keywords]) => keywords.some((kw) => industry.includes(kw)));
+  return found ? found[0] : null;
+}
+
+/** ブランド設定の業種（自由入力）に応じたおすすめ投稿ネタの候補一覧を返す。
+ *  完全一致しない場合はキーワードで近い業種にマッチさせ、それでも該当なければ汎用ネタを返す。 */
 export function getPostIdeas(industry: string): PostIdea[] {
-  return INDUSTRY_IDEAS[industry] ?? GENERIC_IDEAS;
+  const key = matchIndustryKey(industry);
+  return key ? INDUSTRY_IDEAS[key] : GENERIC_IDEAS;
 }
