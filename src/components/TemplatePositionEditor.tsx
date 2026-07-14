@@ -264,7 +264,7 @@ export default function TemplatePositionEditor({
   const stepTextFontSize = (key: string, delta: number) => {
     const t = textLayers.find((x) => x.key === key);
     if (!t) return;
-    const newSize = Math.max(8, (Number(t.fontSize) || 40) + delta);
+    const newSize = Math.max(8, (Number(t.fontSize) || 80) + delta);
     updateTextLayer(key, { fontSize: String(newSize) });
   };
   const alignTextLayer = (key: string, where: AlignWhere) => {
@@ -278,7 +278,7 @@ export default function TemplatePositionEditor({
     const idx = textLayers.findIndex((t) => t.key === key);
     if (idx === -1) return;
     const src = textLayers[idx];
-    const copy: TextLayerDraft = { ...src, key: nextDraftKey(), id: `${src.id}_copy${draftKeySeq}`, y: String((Number(src.y) || 0) + 40) };
+    const copy: TextLayerDraft = { ...src, key: nextDraftKey(), id: `${src.id}_copy${draftKeySeq}`, y: String((Number(src.y) || 0) + 80) };
     onTextLayersChange([...textLayers.slice(0, idx + 1), copy, ...textLayers.slice(idx + 1)]);
     setSelected({ type: 'text', key: copy.key });
   };
