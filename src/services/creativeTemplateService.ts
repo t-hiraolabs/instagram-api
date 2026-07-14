@@ -2,11 +2,11 @@
 // storyStudioService.ts（Story Studio専用）とcollageStyleService.ts（Collage専用）を
 // 段階的に置き換えるための新設サービス。
 //
-// フェーズ1時点では、DB側の`templates`はまだtype='story'/'collage'に分かれたまま、かつ
-// `layer_defaults`の中身も新形式（TemplateDefinitionV1）に移行済みなのはtype='story'側のみ
-// （フェーズ2で移行）。そのためこのサービスは今のところtype='story'のみを対象とする。
-// フェーズ4でtype IN ('story','collage')の横断クエリに拡張し、フェーズ6でtype統一後に
-// type='story'単独へ戻す（計画のフェーズ順序メモ参照）。
+// DB側の`templates`はまだtype='story'/'collage'に分かれたまま（フェーズ6で統一予定）。
+// フェーズ4よりlistCreativeTemplatesはtype IN ('story','collage')で両方を横断的に読み、
+// rowToCreativeTemplateが新旧いずれの形状も判定して新形式CreativeTemplateへ変換する。
+// フェーズ6でDBのtype列を'story'へ統一した後、type='story'単独のクエリへ戻す
+// （計画のフェーズ順序メモ参照）。
 //
 // フェーズ2の注記: 実データ調査の結果、templates(type='story')は0件（実運用データなし）
 // だったため、SQLでの一括UPDATE移行は対象がなく実施していない。代わりに、旧形式
@@ -185,10 +185,13 @@ export interface CreativeTemplateFilters {
 
 export async function listCreativeTemplates(plan: Plan, filters?: CreativeTemplateFilters): Promise<CreativeTemplate[]> {
   const plans = allowedPlans(plan);
+  // フェーズ4: DBのtype列自体はまだ'story'/'collage'に分かれたまま（統一はフェーズ6）。
+  // 新ギャラリーは両方を横断的に読み、rowToCreativeTemplateが形状を自動判定して
+  // 新形式CreativeTemplate（type:'story'固定）へ変換する。
   const { data, error } = await supabase
     .from('templates')
     .select(TEMPLATE_COLUMNS)
-    .eq('type', 'story')
+    .in('type', ['story', 'collage'])
     .eq('is_active', true)
     .in('plan', plans);
   if (error) throw error;
