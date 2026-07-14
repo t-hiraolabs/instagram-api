@@ -21,6 +21,7 @@ import { getInsightsSummary } from './src/services/insightsService';
 import { loadBrandSettingsFromDb, saveBrandSettingsToDb, brandLocalKey } from './src/services/brandSettingsService';
 import { analyzeBrandFromPosts } from './src/services/aiService';
 import { loadAssistantMemory } from './src/services/memoryService';
+import { useCreativeFonts } from './src/utils/fontPresets';
 import axios from 'axios';
 
 const queryClient = new QueryClient();
@@ -384,6 +385,9 @@ function AuthGate() {
 }
 
 export default function App() {
+  // 「ストーリー作成」機能の共有フォントを起動時から先読みしておく（画面に到達する頃には
+  // 読み込み済みになっているようにするための早期キック。アプリ全体の表示はブロックしない）。
+  useCreativeFonts();
   return (
     <QueryClientProvider client={queryClient}>
       <SafeAreaProvider>

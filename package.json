@@ -9,6 +9,14 @@
     "web": "expo start --web"
   },
   "dependencies": {
+    "@expo-google-fonts/dela-gothic-one": "^0.4.1",
+    "@expo-google-fonts/kaisei-decol": "^0.4.1",
+    "@expo-google-fonts/m-plus-rounded-1c": "^0.4.3",
+    "@expo-google-fonts/reggae-one": "^0.4.1",
+    "@expo-google-fonts/shippori-mincho": "^0.4.1",
+    "@expo-google-fonts/yomogi": "^0.4.1",
+    "@expo-google-fonts/zen-kaku-gothic-new": "^0.4.1",
+    "@expo-google-fonts/zen-maru-gothic": "^0.4.1",
     "@expo/metro-runtime": "~3.2.3",
     "@opentelemetry/api": "^1.9.1",
     "@react-navigation/bottom-tabs": "^6.5.20",
