@@ -93,4 +93,50 @@ test.describe('CreativeCanvas', () => {
     const afterZoomIn = await page.getByTestId('e2e-offset-photo_3').textContent();
     expect(afterZoomIn).toMatch(/scale=1\.00/);
   });
+
+  test('スナップ中は写真スロットの枠線が見えやすい色になり、離すと選択枠の色に戻る', async ({ page }) => {
+    await page.goto('/?e2e=creativeCanvas');
+    await page.waitForTimeout(1000);
+
+    const box = await page.getByTestId('layer-photo_3').boundingBox();
+    expect(box).not.toBeNull();
+    const cx = box!.x + box!.width / 2;
+    const cy = box!.y + box!.height / 2;
+
+    const client = await page.context().newCDPSession(page);
+    async function borderColor() {
+      return page.evaluate(() => {
+        const el = document.querySelector('[data-testid="layer-photo_3"] > div') as HTMLElement | null;
+        return el ? getComputedStyle(el).borderTopColor : null;
+      });
+    }
+
+    // まずスナップ範囲外まで大きくズームアウトする（選択状態にもなる）
+    await dispatchTouch(client, 'touchStart', [{ x: cx - 30, y: cy }, { x: cx + 30, y: cy }]);
+    await page.waitForTimeout(100);
+    for (let i = 1; i <= 8; i++) {
+      const offset = 30 + ((90 - 30) * i) / 8;
+      await dispatchTouch(client, 'touchMove', [{ x: cx - offset, y: cy }, { x: cx + offset, y: cy }]);
+      await page.waitForTimeout(40);
+    }
+    await page.waitForTimeout(100);
+    await dispatchTouch(client, 'touchEnd', []);
+    await page.waitForTimeout(300);
+    expect(await borderColor()).toBe('rgb(74, 144, 217)'); // 選択枠の色（スナップしていない）
+
+    // scale=1付近まで縮小する（スナップ範囲内）
+    await dispatchTouch(client, 'touchStart', [{ x: cx - 60, y: cy }, { x: cx + 60, y: cy }]);
+    await page.waitForTimeout(100);
+    for (let i = 1; i <= 8; i++) {
+      const offset = 60 + ((20 - 60) * i) / 8;
+      await dispatchTouch(client, 'touchMove', [{ x: cx - offset, y: cy }, { x: cx + offset, y: cy }]);
+      await page.waitForTimeout(40);
+    }
+    await page.waitForTimeout(150);
+    expect(await borderColor()).toBe('rgb(0, 229, 255)'); // スナップ中の見えやすい色
+
+    await dispatchTouch(client, 'touchEnd', []);
+    await page.waitForTimeout(300);
+    expect(await borderColor()).toBe('rgb(74, 144, 217)'); // 離すと選択枠の色に戻る
+  });
 });

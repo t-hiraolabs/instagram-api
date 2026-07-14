@@ -16,3 +16,21 @@ export function snapValue(raw: number, targets: number[], zone: number): number 
   }
   return best;
 }
+
+/** snapValueと同じだが、どの候補にスナップしたか（していないならnull）も返す。
+ *  スナップ中はガイド線（見えやすい枠線）を表示するために使う。 */
+export function snapValueWithHit(raw: number, targets: number[], zone: number): { value: number; hit: number | null } {
+  'worklet';
+  let best = raw;
+  let bestDist = zone;
+  let hit: number | null = null;
+  for (let i = 0; i < targets.length; i++) {
+    const d = Math.abs(raw - targets[i]);
+    if (d < bestDist) {
+      bestDist = d;
+      best = targets[i];
+      hit = targets[i];
+    }
+  }
+  return { value: best, hit };
+}

@@ -15,7 +15,7 @@ import {
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
 import { FeedTransform, DEFAULT_FEED_TRANSFORM, ASPECTS, AspectKey, composeFeedImage, makeBlurredBackgroundUrl } from '../utils/composeFeed';
 import { loadImage } from '../utils/composeStory';
-import { snapValue } from '../utils/snap';
+import { snapValueWithHit } from '../utils/snap';
 
 interface Props {
   visible: boolean;
@@ -32,6 +32,8 @@ const MAX_SCALE = 4;
 // 「ちょうど枠を覆う倍率（scale=1）」「中央」に近づいたときに一瞬止まるスナップの許容量
 const SCALE_SNAP_ZONE = 0.04;
 const POSITION_SNAP_PX = 8;
+// スナップ中に表示する、見えやすいガイド線・枠線の色
+const GUIDE_COLOR = '#00E5FF';
 
 function clamp(v: number, min: number, max: number) { return Math.max(min, Math.min(max, v)); }
 
@@ -108,6 +110,9 @@ export default function FeedCropEditor({ visible, images, initialIndex = 0, onCa
   refs.current = { idx, transforms, metas, ar, frameH, coverW, coverH };
   const startRef = useRef<{ x: number; y: number; scale: number; dist: number | null }>({ x: 0, y: 0, scale: 1, dist: null });
 
+  // ちょうど枠を覆う倍率・中央に近づいてスナップした間だけ、見えやすいガイド線・枠線を表示する
+  const [snapped, setSnapped] = useState({ x: false, y: false, scale: false });
+
   const setT = (patch: Partial<FeedTransform>) => {
     setTransforms((prev) => {
       const r = refs.current;
@@ -117,16 +122,20 @@ export default function FeedCropEditor({ visible, images, initialIndex = 0, onCa
       t.scale = clamp(t.scale, MIN_SCALE, MAX_SCALE);
       // ちょうど枠を覆う倍率（縮小していくと上下または左右がぴったり画面いっぱいになる境目）に
       // 近づいたら一瞬止まるようにする
-      t.scale = snapValue(t.scale, [1], SCALE_SNAP_ZONE);
+      const scaleHit = snapValueWithHit(t.scale, [1], SCALE_SNAP_ZONE);
+      t.scale = scaleHit.value;
       // 拡大時ははみ出し分、縮小時は余白分まで移動を許可（背景で埋まる）
       const ox = Math.abs(r.coverW * t.scale - FRAME_W) / 2 / FRAME_W;
       const oy = Math.abs(r.coverH * t.scale - r.frameH) / 2 / r.frameH;
       t.x = clamp(t.x, -ox, ox);
       t.y = clamp(t.y, -oy, oy);
       // 中央に近づいたら一瞬止まるようにする
-      t.x = snapValue(t.x, [0], POSITION_SNAP_PX / FRAME_W);
-      t.y = snapValue(t.y, [0], POSITION_SNAP_PX / r.frameH);
+      const xHit = snapValueWithHit(t.x, [0], POSITION_SNAP_PX / FRAME_W);
+      const yHit = snapValueWithHit(t.y, [0], POSITION_SNAP_PX / r.frameH);
+      t.x = xHit.value;
+      t.y = yHit.value;
       next[i] = t;
+      setSnapped({ x: xHit.hit !== null, y: yHit.hit !== null, scale: scaleHit.hit !== null });
       return next;
     });
   };
@@ -157,8 +166,8 @@ export default function FeedCropEditor({ visible, images, initialIndex = 0, onCa
           });
         }
       },
-      onPanResponderRelease: () => { startRef.current.dist = null; },
-      onPanResponderTerminate: () => { startRef.current.dist = null; },
+      onPanResponderRelease: () => { startRef.current.dist = null; setSnapped({ x: false, y: false, scale: false }); },
+      onPanResponderTerminate: () => { startRef.current.dist = null; setSnapped({ x: false, y: false, scale: false }); },
     })
   ).current;
 
@@ -239,8 +248,23 @@ export default function FeedCropEditor({ visible, images, initialIndex = 0, onCa
               <View pointerEvents="none" style={[styles.mask, { left: 0, top: frameTop + frameH, width: stageW, height: stageH - frameTop - frameH }]} />
               <View pointerEvents="none" style={[styles.mask, { left: 0, top: frameTop, width: frameLeft, height: frameH }]} />
               <View pointerEvents="none" style={[styles.mask, { left: frameLeft + FRAME_W, top: frameTop, width: stageW - frameLeft - FRAME_W, height: frameH }]} />
-              {/* 枠線 */}
-              <View pointerEvents="none" style={[styles.cropBox, { left: frameLeft, top: frameTop, width: FRAME_W, height: frameH }]} />
+              {/* 枠線。ちょうど枠を覆う倍率にスナップした間は見えやすい色に変える */}
+              <View
+                testID="feedcrop-box"
+                pointerEvents="none"
+                style={[
+                  styles.cropBox,
+                  { left: frameLeft, top: frameTop, width: FRAME_W, height: frameH },
+                  snapped.scale && { borderColor: GUIDE_COLOR, borderWidth: 3 },
+                ]}
+              />
+              {/* 中央に近づいてスナップした間だけ表示するガイド線 */}
+              {snapped.x && (
+                <View testID="feedcrop-guide-v" pointerEvents="none" style={[styles.guideV, { left: frameLeft + FRAME_W / 2, top: frameTop, height: frameH }]} />
+              )}
+              {snapped.y && (
+                <View testID="feedcrop-guide-h" pointerEvents="none" style={[styles.guideH, { top: frameTop + frameH / 2, left: frameLeft, width: FRAME_W }]} />
+              )}
             </View>
           );
         })()}
@@ -377,6 +401,9 @@ const styles = StyleSheet.create({
   },
   mask: { position: 'absolute', backgroundColor: 'rgba(0,0,0,0.55)' },
   cropBox: { position: 'absolute', borderWidth: 2, borderColor: '#fff', borderRadius: 2 },
+  // 中央にスナップした間だけ表示する見えやすいガイド線
+  guideV: { position: 'absolute', width: 2, backgroundColor: GUIDE_COLOR },
+  guideH: { position: 'absolute', height: 2, backgroundColor: GUIDE_COLOR },
   aspectRow: { flexDirection: 'row', justifyContent: 'center', gap: SPACING.sm, marginTop: SPACING.md },
   aspectBtn: { paddingHorizontal: SPACING.lg, paddingVertical: 8, borderRadius: RADIUS.full, borderWidth: 1, borderColor: COLORS.border },
   aspectBtnActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },

@@ -17,13 +17,15 @@ import {
   Gesture,
   GestureDetector,
 } from 'react-native-gesture-handler';
-import { snapValue } from '../../utils/snap';
+import { snapValueWithHit } from '../../utils/snap';
 
 // きりのいい位置・倍率（中央寄せ、スロットをちょうど覆う倍率など）に近づいたときに
 // 一瞬止まる感触を出すための許容量。位置は画面px基準（displayScaleで論理px換算）、
 // 倍率は比率そのもの（0.04 = 4%以内）。
 const POSITION_SNAP_SCREEN_PX = 8;
 const SCALE_SNAP_ZONE = 0.04;
+// スナップ中だけ表示する、見えやすい枠線の色
+const GUIDE_COLOR = '#00E5FF';
 
 interface Props {
   x: number;
@@ -58,6 +60,8 @@ export default function DraggableLayer({
   const translateY = useSharedValue(y);
   const savedScale = useSharedValue(scale);
   const savedRotation = useSharedValue(rotation);
+  // きりのいい位置・倍率にスナップしている間だけtrueにし、見えやすい枠線を表示する
+  const isSnapped = useSharedValue(false);
 
   // 外部（他の編集操作・レイヤー切替）からの値変更を反映
   React.useEffect(() => { translateX.value = x; }, [x]);
@@ -81,22 +85,26 @@ export default function DraggableLayer({
       const zone = POSITION_SNAP_SCREEN_PX / displayScale;
       let nx = x + e.translationX / displayScale;
       let ny = y + e.translationY / displayScale;
-      if (snapX) nx = snapValue(nx, snapX, zone);
-      if (snapY) ny = snapValue(ny, snapY, zone);
+      let snapped = false;
+      if (snapX) { const r = snapValueWithHit(nx, snapX, zone); nx = r.value; if (r.hit !== null) snapped = true; }
+      if (snapY) { const r = snapValueWithHit(ny, snapY, zone); ny = r.value; if (r.hit !== null) snapped = true; }
       translateX.value = nx;
       translateY.value = ny;
+      isSnapped.value = snapped;
     })
-    .onEnd(() => runOnJS(commit)());
+    .onEnd(() => { isSnapped.value = false; runOnJS(commit)(); });
 
   const pinch = Gesture.Pinch()
     .enabled(!locked)
     .onBegin(() => runOnJS(onSelect)())
     .onUpdate((e) => {
       let s = Math.min(maxScale, Math.max(minScale, scale * e.scale));
-      if (snapScale) s = snapValue(s, snapScale, SCALE_SNAP_ZONE);
+      let snapped = false;
+      if (snapScale) { const r = snapValueWithHit(s, snapScale, SCALE_SNAP_ZONE); s = r.value; if (r.hit !== null) snapped = true; }
       savedScale.value = s;
+      isSnapped.value = snapped;
     })
-    .onEnd(() => runOnJS(commit)());
+    .onEnd(() => { isSnapped.value = false; runOnJS(commit)(); });
 
   const rotate = Gesture.Rotation()
     .enabled(!locked && rotatable)
@@ -110,24 +118,30 @@ export default function DraggableLayer({
 
   const composed = Gesture.Simultaneous(pan, pinch, rotate, tap);
 
-  const style = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: translateX.value * displayScale },
-      { translateY: translateY.value * displayScale },
-      { scale: savedScale.value },
-      { rotateZ: `${savedRotation.value}deg` },
-    ] as any,
-  }));
+  const style = useAnimatedStyle(() => {
+    // 枠線の優先順位: スナップ中（見えやすい色）＞選択中（通常の選択枠）＞非表示
+    let borderWidth = 0;
+    let borderColor = 'transparent';
+    let borderStyle: 'solid' | 'dashed' = 'dashed';
+    if (isSnapped.value) {
+      borderWidth = 2.5; borderColor = GUIDE_COLOR; borderStyle = 'solid';
+    } else if (selected) {
+      borderWidth = 1.5; borderColor = '#4A90D9'; borderStyle = 'dashed';
+    }
+    return {
+      transform: [
+        { translateX: translateX.value * displayScale },
+        { translateY: translateY.value * displayScale },
+        { scale: savedScale.value },
+        { rotateZ: `${savedRotation.value}deg` },
+      ] as any,
+      borderWidth, borderColor, borderStyle,
+    };
+  });
 
   return (
     <GestureDetector gesture={composed}>
-      <Animated.View
-        style={[
-          styles.wrap,
-          style,
-          selected && styles.selected,
-        ]}
-      >
+      <Animated.View style={[styles.wrap, style]}>
         {children}
       </Animated.View>
     </GestureDetector>
@@ -136,5 +150,4 @@ export default function DraggableLayer({
 
 const styles = StyleSheet.create({
   wrap: { position: 'absolute', top: 0, left: 0 },
-  selected: { borderWidth: 1.5, borderColor: '#4A90D9', borderStyle: 'dashed' },
 });
