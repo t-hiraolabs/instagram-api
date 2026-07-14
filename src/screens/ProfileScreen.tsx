@@ -833,7 +833,7 @@ export default function ProfileScreen() {
             activeOpacity={0.7}
           >
             <Ionicons name="shield-checkmark-outline" size={18} color={COLORS.textSecondary} style={styles.helpEmoji} />
-            <Text style={styles.helpLabel}>コラージュテンプレート管理（管理者）</Text>
+            <Text style={styles.helpLabel}>テンプレート管理（管理者）</Text>
             <Text style={styles.helpArrow}>›</Text>
           </TouchableOpacity>
         )}
