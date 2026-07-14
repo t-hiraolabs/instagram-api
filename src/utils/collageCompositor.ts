@@ -148,6 +148,8 @@ export interface CollagePhotoArea {
   y: number;
   w: number;
   h: number;
+  /** 描画順（昇順）。未指定は写真の目安バンド(25)扱い */
+  zIndex?: number;
 }
 
 /** 装飾用の画像（ロゴ・スタンプ等）を固定表示する矩形。写真の上・テキストの下に描く */
@@ -157,6 +159,8 @@ export interface CollageDecoration {
   y: number;
   w: number;
   h: number;
+  /** 描画順（昇順）。未指定は装飾の目安バンド(40)扱い */
+  zIndex?: number;
 }
 
 /** テキストレイヤー1件。座標はキャンバス1080×1920px基準 */
@@ -328,11 +332,11 @@ export async function composeCollage(
   type Layer = { zIndex: number; run: () => Promise<void> | void };
   const layers: Layer[] = [
     ...template.photoAreas.map((area, i): Layer => ({
-      zIndex: COLLAGE_Z_BANDS.photos,
+      zIndex: area.zIndex ?? COLLAGE_Z_BANDS.photos,
       run: () => (photos[i] ? drawPlainPhoto(ctx, photos[i], area) : undefined),
     })),
     ...(template.decorations ?? []).map((dec): Layer => ({
-      zIndex: COLLAGE_Z_BANDS.decoration,
+      zIndex: dec.zIndex ?? COLLAGE_Z_BANDS.decoration,
       run: () => drawDecoration(ctx, dec),
     })),
     ...(template.textLayers ?? []).map((layer): Layer => ({

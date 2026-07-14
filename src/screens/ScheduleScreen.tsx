@@ -22,6 +22,7 @@ import { uploadPostImage, uploadBlob } from '../services/storage';
 import FeedCropEditor from '../components/FeedCropEditor';
 import CollageEditor from '../components/CollageEditor';
 import StoryStudioScreen from '../components/storyStudio/StoryStudioScreen';
+import StoryTemplateEditor from '../components/creative/StoryTemplateEditor';
 import RosterScreen from './RosterScreen';
 import { generatePost, generateFromImages, refineCaption } from '../services/aiService';
 import { getTopPostsForGeneration } from '../services/insightsService';
@@ -247,9 +248,11 @@ export default function ScheduleScreen() {
   const [productTags, setProductTags] = useState<string[]>([]);
   const [newProductTag, setNewProductTag] = useState('');
   const [locationId, setLocationId] = useState('');
-  // コラージュ型ストーリーテンプレート
+  // コラージュ型ストーリーテンプレート（旧フロー。ロールバック用に残置、現在は導線なし）
   const [collageVisible, setCollageVisible] = useState(false);
   const [storyStudioVisible, setStoryStudioVisible] = useState(false);
+  // 「ストーリー作成」統合フロー（写真1枚/複数枚を単一ギャラリーから選ぶ新導線）
+  const [storyCreativeVisible, setStoryCreativeVisible] = useState(false);
   // AI画像生成（チャット）
   const [imgChatVisible, setImgChatVisible] = useState(false);
   const openImageChatFlag = useAppStore((s) => s.openImageChat);
@@ -406,6 +409,31 @@ export default function ScheduleScreen() {
   // Story Studioで作った画像（PNG dataURL）をアップロードし、ストーリーとして続きの作成画面へ
   const handleStoryStudioFinish = async (dataUrl: string) => {
     setStoryStudioVisible(false);
+    setComposing(true);
+    try {
+      const blob = await (await fetch(dataUrl)).blob();
+      const publicUrl = await uploadBlob(blob);
+      setImagePreview(dataUrl);
+      setImageUrl(publicUrl);
+      setType('story');
+      setModalVisible(true);
+    } catch (e) {
+      alertMsg(e instanceof Error ? e.message : 'アップロードに失敗しました');
+    } finally {
+      setComposing(false);
+    }
+  };
+
+  // 「ストーリー作成」統合フローを開く（作成モーダルは隠してz-index競合を防ぐ）
+  const openStoryCreative = async () => {
+    if (!(await ensureLoggedIn('ストーリー作成にはログインが必要です'))) return;
+    setModalVisible(false);
+    setStoryCreativeVisible(true);
+  };
+
+  // 統合フローで作った画像（PNG dataURL/URI）をアップロードし、ストーリーとして続きの作成画面へ
+  const handleStoryCreativeFinish = async (dataUrl: string) => {
+    setStoryCreativeVisible(false);
     setComposing(true);
     try {
       const blob = await (await fetch(dataUrl)).blob();
@@ -1252,11 +1280,7 @@ export default function ScheduleScreen() {
               <Ionicons name="image-outline" size={22} color={COLORS.text} style={styles.createMenuEmoji} />
               <Text style={styles.createMenuLabel}>フィード</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.createMenuBtn} onPress={openCollage} activeOpacity={0.85}>
-              <Ionicons name="grid-outline" size={22} color={COLORS.text} style={styles.createMenuEmoji} />
-              <Text style={styles.createMenuLabel}>コラージュ</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.createMenuBtn} onPress={openStoryStudio} activeOpacity={0.85}>
+            <TouchableOpacity style={styles.createMenuBtn} onPress={openStoryCreative} activeOpacity={0.85}>
               <Ionicons name="sparkles-outline" size={22} color={COLORS.text} style={styles.createMenuEmoji} />
               <Text style={styles.createMenuLabel}>ストーリー</Text>
             </TouchableOpacity>
@@ -1426,11 +1450,18 @@ export default function ScheduleScreen() {
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* Story Studio: 写真を選ぶだけでストーリーを完成させる */}
+      {/* 旧Story Studio（写真1枚専用）: 現在は導線なし。ロールバック用に残置 */}
       <StoryStudioScreen
         visible={storyStudioVisible}
         onClose={() => setStoryStudioVisible(false)}
         onFinish={handleStoryStudioFinish}
+      />
+
+      {/* 「ストーリー作成」統合フロー: 完成テンプレートギャラリーから写真1枚/複数枚を問わず選ぶ */}
+      <StoryTemplateEditor
+        visible={storyCreativeVisible}
+        onClose={() => setStoryCreativeVisible(false)}
+        onFinish={handleStoryCreativeFinish}
       />
 
       {/* AI画像生成チャット */}

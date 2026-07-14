@@ -8,3 +8,5 @@ web-build/
 .vercel
 __pycache__/
 *.pyc
+test-results/
+playwright-report/

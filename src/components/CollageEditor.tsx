@@ -257,6 +257,7 @@ export default function CollageEditor({ onDone }: Props) {
         backgroundUrl: createBackgroundUrl ?? undefined,
         photoAreas: createPhotoAreas.map((a) => ({
           x: Number(a.x) || 0, y: Number(a.y) || 0, w: Number(a.w) || 100, h: Number(a.h) || 100,
+          zIndex: Number(a.zIndex) || COLLAGE_Z_BANDS.photos,
         })),
         textLayers: createTextLayers.map((t): CollageTextLayer => ({
           id: t.id, label: t.label || undefined, sampleText: t.sampleText,
@@ -273,6 +274,7 @@ export default function CollageEditor({ onDone }: Props) {
           .map((d): CollageDecoration => ({
             imageUrl: d.imageUrl as string,
             x: Number(d.x) || 0, y: Number(d.y) || 0, w: Number(d.w) || 100, h: Number(d.h) || 100,
+            zIndex: Number(d.zIndex) || COLLAGE_Z_BANDS.decoration,
           })),
       };
       composeTemplatePreview(template)
@@ -295,6 +297,7 @@ export default function CollageEditor({ onDone }: Props) {
         backgroundImageUrl: createBackgroundUrl,
         photoAreas: createPhotoAreas.map((a) => ({
           x: Number(a.x) || 0, y: Number(a.y) || 0, w: Number(a.w) || 100, h: Number(a.h) || 100,
+          zIndex: Number(a.zIndex) || COLLAGE_Z_BANDS.photos,
         })),
         textLayers: createTextLayers.map((t) => ({
           id: t.id, label: t.label || undefined, sampleText: t.sampleText,
@@ -311,6 +314,7 @@ export default function CollageEditor({ onDone }: Props) {
           .map((d) => ({
             imageUrl: d.imageUrl as string,
             x: Number(d.x) || 0, y: Number(d.y) || 0, w: Number(d.w) || 100, h: Number(d.h) || 100,
+            zIndex: Number(d.zIndex) || COLLAGE_Z_BANDS.decoration,
           })),
       });
       resetCreateForm();

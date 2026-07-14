@@ -113,6 +113,7 @@ export default function AdminAssetsScreen({ navigation }: any) {
         backgroundUrl: styleBackgroundImageUrl ?? undefined,
         photoAreas: stylePhotoAreas.map((p) => ({
           x: Number(p.x) || 0, y: Number(p.y) || 0, w: Number(p.w) || 100, h: Number(p.h) || 100,
+          zIndex: Number(p.zIndex) || COLLAGE_Z_BANDS.photos,
         })),
         textLayers: styleTextLayers.map((t): CollageTextLayer => ({
           id: t.id, label: t.label || undefined, sampleText: t.sampleText,
@@ -129,6 +130,7 @@ export default function AdminAssetsScreen({ navigation }: any) {
           .map((d): CollageDecoration => ({
             imageUrl: d.imageUrl as string,
             x: Number(d.x) || 0, y: Number(d.y) || 0, w: Number(d.w) || 100, h: Number(d.h) || 100,
+            zIndex: Number(d.zIndex) || COLLAGE_Z_BANDS.decoration,
           })),
       };
       composeTemplatePreview(template)
@@ -186,6 +188,7 @@ export default function AdminAssetsScreen({ navigation }: any) {
       (s.photoAreas ?? []).map((p) => ({
         key: nextDraftKey(),
         x: String(p.x), y: String(p.y), w: String(p.w), h: String(p.h),
+        zIndex: String(p.zIndex ?? COLLAGE_Z_BANDS.photos),
       }))
     );
     setStyleTextLayers(
@@ -209,6 +212,7 @@ export default function AdminAssetsScreen({ navigation }: any) {
       (s.decorations ?? []).map((d) => ({
         key: nextDraftKey(), imageUrl: d.imageUrl, uploading: false,
         x: String(d.x), y: String(d.y), w: String(d.w), h: String(d.h),
+        zIndex: String(d.zIndex ?? COLLAGE_Z_BANDS.decoration),
       }))
     );
     setStyleFormVisible(true);
@@ -239,6 +243,7 @@ export default function AdminAssetsScreen({ navigation }: any) {
         backgroundImageUrl: styleBackgroundImageUrl,
         photoAreas: stylePhotoAreas.map((p) => ({
           x: Number(p.x) || 0, y: Number(p.y) || 0, w: Number(p.w) || 100, h: Number(p.h) || 100,
+          zIndex: Number(p.zIndex) || COLLAGE_Z_BANDS.photos,
         })),
         textLayers: styleTextLayers.map((t) => ({
           id: t.id, label: t.label || undefined, sampleText: t.sampleText,
@@ -255,6 +260,7 @@ export default function AdminAssetsScreen({ navigation }: any) {
           .map((d) => ({
             imageUrl: d.imageUrl as string,
             x: Number(d.x) || 0, y: Number(d.y) || 0, w: Number(d.w) || 100, h: Number(d.h) || 100,
+            zIndex: Number(d.zIndex) || COLLAGE_Z_BANDS.decoration,
           })),
       };
       if (editingStyleId) {
@@ -330,7 +336,7 @@ export default function AdminAssetsScreen({ navigation }: any) {
         <TouchableOpacity onPress={() => navigation?.goBack?.()} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={26} color={COLORS.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>コラージュテンプレート管理</Text>
+        <Text style={styles.headerTitle}>テンプレート管理</Text>
         <View style={{ width: 26 }} />
       </View>
 
