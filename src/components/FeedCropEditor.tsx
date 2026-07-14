@@ -15,6 +15,7 @@ import {
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
 import { FeedTransform, DEFAULT_FEED_TRANSFORM, ASPECTS, AspectKey, composeFeedImage, makeBlurredBackgroundUrl } from '../utils/composeFeed';
 import { loadImage } from '../utils/composeStory';
+import { snapValue } from '../utils/snap';
 
 interface Props {
   visible: boolean;
@@ -28,6 +29,9 @@ const SCREEN_W = Dimensions.get('window').width;
 const FRAME_W = Math.min(SCREEN_W - SPACING.md * 2, 340);
 const MIN_SCALE = 0.3;
 const MAX_SCALE = 4;
+// 「ちょうど枠を覆う倍率（scale=1）」「中央」に近づいたときに一瞬止まるスナップの許容量
+const SCALE_SNAP_ZONE = 0.04;
+const POSITION_SNAP_PX = 8;
 
 function clamp(v: number, min: number, max: number) { return Math.max(min, Math.min(max, v)); }
 
@@ -111,11 +115,17 @@ export default function FeedCropEditor({ visible, images, initialIndex = 0, onCa
       const next = [...prev];
       const t = { ...(next[i] ?? DEFAULT_FEED_TRANSFORM), ...patch };
       t.scale = clamp(t.scale, MIN_SCALE, MAX_SCALE);
+      // ちょうど枠を覆う倍率（縮小していくと上下または左右がぴったり画面いっぱいになる境目）に
+      // 近づいたら一瞬止まるようにする
+      t.scale = snapValue(t.scale, [1], SCALE_SNAP_ZONE);
       // 拡大時ははみ出し分、縮小時は余白分まで移動を許可（背景で埋まる）
       const ox = Math.abs(r.coverW * t.scale - FRAME_W) / 2 / FRAME_W;
       const oy = Math.abs(r.coverH * t.scale - r.frameH) / 2 / r.frameH;
       t.x = clamp(t.x, -ox, ox);
       t.y = clamp(t.y, -oy, oy);
+      // 中央に近づいたら一瞬止まるようにする
+      t.x = snapValue(t.x, [0], POSITION_SNAP_PX / FRAME_W);
+      t.y = snapValue(t.y, [0], POSITION_SNAP_PX / r.frameH);
       next[i] = t;
       return next;
     });
