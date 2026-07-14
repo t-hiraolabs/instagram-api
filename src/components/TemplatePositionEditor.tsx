@@ -254,11 +254,16 @@ export default function TemplatePositionEditor({
     setSelected((s) => (s?.key === key ? null : s));
   };
   const moveTextLayer = (key: string, x: number, y: number) => updateTextLayer(key, { x: String(Math.round(x)), y: String(Math.round(y)) });
-  // キャンバス上での枠のリサイズ（ハンドルドラッグ・2本指ピンチ）は折り返し幅(maxWidth)
-  // だけを変える。文字サイズは「サイズ」欄（数値入力・上下ボタン）でのみ変更する
-  // ——枠を広げるたびに文字まで拡大されると意図せずレイアウトが崩れるため、分離している。
-  const resizeTextLayer = (key: string, w: number) => {
-    updateTextLayer(key, { maxWidth: String(Math.round(w)) });
+  // キャンバス上での枠のリサイズ（ハンドルドラッグ・2本指ピンチ）は、一般的なテキストエリアの
+  // リサイズと同じく幅(maxWidth)と高さ(表示行数=maxLines)を変える。文字サイズ自体は
+  // 「サイズ」欄（数値入力・上下ボタン）でのみ変更する——枠を広げるたびに文字まで拡大されると
+  // 意図せずレイアウトが崩れるため、分離している。
+  const resizeTextLayer = (key: string, w: number, h: number) => {
+    const t = textLayers.find((x) => x.key === key);
+    const fontSize = Number(t?.fontSize) || 40;
+    const lineHeightMul = Number(t?.lineHeight) || 1.25;
+    const newMaxLines = Math.max(1, Math.round(h / (fontSize * lineHeightMul)));
+    updateTextLayer(key, { maxWidth: String(Math.round(w)), maxLines: String(newMaxLines) });
   };
   const TEXT_SIZE_STEP = 2;
   const stepTextFontSize = (key: string, delta: number) => {
@@ -393,10 +398,12 @@ export default function TemplatePositionEditor({
     })),
     ...textLayers.map((t): PositionCanvasBox => {
       const fontSize = Number(t.fontSize) || 40;
+      const lineHeightMul = Number(t.lineHeight) || 1.25;
+      const maxLines = Math.max(1, Number(t.maxLines) || 3);
       const fontPreset = COLLAGE_FONT_PRESETS.find((f) => f.id === t.font) ?? COLLAGE_FONT_PRESETS[0];
       return {
         key: t.key, x: Number(t.x) || 0, y: (Number(t.y) || 0) - fontSize,
-        w: Number(t.maxWidth) || 300, h: fontSize * 1.4,
+        w: Number(t.maxWidth) || 300, h: fontSize * lineHeightMul * maxLines,
         color: '#3E8E6E', resizable: true, selected: selected?.type === 'text' && selected.key === t.key,
         previewText: t.sampleText || t.label || 'テキスト',
         previewTextColor: t.color,
@@ -420,7 +427,7 @@ export default function TemplatePositionEditor({
   const handleCanvasResize = (key: string, w: number, h: number) => {
     if (photoAreas.some((a) => a.key === key)) return resizePhotoArea(key, w, h);
     if (decorations.some((d) => d.key === key)) return resizeDecoration(key, w, h);
-    if (textLayers.some((t) => t.key === key)) return resizeTextLayer(key, w);
+    if (textLayers.some((t) => t.key === key)) return resizeTextLayer(key, w, h);
   };
   const handleCanvasSelect = (key: string) => {
     if (photoAreas.some((a) => a.key === key)) return setSelected({ type: 'photo', key });
