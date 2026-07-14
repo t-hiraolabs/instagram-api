@@ -1,28 +1,10 @@
-// Story Studio: テンプレート・素材・タグのデータアクセス層
+// Story Studio: テンプレート・タグのデータアクセス層
 import { supabase } from './supabaseClient';
 import { Plan } from '../utils/plans';
-
-export interface Category {
-  id: string;
-  name: string;
-}
 
 export interface Tag {
   id: string;
   name: string;
-}
-
-export interface StoryAsset {
-  id: string;
-  categoryId: string;
-  name: string;
-  storageUrl: string;
-  thumbnailUrl: string | null;
-  plan: Plan;
-  width: number | null;
-  height: number | null;
-  isActive: boolean;
-  tags: string[];
 }
 
 export interface StoryTemplate {
@@ -36,12 +18,12 @@ export interface StoryTemplate {
   tags: string[];
 }
 
-/** テンプレートの初期レイヤー構成（各レイヤーは独立した部品として管理する） */
+/** テンプレートの初期レイヤー構成。各パーツの画像は直接URLで埋め込む（完成テンプレート方式） */
 export interface LayerDefaults {
-  background?: { assetId: string };
-  frame?: { assetId: string };
-  flower?: { assetId: string };
-  decoration?: { assetId: string };
+  background?: { url: string };
+  frame?: { url: string };
+  flower?: { url: string };
+  decoration?: { url: string };
   photoSlots: number;
   font?: string;
   titleColor?: string;
@@ -67,66 +49,10 @@ function rowToTemplate(row: any, tags: string[]): StoryTemplate {
   };
 }
 
-function rowToAsset(row: any, tags: string[]): StoryAsset {
-  return {
-    id: row.id,
-    categoryId: row.category_id,
-    name: row.name,
-    storageUrl: row.storage_url,
-    thumbnailUrl: row.thumbnail_url,
-    plan: row.plan,
-    width: row.width,
-    height: row.height,
-    isActive: row.is_active,
-    tags,
-  };
-}
-
-export async function getCategories(): Promise<Category[]> {
-  const { data, error } = await supabase.from('categories').select('id, name').order('name');
-  if (error) throw error;
-  return data ?? [];
-}
-
 export async function getTags(): Promise<Tag[]> {
   const { data, error } = await supabase.from('tags').select('id, name').order('name');
   if (error) throw error;
   return data ?? [];
-}
-
-/**
- * タグ名・カテゴリID・自由文字列で素材を検索する。プランは自分と同格以下のみ
- * （Proユーザーはビジネス限定素材を検索結果から除外）。
- */
-export async function searchAssets(params: {
-  plan: Plan;
-  query?: string;
-  categoryId?: string;
-  tagNames?: string[];
-}): Promise<StoryAsset[]> {
-  const plans = allowedPlans(params.plan);
-  let query = supabase
-    .from('assets')
-    .select('id, category_id, name, storage_url, thumbnail_url, plan, width, height, is_active, asset_tags(tag_id, tags(name))')
-    .in('plan', plans)
-    .eq('is_active', true)
-    .limit(60);
-
-  if (params.categoryId) query = query.eq('category_id', params.categoryId);
-  if (params.query) query = query.ilike('name', `%${params.query}%`);
-
-  const { data, error } = await query;
-  if (error) throw error;
-  let rows = data ?? [];
-
-  if (params.tagNames && params.tagNames.length > 0) {
-    const wanted = new Set(params.tagNames);
-    rows = rows.filter((r: any) =>
-      (r.asset_tags ?? []).some((at: any) => wanted.has(at.tags?.name))
-    );
-  }
-
-  return rows.map((r: any) => rowToAsset(r, (r.asset_tags ?? []).map((at: any) => at.tags?.name).filter(Boolean)));
 }
 
 /** タグの一致数でスコアリングし上位N件を返す（AI呼び出し前の絞り込み・DBのみで完結） */
@@ -164,18 +90,6 @@ export async function getTemplateById(id: string): Promise<StoryTemplate | null>
   if (error || !data) return null;
   const tagNames: string[] = ((data as any).template_tags ?? []).map((tt: any) => tt.tags?.name).filter(Boolean);
   return rowToTemplate(data, tagNames);
-}
-
-export async function getAssetsByIds(ids: string[]): Promise<Record<string, StoryAsset>> {
-  if (ids.length === 0) return {};
-  const { data, error } = await supabase
-    .from('assets')
-    .select('id, category_id, name, storage_url, thumbnail_url, plan, width, height, is_active')
-    .in('id', ids);
-  if (error) throw error;
-  const map: Record<string, StoryAsset> = {};
-  for (const row of data ?? []) map[row.id] = rowToAsset(row, []);
-  return map;
 }
 
 export async function recordRecentTemplate(templateId: string): Promise<void> {

@@ -1,7 +1,7 @@
 // テンプレートの初期レイヤー構成（layer_defaults）+ 選択した写真から、
 // 編集可能なレイヤー配列を組み立てるヘルパー。
 import { StoryLayer } from '../../store/storyEditorStore';
-import { StoryAsset, StoryTemplate } from '../../services/storyStudioService';
+import { StoryTemplate } from '../../services/storyStudioService';
 
 let seq = 0;
 function layerId(prefix: string): string {
@@ -11,7 +11,6 @@ function layerId(prefix: string): string {
 
 export function buildLayersFromTemplate(
   template: StoryTemplate,
-  assetsById: Record<string, StoryAsset>,
   photoUris: string[],
   overrides?: { font?: string; titleColor?: string }
 ): StoryLayer[] {
@@ -19,8 +18,7 @@ export function buildLayersFromTemplate(
   const d = template.layerDefaults;
 
   if (d.background) {
-    const a = assetsById[d.background.assetId];
-    if (a) layers.push({ id: layerId('background'), type: 'background', assetId: a.id, uri: a.storageUrl, x: 0, y: 0, scale: 1, rotation: 0, visible: true });
+    layers.push({ id: layerId('background'), type: 'background', uri: d.background.url, x: 0, y: 0, scale: 1, rotation: 0, visible: true });
   }
 
   photoUris.slice(0, Math.max(1, d.photoSlots || 1)).forEach((uri, i) => {
@@ -28,16 +26,13 @@ export function buildLayersFromTemplate(
   });
 
   if (d.frame) {
-    const a = assetsById[d.frame.assetId];
-    if (a) layers.push({ id: layerId('frame'), type: 'frame', assetId: a.id, uri: a.storageUrl, x: 0, y: 0, scale: 1, rotation: 0, visible: true });
+    layers.push({ id: layerId('frame'), type: 'frame', uri: d.frame.url, x: 0, y: 0, scale: 1, rotation: 0, visible: true });
   }
   if (d.flower) {
-    const a = assetsById[d.flower.assetId];
-    if (a) layers.push({ id: layerId('flower'), type: 'flower', assetId: a.id, uri: a.storageUrl, x: 780, y: 60, scale: 1, rotation: 0, visible: true });
+    layers.push({ id: layerId('flower'), type: 'flower', uri: d.flower.url, x: 780, y: 60, scale: 1, rotation: 0, visible: true });
   }
   if (d.decoration) {
-    const a = assetsById[d.decoration.assetId];
-    if (a) layers.push({ id: layerId('decoration'), type: 'decoration', assetId: a.id, uri: a.storageUrl, x: 60, y: 1500, scale: 1, rotation: 0, visible: true });
+    layers.push({ id: layerId('decoration'), type: 'decoration', uri: d.decoration.url, x: 60, y: 1500, scale: 1, rotation: 0, visible: true });
   }
 
   layers.push({

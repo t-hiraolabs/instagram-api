@@ -3,7 +3,20 @@
 // Story Studioのtemplatesテーブルをtype='collage'として流用する。
 import { supabase } from './supabaseClient';
 import { Plan } from '../utils/plans';
-import { allowedPlans, getAssetsByIds } from './storyStudioService';
+import { allowedPlans } from './storyStudioService';
+
+/** ログイン中ユーザーが管理者かどうか（profiles.is_admin）。通信失敗時はfalse扱い */
+export async function checkIsAdmin(): Promise<boolean> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return false;
+    const { data, error } = await supabase.from('profiles').select('is_admin').eq('id', user.id).maybeSingle();
+    if (error || !data) return false;
+    return Boolean((data as any).is_admin);
+  } catch {
+    return false;
+  }
+}
 
 /** 写真を差し込む矩形（キャンバス1080×1920px基準）。1テンプレートに複数個持てる */
 export interface CollageStylePhotoArea {
@@ -54,7 +67,6 @@ export interface CollageStyle {
   isActive: boolean;
   tags: string[];
   /** 管理者が作成した完成デザイン画像（写真の差し込み場所もこの画像内にデザイン済み） */
-  backgroundAssetId?: string;
   backgroundUrl?: string;
   /** 写真を差し込む矩形（1つ以上） */
   photoAreas: CollageStylePhotoArea[];
@@ -68,8 +80,6 @@ export interface CollageStyle {
 }
 
 interface CollageStyleDefaults {
-  /** 旧方式: 「背景」カテゴリに登録された素材への参照（後方互換のため読み込みのみ対応） */
-  backgroundAssetId?: string;
   /** ImagePickerで選んだ画像をuploadBlob等でStorageへ直接アップロードした公開URL */
   backgroundImageUrl?: string;
   photoAreas?: CollageStylePhotoArea[];
@@ -77,13 +87,7 @@ interface CollageStyleDefaults {
   decorations?: CollageStyleDecoration[];
 }
 
-async function rowsToStyles(rows: any[]): Promise<CollageStyle[]> {
-  const assetIds = new Set<string>();
-  rows.forEach((r) => {
-    const d = (r.layer_defaults ?? {}) as CollageStyleDefaults;
-    if (d.backgroundAssetId) assetIds.add(d.backgroundAssetId);
-  });
-  const assetsById = assetIds.size > 0 ? await getAssetsByIds(Array.from(assetIds)) : {};
+function rowsToStyles(rows: any[]): CollageStyle[] {
   return rows.map((r) => {
     const d = (r.layer_defaults ?? {}) as CollageStyleDefaults;
     return {
@@ -92,8 +96,7 @@ async function rowsToStyles(rows: any[]): Promise<CollageStyle[]> {
       plan: r.plan,
       isActive: r.is_active,
       tags: (r.tags ?? []) as string[],
-      backgroundAssetId: d.backgroundAssetId,
-      backgroundUrl: d.backgroundAssetId ? assetsById[d.backgroundAssetId]?.storageUrl : d.backgroundImageUrl,
+      backgroundUrl: d.backgroundImageUrl,
       photoAreas: d.photoAreas ?? [],
       textLayers: d.textLayers,
       decorations: d.decorations,
@@ -236,8 +239,7 @@ function extractStoragePath(publicUrl: string, bucket: string): string | null {
 
 /**
  * テンプレートを削除する。backgroundImageUrl/decorationsでStorageへ直接アップロードした
- * 画像を持つ場合は、それらも一緒に削除し、Storage容量にゴミが溜まり続けるのを防ぐ
- * （旧方式のbackgroundAssetIdはassetsテーブル側で管理される共有素材のため、ここでは削除しない）。
+ * 画像を持つ場合は、それらも一緒に削除し、Storage容量にゴミが溜まり続けるのを防ぐ。
  */
 export async function deleteCollageStyle(id: string): Promise<void> {
   const { data: row } = await supabase

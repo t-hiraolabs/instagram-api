@@ -17,7 +17,6 @@ interface BaseLayer {
 
 export interface ImageLayer extends BaseLayer {
   type: 'background' | 'frame' | 'flower' | 'decoration';
-  assetId: string;
   uri: string;
 }
 
