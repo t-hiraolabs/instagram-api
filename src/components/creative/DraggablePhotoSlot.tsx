@@ -77,6 +77,11 @@ export default function DraggablePhotoSlot({
         rotatable={false}
         minScale={1}
         maxScale={4}
+        // 中央（隙間なくスロットに収まる基準位置）と、スロットをちょうど覆う倍率（scale=1、
+        // 縮小していくとスロットの上下または左右がぴったり収まる境目）に近づいたら一瞬止まる
+        snapX={[centerX]}
+        snapY={[centerY]}
+        snapScale={[1]}
         displayScale={displayScale}
         selected={selected}
         locked={locked}
