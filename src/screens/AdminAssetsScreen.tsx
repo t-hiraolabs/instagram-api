@@ -316,7 +316,7 @@ export default function AdminAssetsScreen({ navigation }: any) {
           <TouchableOpacity onPress={() => navigation?.goBack?.()} style={styles.backBtn}>
             <Ionicons name="chevron-back" size={26} color={COLORS.text} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>コラージュテンプレート管理</Text>
+          <Text style={styles.headerTitle}>テンプレート管理</Text>
           <View style={{ width: 26 }} />
         </View>
         <Text style={styles.deniedText}>この画面へのアクセス権限がありません</Text>
