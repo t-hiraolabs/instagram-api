@@ -1,8 +1,8 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Image, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import { COLORS, SPACING, RADIUS } from '../utils/theme';
+import { COLORS, SPACING, RADIUS, SHADOWS } from '../utils/theme';
 import { useAppStore } from '../store/appStore';
 import AccountBadge from '../components/AccountBadge';
 import ImageGenChat, { ImageGenChatHandle } from '../components/ImageGenChat';
@@ -17,28 +17,28 @@ function getGreeting(): string {
 }
 
 // 業種を問わず使える、季節・曜日で回転するおすすめネタ（AIを呼ばず無料で出せるもの）
-const IDEA_POOL = [
-  '新作・季節限定メニューの紹介',
-  'お客様の声・ビフォーアフター',
-  '期間限定キャンペーンの告知',
-  'スタッフ紹介・お店の裏側',
-  '本日のおすすめ・入荷情報',
-  'よくある質問に答える投稿',
-  'リピーター向けの感謝メッセージ',
+const IDEA_POOL: { text: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+  { text: '新作・季節限定メニューの紹介', icon: 'sparkles-outline' },
+  { text: 'お客様の声・ビフォーアフター', icon: 'chatbox-ellipses-outline' },
+  { text: '期間限定キャンペーンの告知', icon: 'megaphone-outline' },
+  { text: 'スタッフ紹介・お店の裏側', icon: 'people-outline' },
+  { text: '本日のおすすめ・入荷情報', icon: 'today-outline' },
+  { text: 'よくある質問に答える投稿', icon: 'help-circle-outline' },
+  { text: 'リピーター向けの感謝メッセージ', icon: 'heart-outline' },
 ];
 
-function getTodaysIdeas(): string[] {
+function getTodaysIdeas(count: number): typeof IDEA_POOL {
   const dayOfYear = Math.floor(
     (Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / 86400000
   );
-  return [0, 1, 2].map((i) => IDEA_POOL[(dayOfYear + i) % IDEA_POOL.length]);
+  return Array.from({ length: count }, (_, i) => IDEA_POOL[(dayOfYear + i) % IDEA_POOL.length]);
 }
 
 function getTodoItems(): { key: string; label: string; icon: keyof typeof Ionicons.glyphMap }[] {
   return [
-    { key: 'story', label: 'ストーリー', icon: 'book' },
+    { key: 'story', label: 'ストーリーを作る', icon: 'book' },
     { key: 'dm', label: 'DM返信', icon: 'chatbubble' },
-    { key: 'analytics', label: '分析', icon: 'stats-chart' },
+    { key: 'analytics', label: '分析を見る', icon: 'stats-chart' },
   ];
 }
 
@@ -66,83 +66,110 @@ export default function HomeScreen() {
   const navigation = useNavigation<any>();
   const setPendingUseImage = useAppStore((s) => s.setPendingUseImage);
   const bestTime = useMemo(() => getBestPostingTime(), []);
-  const todaysIdeas = useMemo(() => getTodaysIdeas(), []);
+  const featuredIdeas = useMemo(() => getTodaysIdeas(3), []);
+  const moreIdeas = useMemo(() => getTodaysIdeas(IDEA_POOL.length).slice(3), []);
   const todoItems = useMemo(() => getTodoItems(), []);
   const chatRef = useRef<ImageGenChatHandle>(null);
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [chatVisible, setChatVisible] = useState(false);
 
   const handleUseImage = (dataUrl: string) => {
     setPendingUseImage(dataUrl);
+    setChatVisible(false);
     navigation.navigate('Post');
+  };
+
+  const startIdeaChat = (idea: string) => {
+    setChatVisible(true);
+    // Modalが開いた直後に送信できるよう、少し待ってから送る
+    setTimeout(() => chatRef.current?.sendMessage(`「${idea}」について投稿を作りたいです。`), 150);
   };
 
   const goTodo = (key: string) => {
     if (key === 'dm') return navigation.navigate('DM');
     if (key === 'analytics') return navigation.navigate('Analytics');
-    if (key === 'story') return chatRef.current?.sendMessage('今日のストーリーを作りたいです。');
+    if (key === 'story') return navigation.navigate('Post');
   };
-
-  const emptyState = (
-    <View style={styles.briefing}>
-      <Text style={styles.chatGreeting}>{getGreeting()}</Text>
-      <Text style={styles.chatPrompt}>{bestTime.description}</Text>
-      <View style={styles.timeRow}>
-        <View style={[styles.timeDot, { backgroundColor: bestTime.color }]} />
-        <Text style={[styles.timeLabel, { color: bestTime.color }]}>{bestTime.label}</Text>
-      </View>
-
-      <Text style={styles.groupLabel}>今日のおすすめ投稿ネタ</Text>
-      <View style={styles.chipRow}>
-        {todaysIdeas.map((idea) => (
-          <TouchableOpacity
-            key={idea}
-            style={styles.ideaChip}
-            onPress={() => chatRef.current?.sendMessage(`「${idea}」について投稿を作りたいです。`)}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.ideaChipText} numberOfLines={1}>{idea}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      <Text style={styles.groupLabel}>今日のTODO</Text>
-      <View style={styles.chipRow}>
-        {todoItems.map((item) => (
-          <TouchableOpacity key={item.key} style={styles.todoChip} onPress={() => goTodo(item.key)} activeOpacity={0.8}>
-            <Ionicons name={item.icon} size={13} color={COLORS.textSecondary} />
-            <Text style={styles.todoChipText}>{item.label}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-    </View>
-  );
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + SPACING.sm }]}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity
-          style={[styles.headerLeft, menuOpen && styles.headerLeftActive]}
-          onPress={() => chatRef.current?.toggleMenu()}
-          activeOpacity={0.7}
-        >
+        <View style={styles.headerLeft}>
           <Image source={require('../../assets/icon.png')} style={styles.logoIcon} resizeMode="contain" />
           <Text style={styles.title}>AImark</Text>
-          <Text style={[styles.menuCaret, menuOpen && styles.menuCaretOpen]}>▾</Text>
-        </TouchableOpacity>
+        </View>
       </View>
 
-      {/* ホーム画面そのものがチャット */}
-      <View style={{ flex: 1 }}>
-        <ImageGenChat
-          ref={chatRef}
-          visible
-          embedded
-          onUseImage={handleUseImage}
-          emptyState={emptyState}
-          onMenuVisibleChange={setMenuOpen}
-        />
-      </View>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <Text style={styles.greeting}>{getGreeting()}</Text>
+        <Text style={styles.prompt}>今日は何を投稿しますか？</Text>
+        <View style={styles.timeRow}>
+          <View style={[styles.timeDot, { backgroundColor: bestTime.color }]} />
+          <Text style={[styles.timeLabel, { color: bestTime.color }]}>{bestTime.label}</Text>
+          <Text style={styles.timeDesc} numberOfLines={1}>{bestTime.description}</Text>
+        </View>
+
+        <Text style={styles.groupLabel}>今日のおすすめ投稿ネタ</Text>
+        {featuredIdeas.map((idea) => (
+          <TouchableOpacity
+            key={idea.text}
+            style={styles.ideaCard}
+            onPress={() => startIdeaChat(idea.text)}
+            activeOpacity={0.85}
+          >
+            <View style={styles.ideaIconWrap}>
+              <Ionicons name={idea.icon} size={20} color={COLORS.primary} />
+            </View>
+            <Text style={styles.ideaCardText}>{idea.text}</Text>
+            <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+          </TouchableOpacity>
+        ))}
+
+        <Text style={styles.groupLabel}>他にもこんなネタが</Text>
+        <View style={styles.chipRow}>
+          {moreIdeas.map((idea) => (
+            <TouchableOpacity
+              key={idea.text}
+              style={styles.ideaChip}
+              onPress={() => startIdeaChat(idea.text)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.ideaChipText} numberOfLines={1}>{idea.text}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <Text style={styles.groupLabel}>今日のTODO</Text>
+        <View style={styles.chipRow}>
+          {todoItems.map((item) => (
+            <TouchableOpacity key={item.key} style={styles.todoChip} onPress={() => goTodo(item.key)} activeOpacity={0.8}>
+              <Ionicons name={item.icon} size={13} color={COLORS.textSecondary} />
+              <Text style={styles.todoChipText}>{item.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </ScrollView>
+
+      {/* AIチャットは画面端のボタンから開く */}
+      <TouchableOpacity
+        testID="home-chat-fab"
+        style={[styles.chatFab, { bottom: SPACING.lg }]}
+        onPress={() => setChatVisible(true)}
+        activeOpacity={0.85}
+      >
+        <Ionicons name="chatbubble-ellipses" size={26} color="#fff" />
+      </TouchableOpacity>
+
+      <ImageGenChat
+        ref={chatRef}
+        visible={chatVisible}
+        onClose={() => setChatVisible(false)}
+        onUseImage={handleUseImage}
+      />
 
       <AccountBadge hideBadge />
     </View>
@@ -173,9 +200,6 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.full,
     backgroundColor: COLORS.surfaceElevated,
   },
-  headerLeftActive: {
-    backgroundColor: COLORS.primary + '22',
-  },
   logoIcon: {
     width: 28,
     height: 28,
@@ -187,39 +211,33 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: -0.3,
   },
-  menuCaret: {
-    color: COLORS.textMuted,
-    fontSize: 11,
-    marginLeft: 2,
+  scrollContent: {
+    paddingHorizontal: SPACING.md,
+    paddingTop: SPACING.lg,
+    paddingBottom: SPACING.xxl * 2,
   },
-  menuCaretOpen: {
-    color: COLORS.primary,
-    transform: [{ rotate: '180deg' }],
-  },
-  briefing: {
-    paddingTop: SPACING.xl,
-  },
-  chatGreeting: {
+  greeting: {
     color: COLORS.textMuted,
     fontSize: 13,
     fontWeight: '600',
   },
-  chatPrompt: {
+  prompt: {
     color: COLORS.text,
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: '800',
-    lineHeight: 27,
+    lineHeight: 29,
     marginTop: 2,
   },
   timeRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginTop: 6,
-    marginBottom: SPACING.md,
+    marginTop: 8,
+    marginBottom: SPACING.lg,
   },
   timeDot: { width: 7, height: 7, borderRadius: 4 },
   timeLabel: { fontSize: 12, fontWeight: '700' },
+  timeDesc: { color: COLORS.textMuted, fontSize: 12, flexShrink: 1 },
   groupLabel: {
     color: COLORS.textMuted,
     fontSize: 11,
@@ -227,7 +245,33 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.4,
     marginBottom: SPACING.sm,
-    marginTop: SPACING.sm,
+    marginTop: SPACING.lg,
+  },
+  ideaCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    marginBottom: SPACING.sm,
+  },
+  ideaIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.primary + '1a',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ideaCardText: {
+    flex: 1,
+    color: COLORS.text,
+    fontSize: 14.5,
+    fontWeight: '700',
   },
   chipRow: {
     flexDirection: 'row',
@@ -263,5 +307,16 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     fontSize: 12,
     fontWeight: '600',
+  },
+  chatFab: {
+    position: 'absolute',
+    right: SPACING.lg,
+    width: 56,
+    height: 56,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...SHADOWS.card,
   },
 });
