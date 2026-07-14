@@ -13,6 +13,8 @@ import AdminAssetsScreen from '../screens/AdminAssetsScreen';
 import E2ECreativeCanvasScreen from '../screens/__e2e__/E2ECreativeCanvasScreen';
 import E2ELayerPanelScreen from '../screens/__e2e__/E2ELayerPanelScreen';
 import E2EGalleryScreen from '../screens/__e2e__/E2EGalleryScreen';
+import E2EFeedCropScreen from '../screens/__e2e__/E2EFeedCropScreen';
+import E2EPositionCanvasScreen from '../screens/__e2e__/E2EPositionCanvasScreen';
 import { COLORS } from '../utils/theme';
 
 // Playwright回帰テスト（フェーズ5）専用の起動ルート判定。?e2e=... クエリがある時だけ
@@ -21,6 +23,8 @@ const E2E_ROUTES: Record<string, string> = {
   creativeCanvas: 'E2ECreativeCanvas',
   layerPanel: 'E2ELayerPanel',
   gallery: 'E2EGallery',
+  feedCrop: 'E2EFeedCrop',
+  positionCanvas: 'E2EPositionCanvas',
 };
 function getInitialRouteName(): string {
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
@@ -150,6 +154,8 @@ export default function RootNavigator() {
         <Stack.Screen name="E2ECreativeCanvas" component={E2ECreativeCanvasScreen} />
         <Stack.Screen name="E2ELayerPanel" component={E2ELayerPanelScreen} />
         <Stack.Screen name="E2EGallery" component={E2EGalleryScreen} />
+        <Stack.Screen name="E2EFeedCrop" component={E2EFeedCropScreen} />
+        <Stack.Screen name="E2EPositionCanvas" component={E2EPositionCanvasScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );
