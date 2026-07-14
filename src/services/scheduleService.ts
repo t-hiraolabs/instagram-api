@@ -38,9 +38,14 @@ export async function getScheduledPosts(instagramUserId?: string): Promise<Sched
     .select('*')
     .order('scheduled_at', { ascending: true });
 
-  if (instagramUserId) {
-    query = query.eq('instagram_user_id', instagramUserId);
-  }
+  // instagram_user_idが未設定の行は、まだどのアカウントにも紐付いていない下書き
+  // （Instagram未連携でも下書きだけは作れる仕様）なので、接続中・未接続どちらでも表示する。
+  // 一方、他のアカウント（過去に連携していた／現在は別スロットで連携中）に紐付いた
+  // 行は、現在連携中のアカウントのものだけに絞り込む。これにより、Instagram未連携時に
+  // 過去の連携先アカウントの投稿履歴が漏れて表示されるのを防ぐ。
+  query = instagramUserId
+    ? query.or(`instagram_user_id.eq.${instagramUserId},instagram_user_id.is.null`)
+    : query.is('instagram_user_id', null);
 
   const { data, error } = await query;
   if (error) throw error;
