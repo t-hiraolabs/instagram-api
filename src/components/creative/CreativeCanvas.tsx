@@ -28,16 +28,22 @@ function sortByZIndex<T extends { zIndex?: number }>(items: T[]): T[] {
 
 function StaticLayerImage({ layer, displayScale }: { layer: TemplateLayer; displayScale: number }) {
   return (
-    <Image
-      source={{ uri: layer.uri }}
+    // frame/decorationは常に静止画（エンドユーザーは動かせない）だが、写真スロットより
+    // 前面に描画されることがある（例: フレームは写真の上に重なる）。ImageはpointerEventsを
+    // 型上受け付けないため、Viewで包んでpointerEvents='none'にする。これがないとこの
+    // Imageがタッチを吸収してしまい、下の写真スロットを操作できなくなる。
+    <View
+      testID={`layer-${layer.id}`}
+      pointerEvents="none"
       style={{
         position: 'absolute',
         left: layer.x * displayScale, top: layer.y * displayScale,
         width: layer.w * displayScale, height: layer.h * displayScale,
         transform: layer.rotation ? [{ rotateZ: `${layer.rotation}deg` }] : undefined,
       }}
-      resizeMode="cover"
-    />
+    >
+      <Image source={{ uri: layer.uri }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+    </View>
   );
 }
 
@@ -105,6 +111,7 @@ export default function CreativeCanvas({
       {photoSlots.map((slot) => (
         <DraggablePhotoSlot
           key={slot.id}
+          testID={`layer-${slot.id}`}
           slot={slot}
           assignment={photoAssignments.find((a) => a.slotId === slot.id)}
           displayScale={displayScale}
