@@ -6,6 +6,7 @@ import { COLORS, SPACING, RADIUS, SHADOWS } from '../utils/theme';
 import { useAppStore } from '../store/appStore';
 import AccountBadge from '../components/AccountBadge';
 import ImageGenChat from '../components/ImageGenChat';
+import { getPostIdeas, PostIdea } from '../utils/postIdeas';
 import { Ionicons } from '@expo/vector-icons';
 
 function getGreeting(): string {
@@ -16,22 +17,12 @@ function getGreeting(): string {
   return 'こんばんは';
 }
 
-// 業種を問わず使える、季節・曜日で回転するおすすめネタ（AIを呼ばず無料で出せるもの）
-const IDEA_POOL: { text: string; icon: keyof typeof Ionicons.glyphMap }[] = [
-  { text: '新作・季節限定メニューの紹介', icon: 'sparkles-outline' },
-  { text: 'お客様の声・ビフォーアフター', icon: 'chatbox-ellipses-outline' },
-  { text: '期間限定キャンペーンの告知', icon: 'megaphone-outline' },
-  { text: 'スタッフ紹介・お店の裏側', icon: 'people-outline' },
-  { text: '本日のおすすめ・入荷情報', icon: 'today-outline' },
-  { text: 'よくある質問に答える投稿', icon: 'help-circle-outline' },
-  { text: 'リピーター向けの感謝メッセージ', icon: 'heart-outline' },
-];
-
-function getTodaysIdeas(count: number): typeof IDEA_POOL {
+// 業種に応じたネタ候補から、日替わりで指定件数を選ぶ（AIを呼ばず無料で出せるもの）
+function getTodaysIdeas(pool: PostIdea[], count: number): PostIdea[] {
   const dayOfYear = Math.floor(
     (Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / 86400000
   );
-  return Array.from({ length: count }, (_, i) => IDEA_POOL[(dayOfYear + i) % IDEA_POOL.length]);
+  return Array.from({ length: count }, (_, i) => pool[(dayOfYear + i) % pool.length]);
 }
 
 function getTodoItems(): { key: string; label: string; icon: keyof typeof Ionicons.glyphMap }[] {
@@ -68,9 +59,11 @@ export default function HomeScreen() {
   const setChatPrefillText = useAppStore((s) => s.setChatPrefillText);
   const setChatAutoSend = useAppStore((s) => s.setChatAutoSend);
   const setChatForceNew = useAppStore((s) => s.setChatForceNew);
+  const industry = useAppStore((s) => s.brandSettings.industry);
   const bestTime = useMemo(() => getBestPostingTime(), []);
-  const featuredIdeas = useMemo(() => getTodaysIdeas(3), []);
-  const moreIdeas = useMemo(() => getTodaysIdeas(IDEA_POOL.length).slice(3), []);
+  const ideaPool = useMemo(() => getPostIdeas(industry), [industry]);
+  const featuredIdeas = useMemo(() => getTodaysIdeas(ideaPool, 3), [ideaPool]);
+  const moreIdeas = useMemo(() => getTodaysIdeas(ideaPool, ideaPool.length).slice(3), [ideaPool]);
   const todoItems = useMemo(() => getTodoItems(), []);
   const [chatVisible, setChatVisible] = useState(false);
 
