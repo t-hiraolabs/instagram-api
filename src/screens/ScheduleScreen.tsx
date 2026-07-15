@@ -1501,8 +1501,8 @@ export default function ScheduleScreen() {
                     <View key={i} style={{ width: rCarW || Dimensions.get('window').width - SPACING.md * 2 }}>
                       <Image
                         source={{ uri }}
-                        style={{ width: '100%', aspectRatio: 1, borderRadius: RADIUS.md }}
-                        resizeMode="cover"
+                        style={{ width: '100%', aspectRatio: 4 / 5, borderRadius: RADIUS.md, backgroundColor: COLORS.surface }}
+                        resizeMode="contain"
                       />
                       <TouchableOpacity style={styles.carouselRemove} onPress={() => removeFeedImage(i)} hitSlop={8}>
                         <Text style={styles.carouselRemoveText}>✕</Text>
@@ -1825,8 +1825,13 @@ export default function ScheduleScreen() {
                         <Image
                           key={i}
                           source={{ uri }}
-                          style={{ width: carouselW || Dimensions.get('window').width - SPACING.md * 2, aspectRatio: 1, borderRadius: RADIUS.md }}
-                          resizeMode="cover"
+                          style={{
+                            width: carouselW || Dimensions.get('window').width - SPACING.md * 2,
+                            aspectRatio: 4 / 5,
+                            borderRadius: RADIUS.md,
+                            backgroundColor: COLORS.surface,
+                          }}
+                          resizeMode="contain"
                         />
                       ))}
                     </ScrollView>
