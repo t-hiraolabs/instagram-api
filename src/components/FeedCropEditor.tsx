@@ -120,9 +120,12 @@ export default function FeedCropEditor({ visible, images, initialIndex = 0, onCa
       const next = [...prev];
       const t = { ...(next[i] ?? DEFAULT_FEED_TRANSFORM), ...patch };
       t.scale = clamp(t.scale, MIN_SCALE, MAX_SCALE);
-      // ちょうど枠を覆う倍率（縮小していくと上下または左右がぴったり画面いっぱいになる境目）に
-      // 近づいたら一瞬止まるようにする
-      const scaleHit = snapValueWithHit(t.scale, [1], SCALE_SNAP_ZONE);
+      // ちょうど枠を覆う倍率（scale=1、縦横どちらか片方がぴったり画面いっぱいになる境目）に加えて、
+      // 覆っていない方の辺（例: 横を覆う倍率で止めた場合の縦）がちょうどぴったり収まる倍率にも
+      // 近づいたら一瞬止まるようにする（coverW/coverHはscale=1のとき片方だけがFRAME_W/frameHと
+      // 一致するよう計算されているため、もう片方が一致する倍率は別に算出する必要がある）
+      const scaleTargets = r.coverW > 0 && r.coverH > 0 ? [1, FRAME_W / r.coverW, r.frameH / r.coverH] : [1];
+      const scaleHit = snapValueWithHit(t.scale, scaleTargets, SCALE_SNAP_ZONE);
       t.scale = scaleHit.value;
       // 拡大時ははみ出し分、縮小時は余白分まで移動を許可（背景で埋まる）
       const ox = Math.abs(r.coverW * t.scale - FRAME_W) / 2 / FRAME_W;
