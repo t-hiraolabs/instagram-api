@@ -82,4 +82,24 @@ test.describe('FeedCropEditor スナップガイド', () => {
     await page.waitForTimeout(300);
     expect(sawSnapColor).toBe(true);
   });
+
+  test('背景の埋め方を「ぼかし」「写真の色」で切り替えられる', async ({ page }) => {
+    await page.goto('/?e2e=feedCrop');
+    await page.waitForTimeout(1000);
+
+    const blurBtn = page.getByTestId('feedcrop-bg-blur');
+    const colorBtn = page.getByTestId('feedcrop-bg-color');
+    async function bg(el: typeof blurBtn) {
+      return el.evaluate((e) => getComputedStyle(e).backgroundColor);
+    }
+
+    // 初期状態は「ぼかし」が選択されている
+    expect(await bg(blurBtn)).toBe('rgb(225, 48, 108)');
+    expect(await bg(colorBtn)).not.toBe('rgb(225, 48, 108)');
+
+    await colorBtn.click();
+    await page.waitForTimeout(300);
+    expect(await bg(colorBtn)).toBe('rgb(225, 48, 108)');
+    expect(await bg(blurBtn)).not.toBe('rgb(225, 48, 108)');
+  });
 });

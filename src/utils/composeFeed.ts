@@ -16,6 +16,42 @@ export type AspectKey = keyof typeof ASPECTS;
 
 export const FEED_W = 1080;
 
+// 縮小して余白を埋める際の背景の作り方。「blur」は写真自体をぼかして敷き詰め、
+// 「color」は写真の平均色でベタ塗りする（余白を目立たせたくない場合に使う）
+export type BgMode = 'blur' | 'color';
+
+/** 写真を小さなキャンバスに縮小して読み取り、全体の平均色を[r,g,b]で返す */
+function getAverageColor(img: HTMLImageElement): [number, number, number] {
+  const size = 40;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return [32, 32, 32];
+  ctx.drawImage(img, 0, 0, size, size);
+  const { data } = ctx.getImageData(0, 0, size, size);
+  let r = 0, g = 0, b = 0;
+  const count = data.length / 4;
+  for (let i = 0; i < data.length; i += 4) {
+    r += data[i];
+    g += data[i + 1];
+    b += data[i + 2];
+  }
+  return [Math.round(r / count), Math.round(g / count), Math.round(b / count)];
+}
+
+/** 写真の平均色でキャンバス全体をベタ塗りする */
+function drawColorBackground(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  W: number,
+  H: number
+) {
+  const [r, g, b] = getAverageColor(img);
+  ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+  ctx.fillRect(0, 0, W, H);
+}
+
 /**
  * ぼかし背景をキャンバスに描画する（プレビュー・焼き込みで共通利用＝完全一致）。
  * 極小に縮小→段階的に拡大でなめらかにぼかし、周辺減光を加える。
@@ -79,8 +115,19 @@ function drawBlurredBackground(
   ctx.restore();
 }
 
-/** ぼかし背景だけを生成してdataURLで返す（プレビュー用。焼き込みと同一の見た目） */
-export async function makeBlurredBackgroundUrl(imageUri: string, ar: number): Promise<string> {
+function drawBackground(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  W: number,
+  H: number,
+  mode: BgMode
+) {
+  if (mode === 'color') drawColorBackground(ctx, img, W, H);
+  else drawBlurredBackground(ctx, img, W, H);
+}
+
+/** 余白を埋める背景だけを生成してdataURLで返す（プレビュー用。焼き込みと同一の見た目） */
+export async function makeBackgroundUrl(imageUri: string, ar: number, mode: BgMode = 'blur'): Promise<string> {
   const W = FEED_W;
   const H = Math.round(FEED_W / ar);
   const canvas = document.createElement('canvas');
@@ -89,7 +136,7 @@ export async function makeBlurredBackgroundUrl(imageUri: string, ar: number): Pr
   const ctx = canvas.getContext('2d');
   if (!ctx) return '';
   const img = await loadImage(imageUri);
-  drawBlurredBackground(ctx, img, W, H);
+  drawBackground(ctx, img, W, H, mode);
   return canvas.toDataURL('image/jpeg', 0.9);
 }
 
@@ -97,7 +144,8 @@ export async function makeBlurredBackgroundUrl(imageUri: string, ar: number): Pr
 export async function composeFeedImage(
   imageUri: string,
   t: FeedTransform,
-  ar: number
+  ar: number,
+  bgMode: BgMode = 'blur'
 ): Promise<{ blob: Blob; previewUrl: string }> {
   const W = FEED_W;
   const H = Math.round(FEED_W / ar);
@@ -108,7 +156,7 @@ export async function composeFeedImage(
   if (!ctx) throw new Error('Canvasを利用できません');
 
   const img = await loadImage(imageUri);
-  drawBlurredBackground(ctx, img, W, H);
+  drawBackground(ctx, img, W, H, bgMode);
 
   const cover = Math.max(W / img.width, H / img.height);
   const scale = cover * t.scale;
