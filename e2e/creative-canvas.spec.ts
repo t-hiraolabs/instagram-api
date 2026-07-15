@@ -94,7 +94,7 @@ test.describe('CreativeCanvas', () => {
     expect(afterZoomIn).toMatch(/scale=1\.00/);
   });
 
-  test('写真がスロットにちょうど収まっている間は、離した後も枠線が見えやすい色のままになる', async ({ page }) => {
+  test('スナップ中は写真スロットの枠線が見えやすい色になり、離すと選択枠の色に戻る', async ({ page }) => {
     await page.goto('/?e2e=creativeCanvas');
     await page.waitForTimeout(1000);
 
@@ -135,10 +135,8 @@ test.describe('CreativeCanvas', () => {
     await page.waitForTimeout(150);
     expect(await borderColor()).toBe('rgb(0, 229, 255)'); // スナップ中の見えやすい色
 
-    // ちょうど収まった状態（scale=1）で離しても、写真がぴったり収まっていることが
-    // 一目でわかるよう見えやすい色のままになる（選択枠の色には戻らない）
     await dispatchTouch(client, 'touchEnd', []);
     await page.waitForTimeout(300);
-    expect(await borderColor()).toBe('rgb(0, 229, 255)');
+    expect(await borderColor()).toBe('rgb(74, 144, 217)'); // 離すと選択枠の色に戻る
   });
 });
