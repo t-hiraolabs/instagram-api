@@ -99,9 +99,6 @@ export default function FeedCropEditor({ visible, images, initialIndex = 0, onCa
 
   const cur = transforms[idx] ?? DEFAULT_FEED_TRANSFORM;
   const meta = metas[idx] ?? null;
-  // 画像がちょうど枠を覆っている（隙間もはみ出しもない）状態かどうか。ドラッグ中に限らず、
-  // 常にこの状態なら枠線を見えやすい色にして、写真がぴったり収まっていることが一目でわかるようにする
-  const isFit = Math.abs(cur.scale - 1) < SCALE_SNAP_ZONE;
 
   // cover基準のサイズ（フレームを覆う）
   const baseCover = meta ? Math.max(FRAME_W / meta.iw, frameH / meta.ih) : 1;
@@ -258,7 +255,7 @@ export default function FeedCropEditor({ visible, images, initialIndex = 0, onCa
                 style={[
                   styles.cropBox,
                   { left: frameLeft, top: frameTop, width: FRAME_W, height: frameH },
-                  isFit && { borderColor: GUIDE_COLOR, borderWidth: 3 },
+                  snapped.scale && { borderColor: GUIDE_COLOR, borderWidth: 3 },
                 ]}
               />
               {/* 中央に近づいてスナップした間だけ表示するガイド線 */}
