@@ -26,6 +26,16 @@ function extractError(err: unknown): string {
   return err instanceof Error ? err.message : 'AIの呼び出しに失敗しました';
 }
 
+// AIの応答からJSON部分だけを取り出してパースする。「JSONのみで返答」と指示していても、
+// 前置き・お詫び・補足などの説明文が前後に付くことがあるため、コードフェンスを外すだけでは
+// JSON.parseが「Unrecognized token」で失敗する。最初の{から最後の}までを抜き出すことで、
+// 前後に多少の説明文が混ざっていても頑健にパースできるようにする。
+function extractJson<T>(raw: string): T {
+  const match = raw.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error('AI応答のパースに失敗しました');
+  return JSON.parse(match[0]) as T;
+}
+
 function getBrandContext(): string {
   const { brandSettings, brandSettings2, brandSettings3, activeAccountSlot } = useAppStore.getState();
   const { brandName, industry, atmosphere, targetAudience, location, tone } =
@@ -145,8 +155,7 @@ ${seoInstructions()}
 }`;
 
   const raw = await callClaude(prompt, systemPrompt);
-  const clean = raw.replace(/```json|```/g, '').trim();
-  return JSON.parse(clean) as GeneratedPost;
+  return extractJson<GeneratedPost>(raw);
 }
 
 /** 過去の人気投稿（いいね数）を分析し、その傾向をふまえてキャプションを生成（ビジネス限定） */
@@ -196,8 +205,7 @@ ${seoInstructions()}
 }`;
 
   const raw = await callClaude(prompt, systemPrompt);
-  const clean = raw.replace(/```json|```/g, '').trim();
-  return JSON.parse(clean) as GeneratedPost;
+  return extractJson<GeneratedPost>(raw);
 }
 
 export async function improveCaption(originalCaption: string): Promise<string[]> {
@@ -207,9 +215,8 @@ export async function improveCaption(originalCaption: string): Promise<string[]>
   const prompt = `以下のキャプションを改善してください:\n\n"${originalCaption}"\n\n{"suggestions": ["改善案1（具体的に）", "改善案2（具体的に）", "改善案3（具体的に）"]}`;
 
   const raw = await callClaude(prompt, systemPrompt);
-  const clean = raw.replace(/```json|```/g, '').trim();
-  const parsed = JSON.parse(clean);
-  return parsed.suggestions as string[];
+  const parsed = extractJson<{ suggestions: string[] }>(raw);
+  return parsed.suggestions;
 }
 
 /** 既存キャプションを、指示（口調・長さなど）に従って書き直す */
@@ -225,8 +232,7 @@ export async function refineCaption(caption: string, instruction: string): Promi
 以下のJSONで返してください:
 {"caption": "書き直したキャプション"}`;
   const raw = await callClaude(prompt, systemPrompt);
-  const clean = raw.replace(/```json|```/g, '').trim();
-  return JSON.parse(clean).caption as string;
+  return extractJson<{ caption: string }>(raw).caption;
 }
 
 export async function generateFromImage(input: {
@@ -294,8 +300,7 @@ ${seoInstructions()}
   }
 
   const raw = response.data.content[0].text;
-  const clean = raw.replace(/```json|```/g, '').trim();
-  return JSON.parse(clean) as GeneratedPost;
+  return extractJson<GeneratedPost>(raw);
 }
 
 /** 複数の写真からキャプション・ハッシュタグを生成（カルーセル向け） */
@@ -338,8 +343,7 @@ ${seoInstructions()}
     throw new Error(extractError(err));
   }
   const raw = response.data.content[0].text;
-  const clean = raw.replace(/```json|```/g, '').trim();
-  return JSON.parse(clean) as GeneratedPost;
+  return extractJson<GeneratedPost>(raw);
 }
 
 export async function generateHashtags(theme: string, count: number = 15): Promise<string[]> {
@@ -353,9 +357,7 @@ ${seoInstructions()}
 {"hashtags": ["#タグ1", "#タグ2", ...]}`;
 
   const raw = await callClaude(prompt, systemPrompt);
-  const clean = raw.replace(/```json|```/g, '').trim();
-  const parsed = JSON.parse(clean);
-  return parsed.hashtags as string[];
+  return extractJson<{ hashtags: string[] }>(raw).hashtags;
 }
 
 export interface SeasonalTheme {
