@@ -49,4 +49,37 @@ test.describe('FeedCropEditor スナップガイド', () => {
     await page.waitForTimeout(300);
     expect(await border()).toBe('rgb(255, 255, 255)');
   });
+
+  test('縦（覆っていない方の辺）がちょうど枠に収まる倍率でも枠線が見えやすい色になる', async ({ page }) => {
+    // fixtureの写真は400x600（正方形フレームでは横基準でcoverするため、scale=1では
+    // 縦がフレームからはみ出す）。縦がちょうどフレームに収まる倍率（約67%）まで縮小した
+    // ときにも枠線が光ることを確認する（scale=1だけでなく、覆っていない方の辺が
+    // ぴったり収まる倍率も見えやすい色になるべき、というフィードバックへの対応）。
+    await page.goto('/?e2e=feedCrop');
+    await page.waitForTimeout(1000);
+
+    const box = await page.getByTestId('feedcrop-box').boundingBox();
+    expect(box).not.toBeNull();
+    const cx = box!.x + box!.width / 2;
+    const cy = box!.y + box!.height / 2;
+
+    const client = await page.context().newCDPSession(page);
+    async function border() {
+      return page.getByTestId('feedcrop-box').evaluate((el) => getComputedStyle(el).borderColor);
+    }
+
+    // scale=1（100%）付近を避け、覆っていない方の辺がぴったり収まる二番目の倍率
+    // （このfixtureでは約67%）だけを通る範囲でピンチインする
+    await dispatchTouch(client, 'touchStart', [{ x: cx - 85, y: cy }, { x: cx + 85, y: cy }]);
+    await page.waitForTimeout(100);
+    let sawSnapColor = false;
+    for (let off = 85; off >= 55; off -= 2) {
+      await dispatchTouch(client, 'touchMove', [{ x: cx - off, y: cy }, { x: cx + off, y: cy }]);
+      await page.waitForTimeout(35);
+      if ((await border()) === 'rgb(0, 229, 255)') sawSnapColor = true;
+    }
+    await dispatchTouch(client, 'touchEnd', []);
+    await page.waitForTimeout(300);
+    expect(sawSnapColor).toBe(true);
+  });
 });
