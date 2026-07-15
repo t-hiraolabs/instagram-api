@@ -40,15 +40,24 @@ function getAverageColor(img: HTMLImageElement): [number, number, number] {
   return [Math.round(r / count), Math.round(g / count), Math.round(b / count)];
 }
 
-/** 写真の平均色でキャンバス全体をベタ塗りする */
+/** [r,g,b]を明るく（amt>0）または暗く（amt<0）した色をrgb文字列で返す */
+function shade(rgb: [number, number, number], amt: number): string {
+  const clamp = (v: number) => Math.max(0, Math.min(255, Math.round(v)));
+  return `rgb(${clamp(rgb[0] + amt)}, ${clamp(rgb[1] + amt)}, ${clamp(rgb[2] + amt)})`;
+}
+
+/** 写真の平均色を基準に、左上（明るめ）から右下（暗め）への控えめなグラデーションで塗る */
 function drawColorBackground(
   ctx: CanvasRenderingContext2D,
   img: HTMLImageElement,
   W: number,
   H: number
 ) {
-  const [r, g, b] = getAverageColor(img);
-  ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+  const avg = getAverageColor(img);
+  const g = ctx.createLinearGradient(0, 0, W, H);
+  g.addColorStop(0, shade(avg, 28));
+  g.addColorStop(1, shade(avg, -28));
+  ctx.fillStyle = g;
   ctx.fillRect(0, 0, W, H);
 }
 
