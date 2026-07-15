@@ -356,14 +356,6 @@ export default function ScheduleScreen() {
     await pickFeedImages();
   };
 
-  // 画像生成チャットを開く（作成モーダルは隠してz-index競合を防ぐ）
-  const openImgChat = async () => {
-    if (!(await ensureLoggedIn('画像生成を使うにはログインが必要です'))) return;
-    imgChatFromHome.current = false;
-    setModalVisible(false);
-    setImgChatVisible(true);
-  };
-
   // チャットで生成した画像を使って調整画面へ
   const handleUseGeneratedImage = (dataUrl: string) => {
     setImgChatVisible(false);
@@ -1994,16 +1986,6 @@ export default function ScheduleScreen() {
                     <Text style={styles.aiBtnGhostText}>写真を調整する</Text>
                   </TouchableOpacity>
                 )}
-
-                {/* AIで画像を生成（チャット） */}
-                <Text style={[styles.sectionDivider, { marginTop: SPACING.lg }]}>または AIで画像を作る</Text>
-                <TouchableOpacity
-                  style={[styles.aiBtn, { backgroundColor: COLORS.secondary }]}
-                  onPress={openImgChat}
-                  activeOpacity={0.85}
-                >
-                  <Text style={styles.aiBtnText}>AIで画像を作る（チャット）</Text>
-                </TouchableOpacity>
               </>
             ) : null}
 
