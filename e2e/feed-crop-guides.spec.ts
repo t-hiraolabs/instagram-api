@@ -49,4 +49,14 @@ test.describe('FeedCropEditor スナップガイド', () => {
     await page.waitForTimeout(300);
     expect(await border()).toBe('rgb(255, 255, 255)');
   });
+
+  test('画像がちょうど枠に収まっている間は、操作していなくても枠線が見えやすい色のままになる', async ({ page }) => {
+    await page.goto('/?e2e=feedCrop');
+    await page.waitForTimeout(1000);
+
+    // 初期倍率（DEFAULT_FEED_TRANSFORM）は既にscale=1（枠をちょうど覆う）なので、
+    // 何も操作しなくても最初から枠線が見えやすい色になっているはず
+    const borderInitial = await page.getByTestId('feedcrop-box').evaluate((el) => getComputedStyle(el).borderColor);
+    expect(borderInitial).toBe('rgb(0, 229, 255)');
+  });
 });
