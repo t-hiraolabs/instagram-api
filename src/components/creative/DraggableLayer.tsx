@@ -119,11 +119,14 @@ export default function DraggableLayer({
   const composed = Gesture.Simultaneous(pan, pinch, rotate, tap);
 
   const style = useAnimatedStyle(() => {
-    // 枠線の優先順位: スナップ中（見えやすい色）＞選択中（通常の選択枠）＞非表示
+    // 枠線の優先順位: きっちり収まっている・スナップ中（見えやすい色）＞選択中（通常の選択枠）＞非表示。
+    // 「ちょうど収まっている」はドラッグ中に限らず常に判定するので、操作を離した後も
+    // 写真がスロットにぴったり収まっていることが一目でわかる
     let borderWidth = 0;
     let borderColor = 'transparent';
     let borderStyle: 'solid' | 'dashed' = 'dashed';
-    if (isSnapped.value) {
+    const fitsNow = snapScale ? snapValueWithHit(savedScale.value, snapScale, SCALE_SNAP_ZONE).hit !== null : false;
+    if (isSnapped.value || fitsNow) {
       borderWidth = 2.5; borderColor = GUIDE_COLOR; borderStyle = 'solid';
     } else if (selected) {
       borderWidth = 1.5; borderColor = '#4A90D9'; borderStyle = 'dashed';
