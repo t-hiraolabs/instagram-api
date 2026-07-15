@@ -155,7 +155,11 @@ export default function HomeScreen() {
       <TouchableOpacity
         testID="home-chat-fab"
         style={[styles.chatFab, { bottom: SPACING.lg }]}
-        onPress={() => setChatVisible(true)}
+        onPress={() => {
+          // ボタンから開く際も毎回新しい会話にする（前回の続きを開かないように）
+          setChatForceNew(true);
+          setChatVisible(true);
+        }}
         activeOpacity={0.85}
       >
         <Ionicons name="chatbubble-ellipses" size={26} color="#fff" />
