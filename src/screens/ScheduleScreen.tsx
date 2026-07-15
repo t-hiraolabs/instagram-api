@@ -1274,7 +1274,7 @@ export default function ScheduleScreen() {
             </TouchableOpacity>
             <TouchableOpacity style={styles.createMenuBtn} onPress={openStoryCreative} activeOpacity={0.85}>
               <Ionicons name="sparkles-outline" size={22} color={COLORS.text} style={styles.createMenuEmoji} />
-              <Text style={styles.createMenuLabel}>ストーリー</Text>
+              <Text style={styles.createMenuLabel}>テンプレート</Text>
             </TouchableOpacity>
           </View>
         </View>
