@@ -13,7 +13,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
-import { FeedTransform, DEFAULT_FEED_TRANSFORM, ASPECTS, AspectKey, composeFeedImage, makeBlurredBackgroundUrl } from '../utils/composeFeed';
+import { FeedTransform, DEFAULT_FEED_TRANSFORM, ASPECTS, AspectKey, BgMode, composeFeedImage, makeBackgroundUrl } from '../utils/composeFeed';
 import { loadImage } from '../utils/composeStory';
 import { snapValueWithHit } from '../utils/snap';
 
@@ -52,17 +52,19 @@ export default function FeedCropEditor({ visible, images, initialIndex = 0, onCa
   const [metas, setMetas] = useState<(Meta | null)[]>([]);
   const [processing, setProcessing] = useState(false);
   const [bgUrl, setBgUrl] = useState('');
+  // 縮小時にできる余白の埋め方（ぼかし＝写真自体をぼかして敷き詰める／色＝写真の平均色でベタ塗り）
+  const [bgMode, setBgMode] = useState<BgMode>('blur');
 
   const ar = ASPECTS[aspect];
   const frameH = FRAME_W / ar;
 
-  // 焼き込みと同じ処理でぼかし背景を生成し、プレビューに使う（端末問わず完全一致）
+  // 焼き込みと同じ処理で背景を生成し、プレビューに使う（端末問わず完全一致）
   useEffect(() => {
     if (!visible || !imgs[idx]) { setBgUrl(''); return; }
     let cancelled = false;
-    makeBlurredBackgroundUrl(imgs[idx], ar).then((u) => { if (!cancelled) setBgUrl(u); }).catch(() => {});
+    makeBackgroundUrl(imgs[idx], ar, bgMode).then((u) => { if (!cancelled) setBgUrl(u); }).catch(() => {});
     return () => { cancelled = true; };
-  }, [visible, imgs, idx, ar]);
+  }, [visible, imgs, idx, ar, bgMode]);
 
   useEffect(() => {
     if (!visible) return;
@@ -70,6 +72,7 @@ export default function FeedCropEditor({ visible, images, initialIndex = 0, onCa
     setTransforms(images.map(() => ({ ...DEFAULT_FEED_TRANSFORM })));
     setIdx(Math.max(0, Math.min(initialIndex, images.length - 1)));
     setAspect('square');
+    setBgMode('blur');
     let cancelled = false;
     (async () => {
       const ms: (Meta | null)[] = [];
@@ -179,7 +182,7 @@ export default function FeedCropEditor({ visible, images, initialIndex = 0, onCa
     try {
       const results: { blob: Blob; previewUrl: string }[] = [];
       for (let i = 0; i < imgs.length; i++) {
-        results.push(await composeFeedImage(imgs[i], transforms[i] ?? DEFAULT_FEED_TRANSFORM, ar));
+        results.push(await composeFeedImage(imgs[i], transforms[i] ?? DEFAULT_FEED_TRANSFORM, ar, bgMode));
       }
       onDone(results);
     } catch {
@@ -279,6 +282,17 @@ export default function FeedCropEditor({ visible, images, initialIndex = 0, onCa
           </TouchableOpacity>
           <TouchableOpacity style={[styles.aspectBtn, aspect === 'portrait' && styles.aspectBtnActive]} onPress={() => setAspect('portrait')}>
             <Text style={[styles.aspectText, aspect === 'portrait' && styles.aspectTextActive]}>4:5</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* 縮小してできた余白の埋め方 */}
+        <Text style={styles.bgLabel}>背景</Text>
+        <View style={styles.aspectRow}>
+          <TouchableOpacity testID="feedcrop-bg-blur" style={[styles.aspectBtn, bgMode === 'blur' && styles.aspectBtnActive]} onPress={() => setBgMode('blur')}>
+            <Text style={[styles.aspectText, bgMode === 'blur' && styles.aspectTextActive]}>ぼかし</Text>
+          </TouchableOpacity>
+          <TouchableOpacity testID="feedcrop-bg-color" style={[styles.aspectBtn, bgMode === 'color' && styles.aspectBtnActive]} onPress={() => setBgMode('color')}>
+            <Text style={[styles.aspectText, bgMode === 'color' && styles.aspectTextActive]}>写真の色</Text>
           </TouchableOpacity>
         </View>
 
@@ -407,6 +421,7 @@ const styles = StyleSheet.create({
   // 中央にスナップした間だけ表示する見えやすいガイド線
   guideV: { position: 'absolute', width: 2, backgroundColor: GUIDE_COLOR },
   guideH: { position: 'absolute', height: 2, backgroundColor: GUIDE_COLOR },
+  bgLabel: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '600', textAlign: 'center', marginTop: SPACING.md },
   aspectRow: { flexDirection: 'row', justifyContent: 'center', gap: SPACING.sm, marginTop: SPACING.md },
   aspectBtn: { paddingHorizontal: SPACING.lg, paddingVertical: 8, borderRadius: RADIUS.full, borderWidth: 1, borderColor: COLORS.border },
   aspectBtnActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
