@@ -418,6 +418,35 @@ ${input.topPostCaption ? `一番反応が良かった投稿の書き出し: 「$
   return extractJson<MarketingGuide>(raw);
 }
 
+/**
+ * マーケティングガイドに対するその場限りの質問チャット。ガイドの内容（段階・評価・
+ * アドバイス）を文脈として渡し、フォローアップの質問に具体的に答える。
+ * ガイド自体の自動生成（skipCount）とは違い、ユーザーが能動的に使う機能なので
+ * 通常のAI生成回数を消費する（skipCountしない）。
+ */
+export async function askMarketingGuideQuestion(guideContext: string, history: ChatTurn[]): Promise<string> {
+  const systemPrompt = `あなたは日本のInstagramマーケティングの専門家です。
+以下は、あるユーザー向けに生成済みのマーケティングガイドの内容です。ユーザーからの
+フォローアップの質問に、このガイドの内容に沿って具体的に答えてください。
+一般論ではなく、このアカウントの段階・評価・アドバイス内容を踏まえて回答してください。
+1回の回答は簡潔に（300字程度まで）。
+
+${guideContext}`;
+
+  const headers = await getAuthHeaders();
+  const msgs = history.map((h) => ({ role: h.role, content: h.content }));
+  try {
+    const response = await axios.post(
+      CLAUDE_API_URL,
+      { model: MODEL, max_tokens: 1024, system: systemPrompt, messages: msgs },
+      { headers }
+    );
+    return response.data.content[0].text;
+  } catch (err) {
+    throw new Error(extractError(err));
+  }
+}
+
 export interface SeasonalTheme {
   event: string;
   emoji: string;
