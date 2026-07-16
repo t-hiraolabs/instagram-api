@@ -7,6 +7,7 @@ import { useAppStore } from '../store/appStore';
 import AccountBadge from '../components/AccountBadge';
 import ImageGenChat from '../components/ImageGenChat';
 import OnboardingChecklist from '../components/OnboardingChecklist';
+import MarketingGuideCard from '../components/MarketingGuideCard';
 import { getPostIdeas, PostIdea } from '../utils/postIdeas';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -67,6 +68,8 @@ export default function HomeScreen() {
   const moreIdeas = useMemo(() => getTodaysIdeas(ideaPool, ideaPool.length).slice(3), [ideaPool]);
   const todoItems = useMemo(() => getTodoItems(), []);
   const [chatVisible, setChatVisible] = useState(false);
+  // 「はじめてガイド」を完了したら、代わりにマーケティングガイドを表示する
+  const [onboardingDone, setOnboardingDone] = useState(false);
 
   const handleUseImage = (dataUrl: string) => {
     setPendingUseImage(dataUrl);
@@ -119,7 +122,11 @@ export default function HomeScreen() {
           <Text style={styles.timeDesc} numberOfLines={1}>{bestTime.description}</Text>
         </View>
 
-        <OnboardingChecklist onOpenAdviceChat={startAdviceChat} />
+        <OnboardingChecklist
+          onOpenAdviceChat={startAdviceChat}
+          onStatusChange={(s) => setOnboardingDone(s.loaded && s.allDone)}
+        />
+        {onboardingDone && <MarketingGuideCard />}
 
         <Text style={styles.groupLabel}>今日のおすすめ投稿ネタ</Text>
         {featuredIdeas.map((idea) => (

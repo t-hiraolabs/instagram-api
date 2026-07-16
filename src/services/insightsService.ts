@@ -91,6 +91,25 @@ export async function getTopPostsForGeneration(): Promise<TopPost[] | undefined>
   }
 }
 
+export type AccountRank = 'start' | 'growth' | 'established';
+
+export const ACCOUNT_RANK_LABEL: Record<AccountRank, string> = {
+  start: '立ち上げ期',
+  growth: '成長期',
+  established: '定着期',
+};
+
+/**
+ * フォロワー数＋投稿数の組み合わせでアカウントの段階を大まかに判定する。
+ * どちらか一方だけでは実態とズレやすい（フォロワーは多いが投稿がまだ少ない、等）ため、
+ * 投稿数が少ないうちは「立ち上げ期」を優先する。
+ */
+export function computeAccountRank(followersCount: number, mediaCount: number): AccountRank {
+  if (followersCount < 100 || mediaCount < 10) return 'start';
+  if (followersCount < 1000) return 'growth';
+  return 'established';
+}
+
 export type AnalysisFacts =
   | { ok: true; text: string; details: InsightDetails }
   | { ok: false; reason: string };
