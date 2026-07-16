@@ -421,8 +421,8 @@ ${input.topPostCaption ? `一番反応が良かった投稿の書き出し: 「$
 /**
  * マーケティングガイドに対するその場限りの質問チャット。ガイドの内容（段階・評価・
  * アドバイス）を文脈として渡し、フォローアップの質問に具体的に答える。
- * ガイド自体の自動生成（skipCount）とは違い、ユーザーが能動的に使う機能なので
- * 通常のAI生成回数を消費する（skipCountしない）。
+ * 通常のAI生成回数(ai_used)ではなく、アシスタント会話と同じ「チャットの利用量」
+ * （月間トークン上限）を消費する（chat: true）。
  */
 export async function askMarketingGuideQuestion(guideContext: string, history: ChatTurn[]): Promise<string> {
   const systemPrompt = `あなたは日本のInstagramマーケティングの専門家です。
@@ -438,7 +438,7 @@ ${guideContext}`;
   try {
     const response = await axios.post(
       CLAUDE_API_URL,
-      { model: MODEL, max_tokens: 1024, system: systemPrompt, messages: msgs },
+      { model: MODEL, max_tokens: 1024, system: systemPrompt, messages: msgs, chat: true },
       { headers }
     );
     return response.data.content[0].text;

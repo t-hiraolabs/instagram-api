@@ -1,7 +1,7 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Image, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { COLORS, SPACING, RADIUS, SHADOWS } from '../utils/theme';
 import { useAppStore } from '../store/appStore';
 import AccountBadge from '../components/AccountBadge';
@@ -9,6 +9,8 @@ import ImageGenChat from '../components/ImageGenChat';
 import OnboardingChecklist from '../components/OnboardingChecklist';
 import MarketingGuideCard from '../components/MarketingGuideCard';
 import { getPostIdeas, PostIdea } from '../utils/postIdeas';
+import { getAiUsage, AiUsage } from '../services/scheduleService';
+import { getChatUsagePercent } from '../services/aiService';
 import { Ionicons } from '@expo/vector-icons';
 
 function getGreeting(): string {
@@ -71,6 +73,15 @@ export default function HomeScreen() {
   // 「はじめてガイド」を完了したら、代わりにマーケティングガイドを表示する
   const [onboardingDone, setOnboardingDone] = useState(false);
 
+  // AI生成の残り回数・チャットの利用量。ホーム上部に常に見える形で表示する
+  const [aiUsage, setAiUsage] = useState<AiUsage | null>(null);
+  const [chatUsedPct, setChatUsedPct] = useState<number | null>(null);
+  const refreshUsage = useCallback(() => {
+    getAiUsage().then(setAiUsage).catch(() => {});
+    getChatUsagePercent().then((c) => setChatUsedPct(c.usedPct)).catch(() => {});
+  }, []);
+  useFocusEffect(useCallback(() => { refreshUsage(); }, [refreshUsage]));
+
   const handleUseImage = (dataUrl: string) => {
     setPendingUseImage(dataUrl);
     setChatVisible(false);
@@ -109,6 +120,23 @@ export default function HomeScreen() {
         </View>
       </View>
 
+      {(aiUsage || chatUsedPct !== null) && (
+        <View style={styles.usageRow}>
+          {aiUsage && (
+            <View style={styles.usageItem}>
+              <Ionicons name="sparkles-outline" size={12} color={COLORS.textMuted} />
+              <Text style={styles.usageItemText}>AI生成 残り{aiUsage.remaining}回</Text>
+            </View>
+          )}
+          {chatUsedPct !== null && (
+            <View style={styles.usageItem}>
+              <Ionicons name="chatbubble-outline" size={12} color={COLORS.textMuted} />
+              <Text style={styles.usageItemText}>チャット利用量 {chatUsedPct}%使用</Text>
+            </View>
+          )}
+        </View>
+      )}
+
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={styles.scrollContent}
@@ -126,7 +154,7 @@ export default function HomeScreen() {
           onOpenAdviceChat={startAdviceChat}
           onStatusChange={(s) => setOnboardingDone(s.loaded && s.allDone)}
         />
-        {onboardingDone && <MarketingGuideCard />}
+        {onboardingDone && <MarketingGuideCard onChatUsed={refreshUsage} />}
 
         <Text style={styles.groupLabel}>今日のおすすめ投稿ネタ</Text>
         {featuredIdeas.map((idea) => (
@@ -229,6 +257,14 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: -0.3,
   },
+  usageRow: {
+    flexDirection: 'row',
+    gap: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    paddingTop: SPACING.sm,
+  },
+  usageItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  usageItemText: { color: COLORS.textMuted, fontSize: 11, fontWeight: '600' },
   scrollContent: {
     paddingHorizontal: SPACING.md,
     paddingTop: SPACING.lg,
