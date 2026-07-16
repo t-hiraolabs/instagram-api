@@ -1,8 +1,9 @@
 // 「はじめてガイド」を完了したユーザー向けに、実際のInstagramデータをもとに
 // アカウントの段階（立ち上げ期／成長期／定着期）とS〜Eの総合評価を判定し、それに応じたAIアドバイスを表示する。
-// 連携中のアカウントごとに評価・アドバイスを分けて保持し、毎週月曜0:00（端末のローカル時刻、
-// getIsoWeekKeyが月曜始まりの週キーを使うことで判定）を境に自動的に再分析する
-// （手動更新はなし。その週になってから次にホームを開いたときに反映される）。
+// 連携中のアカウントごとに評価・アドバイスを分けて保持する。Pro/ビジネスは毎週月曜0:00
+// （端末のローカル時刻、getIsoWeekKeyが月曜始まりの週キーを使うことで判定）を境に自動的に
+// 再分析するが、フリープランはAIコストを抑えるため初回の分析のみ行い、以降は自動更新しない
+// （手動更新もなし）。
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, Platform, TextInput, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,6 +21,8 @@ import {
   AccountScoreGrade,
 } from '../services/insightsService';
 import { generateMarketingGuide, MarketingGuide, askMarketingGuideQuestion, ChatTurn } from '../services/aiService';
+import { getMyPlan } from '../services/scheduleService';
+import { Plan } from '../utils/plans';
 
 interface QaMsg { role: 'user' | 'assistant'; text: string }
 
@@ -84,6 +87,7 @@ export default function MarketingGuideCard({ onChatUsed }: Props) {
   const [guide, setGuide] = useState<MarketingGuide | null>(null);
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [plan, setPlan] = useState<Plan | null>(null);
 
   // ガイドに対する質問チャット。その場限りのやり取りなので保存はしない
   // （アカウント切り替え・再分析のたびにリセットする）
@@ -121,26 +125,33 @@ export default function MarketingGuideCard({ onChatUsed }: Props) {
     const accessToken = instagramCredentials?.accessToken;
     if (!userId || !accessToken) return;
 
-    const thisWeek = getIsoWeekKey(new Date());
-    const cached = readCacheMap()[userId];
-    if (cached && cached.weekKey === thisWeek) {
-      setRank(cached.rank);
-      setGrade(cached.grade);
-      setGuide(cached.guide);
-      setFailed(false);
-      return;
-    }
-
-    // 別アカウントに切り替えた直後など、そのアカウント用のキャッシュがまだ無い場合は
-    // 前のアカウントの内容を表示し続けないよう、いったんクリアしてから分析し直す
-    setRank(null);
-    setGrade(null);
-    setGuide(null);
-
     let cancelled = false;
-    setLoading(true);
-    setFailed(false);
     (async () => {
+      const myPlan = await getMyPlan().catch(() => 'free' as Plan);
+      if (cancelled) return;
+      setPlan(myPlan);
+
+      const thisWeek = getIsoWeekKey(new Date());
+      const cached = readCacheMap()[userId];
+      // フリープランは初回分析のみ（毎週の自動再分析は行わない）。一度分析済みなら
+      // 週が変わってもそのまま使い続ける。Pro/ビジネスは従来通り週が変わったら再分析する
+      const cacheValid = !!cached && (myPlan === 'free' || cached.weekKey === thisWeek);
+      if (cacheValid && cached) {
+        setRank(cached.rank);
+        setGrade(cached.grade);
+        setGuide(cached.guide);
+        setFailed(false);
+        return;
+      }
+
+      // 別アカウントに切り替えた直後など、そのアカウント用のキャッシュがまだ無い場合は
+      // 前のアカウントの内容を表示し続けないよう、いったんクリアしてから分析し直す
+      setRank(null);
+      setGrade(null);
+      setGuide(null);
+
+      setLoading(true);
+      setFailed(false);
       try {
         const insights = await getInsightsSummary(accessToken, 24);
         const facts = computeInsightFacts(insights);
@@ -192,7 +203,9 @@ export default function MarketingGuideCard({ onChatUsed }: Props) {
           <Ionicons name="trending-up-outline" size={16} color={COLORS.primary} />
           <View>
             <Text style={styles.title}>Instagramマーケティングガイド</Text>
-            <Text style={styles.subtitle}>毎週月曜 0:00に自動更新</Text>
+            <Text style={styles.subtitle}>
+              {plan === 'free' ? '初回分析のみ（Proで毎週自動更新）' : '毎週月曜 0:00に自動更新'}
+            </Text>
           </View>
         </View>
         {grade && (
