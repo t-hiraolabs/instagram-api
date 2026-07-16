@@ -109,7 +109,7 @@ export default function CreativeLayerListPanel({
               onPress={() => onSelectItem(layer.id)}
               activeOpacity={0.85}
             >
-              <Text style={[styles.chipText, active && styles.chipTextActive]}>{layer.isCta ? 'CTA' : '文字'}</Text>
+              <Text style={[styles.chipText, active && styles.chipTextActive]}>{layer.label ?? (layer.isCta ? 'CTA' : '文字')}</Text>
               {active && (
                 <View style={styles.actionRow}>
                   <TouchableOpacity onPress={() => onToggleTextVisible(layer.id)} hitSlop={8}>

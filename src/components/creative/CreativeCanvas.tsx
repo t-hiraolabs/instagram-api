@@ -9,9 +9,11 @@ import React from 'react';
 import { View, Image, Text, Dimensions, StyleSheet } from 'react-native';
 import DraggableLayer from './DraggableLayer';
 import DraggablePhotoSlot from './DraggablePhotoSlot';
+import BackgroundPresetSvg from './BackgroundPresetSvg';
 import { CANVAS_W, CANVAS_H, PhotoSlot, TemplateLayer, TextLayer, resolveLayerBand } from '../../types/creativeTemplate';
 import { PhotoAssignment } from '../../store/creativeEditorStore';
 import { getFontPreset } from '../../utils/fontPresets';
+import { getBackgroundPreset } from '../../utils/backgroundPresets';
 import { COLORS } from '../../utils/theme';
 
 const screenW = Dimensions.get('window').width;
@@ -27,6 +29,8 @@ function sortByZIndex<T extends { zIndex?: number }>(items: T[]): T[] {
 }
 
 function StaticLayerImage({ layer, displayScale }: { layer: TemplateLayer; displayScale: number }) {
+  const w = layer.w * displayScale;
+  const h = layer.h * displayScale;
   return (
     // frame/decorationは常に静止画（エンドユーザーは動かせない）だが、写真スロットより
     // 前面に描画されることがある（例: フレームは写真の上に重なる）。ImageはpointerEventsを
@@ -38,11 +42,15 @@ function StaticLayerImage({ layer, displayScale }: { layer: TemplateLayer; displ
       style={{
         position: 'absolute',
         left: layer.x * displayScale, top: layer.y * displayScale,
-        width: layer.w * displayScale, height: layer.h * displayScale,
+        width: w, height: h,
         transform: layer.rotation ? [{ rotateZ: `${layer.rotation}deg` }] : undefined,
       }}
     >
-      <Image source={{ uri: layer.uri }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+      {layer.bgPresetId ? (
+        <BackgroundPresetSvg preset={getBackgroundPreset(layer.bgPresetId)} width={w} height={h} />
+      ) : (
+        <Image source={{ uri: layer.uri }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+      )}
     </View>
   );
 }
