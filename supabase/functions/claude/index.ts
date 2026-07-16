@@ -7,7 +7,7 @@ const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
 // プランごとの月間AI回数の上限
-const LIMITS: Record<string, number> = { free: 5, pro: 50, business: 300 };
+const LIMITS: Record<string, number> = { free: 5, pro: 30, business: 100 };
 
 // ブランド分析など「カウント対象外」のAI呼び出しに対する裏の上限（不正利用防止）。
 // フリーは累計、Pro/ビジネスは月間でリセット。
@@ -15,7 +15,7 @@ const BRAND_LIMITS: Record<string, number> = { free: 3, pro: 10, business: 10 };
 
 // AIチャットの上限（メッセージ数）。フリーは合計1回のみ（累計・リセットなし、
 // はじめてガイドからのお試し用）、Pro/ビジネスは月間の回数上限（月が変わったらリセット）。
-const CHAT_MSG_LIMITS: Record<string, number> = { free: 1, pro: 30, business: 100 };
+const CHAT_MSG_LIMITS: Record<string, number> = { free: 1, pro: 50, business: 150 };
 
 // 同じ月か判定
 function isSameMonth(periodStartStr: string): boolean {

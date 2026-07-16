@@ -5,7 +5,10 @@ import { COLORS } from './theme';
 export type Plan = 'free' | 'pro' | 'business';
 
 /** プランごとの月間AI生成上限 */
-export const AI_LIMITS: Record<Plan, number> = { free: 5, pro: 50, business: 300 };
+export const AI_LIMITS: Record<Plan, number> = { free: 5, pro: 30, business: 100 };
+
+/** プランごとの月間AIチャット上限（フリーは合計1回のみ・リセットなし） */
+export const CHAT_LIMITS: Record<Plan, number> = { free: 1, pro: 50, business: 150 };
 
 /** プランの順位（高いほど上位）。アップグレード判定に使う */
 export const PLAN_RANK: Record<Plan, number> = { free: 0, pro: 1, business: 2 };
@@ -41,7 +44,7 @@ export const PLANS: PlanInfo[] = [
     name: 'フリー',
     price: '無料',
     paid: false,
-    features: ['AI生成 1アカウント5回まで', '予約投稿 2件まで', '今すぐ投稿 無制限', '写真に文字を合成'],
+    features: ['AI生成 1アカウント5回まで', 'AIチャット 1回のみお試し', '予約投稿 2件まで', '今すぐ投稿 無制限', '写真に文字を合成'],
     color: COLORS.textMuted,
   },
   {
@@ -50,7 +53,8 @@ export const PLANS: PlanInfo[] = [
     price: '¥980/月',
     paid: true,
     features: [
-      'AI生成 月50回',
+      'AI生成 月30回',
+      'AIチャット 月50回',
       '予約投稿 無制限',
       'くりかえし投稿（毎日/毎週/毎月/平日）',
       '複数アカウント連携（最大3つ）',
@@ -63,7 +67,8 @@ export const PLANS: PlanInfo[] = [
     price: '¥2,480/月',
     paid: true,
     features: [
-      'AI生成 月300回',
+      'AI生成 月100回',
+      'AIチャット 月150回',
       'Proのすべての機能',
       '📊 インサイト分析',
       '過去投稿の反応を分析してAI生成',
