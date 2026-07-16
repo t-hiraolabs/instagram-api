@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { useAppStore } from '../store/appStore';
 import { supabase } from './supabaseClient';
-import { CHAT_LIMITS } from '../utils/plans';
+import { CHAT_LIMITS, Plan } from '../utils/plans';
 
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
 const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
@@ -572,23 +572,24 @@ ${sample}
 
 export interface ChatTurn { role: 'user' | 'assistant'; content: string; }
 
-/** チャット利用量を % で返す。フリーは合計1回（リセットなし）、Pro/ビジネスは月ごとにリセット */
-export async function getChatUsagePercent(): Promise<{ usedPct: number; remainingPct: number }> {
+export interface ChatUsage { plan: Plan; used: number; limit: number; remaining: number }
+
+/** チャットの実際の利用回数を返す（getAiUsageと同じ形）。フリーは合計1回（リセットなし）、Pro/ビジネスは月ごとにリセット */
+export async function getChatUsage(): Promise<ChatUsage> {
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { usedPct: 0, remainingPct: 100 };
+  if (!user) return { plan: 'free', used: 0, limit: CHAT_LIMITS.free, remaining: CHAT_LIMITS.free };
   const { data } = await supabase
     .from('profiles')
     .select('plan, chat_used, chat_period_start')
     .eq('id', user.id)
     .maybeSingle();
-  const plan = data?.plan === 'pro' || data?.plan === 'business' ? data.plan : 'free';
+  const plan: Plan = data?.plan === 'pro' || data?.plan === 'business' ? data.plan : 'free';
   const limit = CHAT_LIMITS[plan];
 
   if (plan === 'free') {
     // フリープランはchat_usedを累計メッセージ数として使う（月次リセットなし）
-    const used = data?.chat_used ?? 0;
-    const usedPct = Math.min(100, Math.round((used / limit) * 100));
-    return { usedPct, remainingPct: 100 - usedPct };
+    const used = Math.min(data?.chat_used ?? 0, limit);
+    return { plan, used, limit, remaining: limit - used };
   }
 
   const start = data?.chat_period_start ?? new Date().toISOString().slice(0, 10);
@@ -596,7 +597,13 @@ export async function getChatUsagePercent(): Promise<{ usedPct: number; remainin
     const t = new Date(); const p = new Date(`${start}T00:00:00Z`);
     return t.getUTCFullYear() === p.getUTCFullYear() && t.getUTCMonth() === p.getUTCMonth();
   })();
-  const used = sameMonth ? (data?.chat_used ?? 0) : 0;
+  const used = Math.min(sameMonth ? (data?.chat_used ?? 0) : 0, limit);
+  return { plan, used, limit, remaining: limit - used };
+}
+
+/** チャット利用量を % で返す。フリーは合計1回（リセットなし）、Pro/ビジネスは月ごとにリセット */
+export async function getChatUsagePercent(): Promise<{ usedPct: number; remainingPct: number }> {
+  const { used, limit } = await getChatUsage();
   const usedPct = Math.min(100, Math.round((used / limit) * 100));
   return { usedPct, remainingPct: 100 - usedPct };
 }

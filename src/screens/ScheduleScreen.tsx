@@ -242,6 +242,8 @@ export default function ScheduleScreen() {
   const [editSaving, setEditSaving] = useState(false);
 
   const [feedTheme, setFeedTheme] = useState('');
+  // 「プロンプトから生成」ボタンを押すまでは、テーマ・指示の入力欄を隠しておく
+  const [promptInputOpen, setPromptInputOpen] = useState(false);
   // タグ・場所
   const [userTags, setUserTags] = useState<string[]>([]);
   const [newUserTag, setNewUserTag] = useState('');
@@ -311,6 +313,7 @@ export default function ScheduleScreen() {
     setImagePreview('');
     setDateText('');
     setFeedTheme('');
+    setPromptInputOpen(false);
     setRepeat('none');
     setUserTags([]);
     setNewUserTag('');
@@ -1054,6 +1057,7 @@ export default function ScheduleScreen() {
     setImagePreview(urls[0] ?? '');
     setDateText('');
     setFeedTheme('');
+    setPromptInputOpen(false);
     setRepeat('none');
     setScheduleModalVisible(false);
     if (scheduleFromResult.current) {
@@ -1522,35 +1526,11 @@ export default function ScheduleScreen() {
 
             {/* AIでキャプションを生成 */}
             <Text style={styles.sectionDivider}>AIでキャプションを作る</Text>
-            <Text style={styles.fieldLabel}>テーマ・指示（任意）</Text>
-            <TextInput
-              style={styles.input}
-              value={feedTheme}
-              onChangeText={setFeedTheme}
-              placeholder={'例: 夏の新メニュー紹介\nもっとカジュアルに、絵文字多めで'}
-              placeholderTextColor={COLORS.textMuted}
-            />
-            <View style={{ flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.sm }}>
-              {feedPreviews.length > 0 && (
-                <TouchableOpacity
-                  style={[styles.aiBtn, { flex: 1 }, aiLoading && styles.publishNowBtnDisabled]}
-                  onPress={handleGenerateFeedFromPhoto}
-                  disabled={aiLoading}
-                  activeOpacity={0.85}
-                >
-                  {aiLoading ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <View style={styles.aiBtnRow}>
-                      <Ionicons name="sparkles" size={13} color="#fff" />
-                      <Text style={styles.aiBtnText}>写真から生成</Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
-              )}
+
+            {feedPreviews.length > 0 && (
               <TouchableOpacity
-                style={[styles.aiBtn, { flex: 1, backgroundColor: COLORS.secondary }, aiLoading && styles.publishNowBtnDisabled]}
-                onPress={handleGenerateFeedText}
+                style={[styles.aiBtn, { marginTop: 0 }, aiLoading && styles.publishNowBtnDisabled]}
+                onPress={handleGenerateFeedFromPhoto}
                 disabled={aiLoading}
                 activeOpacity={0.85}
               >
@@ -1559,11 +1539,53 @@ export default function ScheduleScreen() {
                 ) : (
                   <View style={styles.aiBtnRow}>
                     <Ionicons name="sparkles" size={13} color="#fff" />
-                    <Text style={styles.aiBtnText}>プロンプトから生成</Text>
+                    <Text style={styles.aiBtnText}>写真から生成</Text>
                   </View>
                 )}
               </TouchableOpacity>
-            </View>
+            )}
+
+            {!promptInputOpen ? (
+              <TouchableOpacity
+                style={[styles.aiBtn, { backgroundColor: COLORS.secondary }]}
+                onPress={() => setPromptInputOpen(true)}
+                activeOpacity={0.85}
+              >
+                <View style={styles.aiBtnRow}>
+                  <Ionicons name="sparkles" size={13} color="#fff" />
+                  <Text style={styles.aiBtnText}>プロンプトから生成</Text>
+                </View>
+              </TouchableOpacity>
+            ) : (
+              <>
+                <Text style={[styles.fieldLabel, { marginTop: SPACING.md }]}>テーマ・指示</Text>
+                <TextInput
+                  style={[styles.input, styles.promptInput]}
+                  value={feedTheme}
+                  onChangeText={setFeedTheme}
+                  placeholder={'例: 夏の新メニュー紹介\nもっとカジュアルに、絵文字多めで'}
+                  placeholderTextColor={COLORS.textMuted}
+                  multiline
+                  textAlignVertical="top"
+                  autoFocus
+                />
+                <TouchableOpacity
+                  style={[styles.aiBtn, { backgroundColor: COLORS.secondary }, aiLoading && styles.publishNowBtnDisabled]}
+                  onPress={handleGenerateFeedText}
+                  disabled={aiLoading}
+                  activeOpacity={0.85}
+                >
+                  {aiLoading ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <View style={styles.aiBtnRow}>
+                      <Ionicons name="sparkles" size={13} color="#fff" />
+                      <Text style={styles.aiBtnText}>生成する</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              </>
+            )}
             <Text style={styles.aiUsageHint}>✨ AI生成を1回消費します</Text>
 
             {/* キャプション（広めの入力欄） */}
@@ -2938,6 +2960,7 @@ const styles = StyleSheet.create({
   aiBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
   aiBtnRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   aiUsageHint: { color: COLORS.textMuted, fontSize: 11, marginTop: 6, textAlign: 'center' },
+  promptInput: { height: 140, textAlignVertical: 'top', paddingTop: SPACING.sm },
   aiHintText: { color: COLORS.textMuted, fontSize: 11, marginTop: 4, marginBottom: SPACING.sm },
   aiCard: {
     backgroundColor: COLORS.surfaceElevated,
