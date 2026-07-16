@@ -13,12 +13,9 @@ const LIMITS: Record<string, number> = { free: 5, pro: 50, business: 300 };
 // フリーは累計、Pro/ビジネスは月間でリセット。
 const BRAND_LIMITS: Record<string, number> = { free: 3, pro: 10, business: 10 };
 
-// チャット会話の「月間」上限（トークン数：入力+出力の合計、Pro/ビジネスのみ）。表示は「% 使用」で見せる。
-const CHAT_TOKEN_LIMITS: Record<string, number> = { free: 100000, pro: 800000, business: 2000000 };
-
-// フリープランはAIチャットを合計1回（メッセージ数、累計・リセットなし）までのお試しのみ。
-// それ以降はサブスク（Pro/ビジネス）が必要（chat_usedを流用してメッセージ数として数える）。
-const FREE_CHAT_MSG_LIMIT = 1;
+// AIチャットの上限（メッセージ数）。フリーは合計1回のみ（累計・リセットなし、
+// はじめてガイドからのお試し用）、Pro/ビジネスは月間の回数上限（月が変わったらリセット）。
+const CHAT_MSG_LIMITS: Record<string, number> = { free: 1, pro: 30, business: 100 };
 
 // 同じ月か判定
 function isSameMonth(periodStartStr: string): boolean {
@@ -90,13 +87,13 @@ Deno.serve(async (req) => {
   const plan = profile.plan === 'pro' || profile.plan === 'business' ? profile.plan : 'free';
   const limit = LIMITS[plan];
 
-  // === チャット会話 ===
+  // === チャット会話（メッセージ数で管理）===
   if (isChat) {
-    // フリープランは合計1回だけの無料お試し（メッセージ数で判定、月次リセットなし）。
+    // フリープランは合計1回だけの無料お試し（累計・リセットなし）。
     // 続けて相談するにはPro/ビジネスへのアップグレードが必要。
     if (plan === 'free') {
       const msgUsed = profile.chat_used ?? 0;
-      if (msgUsed >= FREE_CHAT_MSG_LIMIT) {
+      if (msgUsed >= CHAT_MSG_LIMITS.free) {
         return json(
           { error: 'AIチャットの無料お試しは1回までです。続けて相談するにはProプランへのアップグレードが必要です。', code: 'CHAT_LIMIT' },
           429
@@ -122,15 +119,18 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Pro/ビジネス：月間トークン上限（%で管理）
-    const chatLimit = CHAT_TOKEN_LIMITS[plan];
+    // Pro/ビジネス：月間のメッセージ数上限（月が変わったらリセット）
+    const chatLimit = CHAT_MSG_LIMITS[plan];
     const todayStr = new Date().toISOString().slice(0, 10);
     const cStart = profile.chat_period_start ?? todayStr;
     const cResets = !isSameMonth(cStart); // 月が変わったらリセット
-    const cUsed = cResets ? 0 : (profile.chat_used ?? 0); // chat_used はトークン累計
+    const cUsed = cResets ? 0 : (profile.chat_used ?? 0);
     const cPeriodStart = cResets ? todayStr : cStart;
     if (cUsed >= chatLimit) {
-      return json({ error: '今月のチャット利用量の上限に達しました。来月またご利用いただけます。', code: 'CHAT_LIMIT' }, 429);
+      return json(
+        { error: `今月のAIチャット回数（月${chatLimit}回）の上限に達しました。来月またご利用いただけます。`, code: 'CHAT_LIMIT' },
+        429
+      );
     }
     try {
       const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -144,12 +144,7 @@ Deno.serve(async (req) => {
       });
       const data = await res.text();
       if (res.ok) {
-        let toks = 0;
-        try {
-          const parsed = JSON.parse(data);
-          toks = (parsed?.usage?.input_tokens ?? 0) + (parsed?.usage?.output_tokens ?? 0);
-        } catch { /* usage取得失敗時は加算なし */ }
-        await admin.from('profiles').update({ chat_used: cUsed + toks, chat_period_start: cPeriodStart }).eq('id', user.id);
+        await admin.from('profiles').update({ chat_used: cUsed + 1, chat_period_start: cPeriodStart }).eq('id', user.id);
       }
       return new Response(data, { status: res.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     } catch (err) {

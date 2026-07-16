@@ -12,6 +12,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Clipboard,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
@@ -193,6 +194,11 @@ function ImageGenChat(
   const setChatAutoSend = useAppStore((s) => s.setChatAutoSend);
   const chatForceNew = useAppStore((s) => s.chatForceNew);
   const setChatForceNew = useAppStore((s) => s.setChatForceNew);
+  const chatFreeTrialEntry = useAppStore((s) => s.chatFreeTrialEntry);
+  const setChatFreeTrialEntry = useAppStore((s) => s.setChatFreeTrialEntry);
+  // フリープランの1回きりのお試しは、はじめてガイドの「AIに投稿ネタを相談してみる」
+  // から開いたときだけ許可する（他の入口からは、未使用でも送信をブロックする）
+  const [allowFreeTrial, setAllowFreeTrial] = useState(false);
   // convIdの準備ができてから自動送信するために、送るべき文言をここに一時保持する
   const [pendingAutoSend, setPendingAutoSend] = useState<string | null>(null);
 
@@ -208,9 +214,11 @@ function ImageGenChat(
       const autoSend = chatAutoSend;
       // 埋め込み表示（ホーム画面）は起動のたびに必ず新規チャットで始める
       const forceNew = chatForceNew || embedded;
+      setAllowFreeTrial(chatFreeTrialEntry);
       setChatPrefillText(null);
       setChatAutoSend(false);
       setChatForceNew(false);
+      setChatFreeTrialEntry(false);
       (async () => {
         await purgeOldConversations(30).catch(() => {});
         const rawConvs = await listConversations();
@@ -299,6 +307,14 @@ function ImageGenChat(
     const attach = pendingImage;
     if ((!text && !attach) || chatting) return;
     if (!(await ensureLoggedIn('AIチャットを使うにはアカウント作成が必要です', true))) return;
+    // フリープランの1回きりのお試しは、はじめてガイドの「AIに投稿ネタを相談してみる」
+    // からのみ利用できる。それ以外の入口では、未使用でもここでブロックする
+    if (aiUsage?.plan === 'free' && chatRemainPct === 100 && !allowFreeTrial) {
+      const msg = 'フリープランのAIチャットお試しは「はじめてガイド」の「AIに投稿ネタを相談してみる」からご利用いただけます。';
+      if (Platform.OS === 'web') window.alert(msg);
+      else Alert.alert('お知らせ', msg);
+      return;
+    }
     setInput('');
     setPendingImage(null);
     let id = convId;
