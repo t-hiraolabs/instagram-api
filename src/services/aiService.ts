@@ -571,9 +571,9 @@ ${sample}
 
 export interface ChatTurn { role: 'user' | 'assistant'; content: string; }
 
-// クライアント表示用（サーバーと揃える）。フリーは合計1回きりのメッセージ数、
-// Pro/ビジネスは月間トークン数（CHAT_TOKEN_LIMITSと揃える）
-const CHAT_LIMITS: Record<string, number> = { free: 1, pro: 800000, business: 2000000 };
+// クライアント表示用（サーバーのCHAT_MSG_LIMITSと揃える）。フリーは合計1回きり、
+// Pro/ビジネスは月間のメッセージ数上限
+const CHAT_LIMITS: Record<string, number> = { free: 1, pro: 30, business: 100 };
 
 /** チャット利用量を % で返す。フリーは合計1回（リセットなし）、Pro/ビジネスは月ごとにリセット */
 export async function getChatUsagePercent(): Promise<{ usedPct: number; remainingPct: number }> {
