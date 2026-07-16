@@ -218,6 +218,7 @@ export default function HomeScreen() {
         visible={chatVisible}
         onClose={() => setChatVisible(false)}
         onUseImage={handleUseImage}
+        onChatUsed={refreshUsage}
       />
 
       <AccountBadge />
