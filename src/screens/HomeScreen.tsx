@@ -63,6 +63,7 @@ export default function HomeScreen() {
   const setChatPrefillText = useAppStore((s) => s.setChatPrefillText);
   const setChatAutoSend = useAppStore((s) => s.setChatAutoSend);
   const setChatForceNew = useAppStore((s) => s.setChatForceNew);
+  const setChatFreeTrialEntry = useAppStore((s) => s.setChatFreeTrialEntry);
   const industry = useAppStore((s) => s.brandSettings.industry);
   const bestTime = useMemo(() => getBestPostingTime(), []);
   const ideaPool = useMemo(() => getPostIdeas(industry), [industry]);
@@ -91,14 +92,17 @@ export default function HomeScreen() {
   const startIdeaChat = (idea: string) => {
     // ネタカードからは毎回新しい会話として送る（前の会話の続きにならないように）
     setChatForceNew(true);
+    setChatFreeTrialEntry(false); // フリープランの無料お試しは、はじめてガイド経由のみ許可する
     setChatPrefillText(`「${idea}」について投稿を作りたいです。`);
     setChatAutoSend(true);
     setChatVisible(true);
   };
 
   // 「はじめてガイド」の「AIに相談してみる」から開く、運用相談用のチャット
+  // （フリープランの1回きりのAIチャットお試しは、この導線からのみ許可する）
   const startAdviceChat = () => {
     setChatForceNew(true);
+    setChatFreeTrialEntry(true);
     setChatPrefillText('Instagramの運用について、何から始めればいいか教えてください。');
     setChatAutoSend(true);
     setChatVisible(true);
@@ -204,6 +208,7 @@ export default function HomeScreen() {
         onPress={() => {
           // ボタンから開く際も毎回新しい会話にする（前回の続きを開かないように）
           setChatForceNew(true);
+          setChatFreeTrialEntry(false); // フリープランの無料お試しは、はじめてガイド経由のみ許可する
           setChatVisible(true);
         }}
         activeOpacity={0.85}

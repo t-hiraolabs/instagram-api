@@ -97,6 +97,11 @@ interface AppState {
   chatForceNew: boolean;
   setChatForceNew: (v: boolean) => void;
 
+  /** trueの場合のみ、フリープランの1回きりのAIチャットお試しを許可する
+   *  （はじめてガイドの「AIに投稿ネタを相談してみる」から開いたときだけtrueにする） */
+  chatFreeTrialEntry: boolean;
+  setChatFreeTrialEntry: (v: boolean) => void;
+
   /** ホームのインラインチャットで「この画像で投稿を作る」を押したとき、投稿タブへ渡す画像 */
   pendingUseImage: string | null;
   setPendingUseImage: (v: string | null) => void;
@@ -225,6 +230,9 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   chatForceNew: false,
   setChatForceNew: (v) => set({ chatForceNew: v }),
+
+  chatFreeTrialEntry: false,
+  setChatFreeTrialEntry: (v) => set({ chatFreeTrialEntry: v }),
 
   pendingUseImage: null,
   setPendingUseImage: (v) => set({ pendingUseImage: v }),
