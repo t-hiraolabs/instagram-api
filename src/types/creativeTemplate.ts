@@ -33,7 +33,11 @@ export interface TemplateLayer {
   id: string;
   kind: TemplateLayerKind;
   band?: TemplateLayerBand;
+  /** 通常は画像URL。bgPresetIdを指定した場合は無視され、色・グラデーション・
+   *  パターンをsrc/utils/backgroundPresets.tsの定義から描画する（空文字でよい） */
   uri: string;
+  /** 指定時、背景を画像の代わりにbackgroundPresets.tsのプリセット（色/グラデ/パターン）で描画する */
+  bgPresetId?: string;
   x: number; y: number; w: number; h: number;
   rotation?: number;
   zIndex?: number;
