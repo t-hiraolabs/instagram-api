@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { useAppStore } from '../store/appStore';
 import { supabase } from './supabaseClient';
+import { CHAT_LIMITS } from '../utils/plans';
 
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
 const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
@@ -570,10 +571,6 @@ ${sample}
 }
 
 export interface ChatTurn { role: 'user' | 'assistant'; content: string; }
-
-// クライアント表示用（サーバーのCHAT_MSG_LIMITSと揃える）。フリーは合計1回きり、
-// Pro/ビジネスは月間のメッセージ数上限
-const CHAT_LIMITS: Record<string, number> = { free: 1, pro: 30, business: 100 };
 
 /** チャット利用量を % で返す。フリーは合計1回（リセットなし）、Pro/ビジネスは月ごとにリセット */
 export async function getChatUsagePercent(): Promise<{ usedPct: number; remainingPct: number }> {
