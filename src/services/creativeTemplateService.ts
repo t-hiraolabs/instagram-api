@@ -89,7 +89,7 @@ function convertLegacyStoryDefaults(def: LegacyStoryLayerDefaults): TemplateDefi
 
 /** 旧collageStyleService.tsのlayer_defaults形（backgroundImageUrl/photoAreas/
  *  textLayers/decorations）。collageCompositor.tsのCOLLAGE_FONT_PRESETS（29種）で
- *  使われていたIDのうち、新しい共有プリセット（8種）と同名のものはそのまま流用し、
+ *  使われていたIDのうち、新しい共有プリセット（19種）と同名・同系統のものはそのまま流用し、
  *  それ以外は雰囲気が近いものへ寄せる。 */
 interface LegacyCollagePhotoArea { x: number; y: number; w: number; h: number; zIndex?: number }
 interface LegacyCollageTextLayer {
@@ -106,17 +106,18 @@ interface LegacyCollageLayerDefaults {
 }
 
 const LEGACY_COLLAGE_FONT_MAP: Record<string, string> = {
-  // 新プリセットと同名のIDはそのまま
+  // 新プリセットと同名・同系統のIDはそのまま（フォントプリセット拡充後は完全一致するものも増えた）
   gothic: 'gothic', mincho: 'mincho', rounded: 'rounded', decor: 'decor',
   zenmaru: 'zenmaru', yomogi: 'yomogi', reggae: 'reggae', delagothic: 'delagothic',
-  // それ以外は雰囲気の近いものへ寄せる
+  hinamincho: 'hinamincho', shipporiantique: 'shipporiantique', kosugimaru: 'kosugimaru',
+  kleeone: 'klee', mochiypop: 'mochiy', rocknroll: 'rocknroll', rampart: 'rampart',
+  // それ以外（完全一致プリセットが無いもの）は雰囲気の近いものへ寄せる
   zenoldmincho: 'mincho', kaiseiopti: 'mincho', kaiseiharuno: 'mincho', kaiseitokumin: 'mincho',
-  sawarabimincho: 'mincho', hinamincho: 'mincho', shipporiantique: 'mincho',
+  sawarabimincho: 'mincho',
   zenantique: 'gothic', zenantiquesoft: 'gothic', zenkurenaido: 'gothic',
   sawarabigothic: 'gothic', dotgothic16: 'gothic', bizudgothic: 'gothic', yusei: 'gothic',
-  kosugimaru: 'rounded', kiwimaru: 'rounded',
-  hachimaru: 'yomogi', kleeone: 'yomogi', mochiypop: 'yomogi',
-  rocknroll: 'delagothic', rampart: 'delagothic',
+  kiwimaru: 'rounded',
+  hachimaru: 'yomogi',
 };
 
 function isLegacyCollageShape(def: any): def is LegacyCollageLayerDefaults {
