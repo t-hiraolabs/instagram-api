@@ -108,7 +108,7 @@ interface GeneratedPost {
   suggestions: string[];
 }
 
-async function callClaude(prompt: string, systemPrompt: string): Promise<string> {
+async function callClaude(prompt: string, systemPrompt: string, skipCount = false): Promise<string> {
   try {
     const response = await axios.post(
       CLAUDE_API_URL,
@@ -117,6 +117,7 @@ async function callClaude(prompt: string, systemPrompt: string): Promise<string>
         max_tokens: 1024,
         system: systemPrompt,
         messages: [{ role: 'user', content: prompt }],
+        ...(skipCount ? { skipCount: true } : {}),
       },
       {
         headers: await getAuthHeaders(),
@@ -358,6 +359,63 @@ ${seoInstructions()}
 
   const raw = await callClaude(prompt, systemPrompt);
   return extractJson<{ hashtags: string[] }>(raw).hashtags;
+}
+
+export interface MarketingGuideInput {
+  /** アカウントの段階（立ち上げ期／成長期／定着期） */
+  rankLabel: string;
+  followersCount: number;
+  mediaCount: number;
+  avgLikes: number;
+  avgComments: number;
+  engagementRate: number | null;
+  bestHourLabel: string | null;
+  bestDowLabel: string | null;
+  topPostCaption: string | null;
+}
+
+export interface MarketingGuide {
+  headline: string;
+  tips: string[];
+}
+
+/**
+ * 「はじめてガイド」完了後に表示する、アカウントの実データに基づいたマーケティング
+ * アドバイス。フォロワー数・エンゲージメント率など実際の数値を渡し、その段階の
+ * アカウントが次にやると効果的なことをAIに提案させる。
+ */
+export async function generateMarketingGuide(input: MarketingGuideInput): Promise<MarketingGuide> {
+  const brandCtx = getBrandContext();
+  const systemPrompt = `あなたは日本のInstagramマーケティングの専門家です。
+個人事業主・中小企業のアカウント運用者に向けて、実際のアカウントデータをもとに
+次にやるべきことを具体的にアドバイスします。必ずJSONフォーマットだけで返答してください。`;
+
+  const prompt = `以下は、あるInstagramアカウントの実際のデータです。${brandCtx}
+
+段階: ${input.rankLabel}
+フォロワー数: ${input.followersCount}人
+投稿数: ${input.mediaCount}件
+平均いいね数: ${Math.round(input.avgLikes)}
+平均コメント数: ${Math.round(input.avgComments)}
+エンゲージメント率: ${input.engagementRate !== null ? `${input.engagementRate}%` : '不明'}
+${input.bestHourLabel ? `反応が良い時間帯: ${input.bestHourLabel}` : ''}
+${input.bestDowLabel ? `反応が良い曜日: ${input.bestDowLabel}` : ''}
+${input.topPostCaption ? `一番反応が良かった投稿の書き出し: 「${input.topPostCaption.slice(0, 80)}」` : ''}
+
+このデータをふまえて、このアカウントが今の段階で次にやると効果的なことを、
+具体的で実行しやすいアドバイスとして3〜4個挙げてください。数値の言い訳や一般論ではなく、
+このアカウントの実データに触れながらアドバイスしてください。
+
+以下のJSONフォーマットで返してください:
+{
+  "headline": "この段階のアカウントに向けた一言（20文字以内、励ましや現状を一言で表す）",
+  "tips": ["アドバイス1（1〜2文、具体的に）", "アドバイス2", "アドバイス3"]
+}`;
+
+  // ホーム画面で自動的に呼ばれる分析系の機能なので、投稿文生成用のAI利用回数は消費しない
+  // （analyzeBrandFromPostsと同じ扱い）
+  const raw = await callClaude(prompt, systemPrompt, true);
+  return extractJson<MarketingGuide>(raw);
 }
 
 export interface SeasonalTheme {
