@@ -1,9 +1,10 @@
-// 「ストーリー作成」統合エディター。旧StoryStudioScreen/CollageEditorを段階的に置き換える
-// 単一フロー：①ギャラリー表示→②テンプレート選択→③必要写真枚数を表示→④写真を各スロットへ
-// 設定→⑤位置と拡大率を調整→⑥テキストを編集→⑦プレビュー→⑧保存または投稿へ進む。
-// 写真枚数（1枚 or 複数枚）で画面や描画方式を分けず、常にCreativeCanvas＋
-// creativeEditorStoreの同じ経路を通す（統合の核心）。
-import React, { useEffect, useRef, useState } from 'react';
+// 「ストーリー作成」エディター。テンプレートギャラリーは廃止し、写真を1枚選んで
+// 文字を乗せるだけのシンプルな機能にした（デザインテンプレート機能としてCanva等と
+// 競う方向はやめ、「テキストを入れられるだけ」に絞る方針への変更、2026-07-16）。
+// 単一フロー：①写真を選ぶ→②文字を追加・編集→③プレビュー→④保存または投稿へ進む。
+// 描画はテンプレート方式の頃と同じCreativeCanvas＋creativeEditorStoreをそのまま流用する
+// （写真1枚のフルブリードphotoSlotを1つだけ持つ状態として扱う）。
+import React, { useRef, useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
   ActivityIndicator, Platform, Alert, Modal,
@@ -12,17 +13,18 @@ import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import ViewShot from 'react-native-view-shot';
 import { COLORS, SPACING, RADIUS } from '../../utils/theme';
-import { Plan } from '../../utils/plans';
-import { getMyPlan } from '../../services/scheduleService';
 import { saveStoryDraft } from '../../services/storyStudioService';
 import { useCreativeEditorStore, serializeCreativeEditor } from '../../store/creativeEditorStore';
-import { TextLayer, CreativeTemplate } from '../../types/creativeTemplate';
-import StoryGalleryScreen from './StoryGalleryScreen';
+import { TextLayer, CANVAS_W, CANVAS_H } from '../../types/creativeTemplate';
 import CreativeCanvas from './CreativeCanvas';
 import CreativeLayerListPanel from './CreativeLayerListPanel';
 import TextStyleModal from './TextStyleModal';
 
-type Step = 'gallery' | 'edit';
+type Step = 'pick' | 'edit';
+
+const PHOTO_SLOT_ID = 'photo_1';
+/** 写真1枚がキャンバス全面を覆うフルブリードスロット（テンプレート無し・常にこの1枚だけ） */
+const FULL_BLEED_SLOT = { id: PHOTO_SLOT_ID, x: 0, y: 0, w: CANVAS_W, h: CANVAS_H };
 
 interface Props {
   visible: boolean;
@@ -32,12 +34,11 @@ interface Props {
 }
 
 export default function StoryTemplateEditor({ visible, onClose, onFinish }: Props) {
-  const [step, setStep] = useState<Step>('gallery');
-  const [plan, setPlan] = useState<Plan>('free');
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  const [step, setStep] = useState<Step>('pick');
   const [previewMode, setPreviewMode] = useState(false);
   const [textEditVisible, setTextEditVisible] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [picking, setPicking] = useState(false);
 
   const canvasShotRef = useRef<ViewShot>(null);
 
@@ -62,10 +63,6 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
   const bringToFront = useCreativeEditorStore((s) => s.bringToFront);
   const sendToBack = useCreativeEditorStore((s) => s.sendToBack);
 
-  useEffect(() => {
-    if (visible) getMyPlan().then(setPlan).catch(() => {});
-  }, [visible]);
-
   const alertMsg = (msg: string, title = 'お知らせ') => {
     if (Platform.OS === 'web') window.alert(msg);
     else Alert.alert(title, msg);
@@ -73,21 +70,10 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
 
   const close = () => {
     reset();
-    setStep('gallery');
-    setSelectedTemplateId(null);
+    setStep('pick');
     setPreviewMode(false);
     setTextEditVisible(false);
     onClose();
-  };
-
-  const handleSelectTemplate = (template: CreativeTemplate) => {
-    setSelectedTemplateId(template.id);
-    loadTemplate({
-      templateId: template.id, photoSlots: template.photoSlots,
-      layers: template.layers, textLayers: template.textLayers,
-    });
-    setPreviewMode(false);
-    setStep('edit');
   };
 
   const pickPhotoForSlot = async (slotId: string) => {
@@ -95,13 +81,41 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') { alertMsg('写真へのアクセスを許可してください', '権限エラー'); return; }
     }
-    const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.9,
-    });
-    if (res.canceled || !res.assets[0]) return;
-    const asset = res.assets[0];
-    assignPhoto(slotId, asset.uri, asset.width || 1080, asset.height || 1920);
+    setPicking(true);
+    try {
+      const res = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.9,
+      });
+      if (res.canceled || !res.assets[0]) return;
+      const asset = res.assets[0];
+      assignPhoto(slotId, asset.uri, asset.width || CANVAS_W, asset.height || CANVAS_H);
+    } finally {
+      setPicking(false);
+    }
+  };
+
+  /** 最初の1枚を選ぶ。テンプレートは使わず、常にキャンバス全面のフルブリードスロット1つだけを持つ状態にする */
+  const pickInitialPhoto = async () => {
+    if (Platform.OS !== 'web') {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') { alertMsg('写真へのアクセスを許可してください', '権限エラー'); return; }
+    }
+    setPicking(true);
+    try {
+      const res = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.9,
+      });
+      if (res.canceled || !res.assets[0]) return;
+      const asset = res.assets[0];
+      loadTemplate({ templateId: '', photoSlots: [FULL_BLEED_SLOT], layers: [], textLayers: [] });
+      assignPhoto(PHOTO_SLOT_ID, asset.uri, asset.width || CANVAS_W, asset.height || CANVAS_H);
+      setPreviewMode(false);
+      setStep('edit');
+    } finally {
+      setPicking(false);
+    }
   };
 
   const selectedTextLayer = textLayers.find((t) => t.id === selectedId) as TextLayer | undefined;
@@ -132,7 +146,7 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
   const handleSaveDraft = async () => {
     setSaving(true);
     try {
-      await saveStoryDraft({ templateId: templateId ?? undefined, layersJson: serializeCreativeEditor({ photoSlots, layers, textLayers }) });
+      await saveStoryDraft({ templateId: templateId || undefined, layersJson: serializeCreativeEditor({ photoSlots, layers, textLayers }) });
       alertMsg('下書きに保存しました');
       close();
     } catch (e) {
@@ -163,16 +177,23 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
           <View style={{ width: 48 }} />
         </View>
 
-        {step === 'gallery' && (
-          <StoryGalleryScreen plan={plan} onSelectTemplate={handleSelectTemplate} />
+        {step === 'pick' && (
+          <View style={styles.pickWrap}>
+            <Ionicons name="image-outline" size={48} color={COLORS.textMuted} />
+            <Text style={styles.pickTitle}>写真を選んで、文字を入れましょう</Text>
+            <Text style={styles.pickDesc}>Canvaなどで作った画像もそのまま使えます</Text>
+            <TouchableOpacity style={styles.pickBtn} onPress={pickInitialPhoto} disabled={picking} activeOpacity={0.85}>
+              {picking ? <ActivityIndicator color="#fff" /> : <Text style={styles.pickBtnText}>写真を選ぶ</Text>}
+            </TouchableOpacity>
+          </View>
         )}
 
         {step === 'edit' && (
           <View style={{ flex: 1 }}>
             <ScrollView contentContainerStyle={styles.editScroll}>
-              <Text style={styles.slotHint}>
-                写真{photoSlots.length}枚のテンプレートです（設定済み {filledCount}/{photoSlots.length}）
-              </Text>
+              <TouchableOpacity onPress={() => pickPhotoForSlot(PHOTO_SLOT_ID)} activeOpacity={0.85}>
+                <Text style={styles.changePhotoText}>写真を変更する</Text>
+              </TouchableOpacity>
 
               <ViewShot ref={canvasShotRef} options={{ format: 'png', quality: 0.95, width: 1080, height: 1920 }}>
                 <CreativeCanvas
@@ -266,7 +287,12 @@ const styles = StyleSheet.create({
   cancel: { color: COLORS.textMuted, fontSize: 15 },
   title: { color: COLORS.text, fontSize: 16, fontWeight: '800' },
   editScroll: { alignItems: 'center', paddingVertical: SPACING.md, paddingBottom: 120 },
-  slotHint: { color: COLORS.textSecondary, fontSize: 12, marginBottom: SPACING.sm, textAlign: 'center' },
+  pickWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: SPACING.xl, gap: SPACING.sm },
+  pickTitle: { color: COLORS.text, fontSize: 16, fontWeight: '800', marginTop: SPACING.sm, textAlign: 'center' },
+  pickDesc: { color: COLORS.textMuted, fontSize: 12.5, textAlign: 'center', marginBottom: SPACING.md },
+  pickBtn: { backgroundColor: COLORS.primary, borderRadius: RADIUS.full, paddingVertical: SPACING.md, paddingHorizontal: SPACING.xl, minWidth: 160, alignItems: 'center' },
+  pickBtnText: { color: '#fff', fontWeight: '800', fontSize: 15 },
+  changePhotoText: { color: COLORS.primary, fontSize: 13, fontWeight: '700', marginBottom: SPACING.sm },
   toolbar: { flexDirection: 'row', gap: SPACING.md, marginTop: SPACING.md },
   toolBtn: { alignItems: 'center', gap: 2 },
   toolBtnText: { color: COLORS.textSecondary, fontSize: 11 },
