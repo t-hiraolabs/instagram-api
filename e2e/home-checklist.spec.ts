@@ -10,17 +10,17 @@ test.describe('ホームのはじめてガイド', () => {
 
     await expect(page.getByText('はじめてガイド')).toBeVisible();
     await expect(page.getByText('0/4 完了')).toBeVisible();
-    await expect(page.getByText('プロフィールを整える')).toBeVisible();
     await expect(page.getByText('Instagramと連携する')).toBeVisible();
+    await expect(page.getByText('ブランド設定を行う')).toBeVisible();
     await expect(page.getByText('AIに投稿ネタを相談してみる')).toBeVisible();
     await expect(page.getByText('最初の投稿を予約する')).toBeVisible();
   });
 
-  test('「プロフィールを整える」をタップするとプロフィール画面に遷移する', async ({ page }) => {
+  test('「ブランド設定を行う」をタップするとプロフィール画面に遷移する', async ({ page }) => {
     await page.goto('/');
     await page.waitForTimeout(1500);
 
-    await page.getByText('プロフィールを整える').click();
+    await page.getByText('ブランド設定を行う').click();
     await page.waitForTimeout(800);
 
     await expect(page.getByText('連携する', { exact: true })).toBeVisible();
