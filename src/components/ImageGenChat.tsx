@@ -18,6 +18,7 @@ import { COLORS, SPACING, RADIUS } from '../utils/theme';
 import { chatWithAssistant, getChatUsagePercent, ChatTurn } from '../services/aiService';
 import { getAutoAnalysisFacts } from '../services/insightsService';
 import { getAiUsage, AiUsage } from '../services/scheduleService';
+import { ensureLoggedIn } from '../utils/requireLogin';
 import {
   listConversations, createConversation, renameConversation, deleteConversation,
   loadMessages, saveMessage, purgeOldConversations, Conversation,
@@ -297,6 +298,7 @@ function ImageGenChat(
     const text = (overrideText ?? input).trim();
     const attach = pendingImage;
     if ((!text && !attach) || chatting) return;
+    if (!(await ensureLoggedIn('AIチャットを使うにはアカウント作成が必要です', true))) return;
     setInput('');
     setPendingImage(null);
     let id = convId;

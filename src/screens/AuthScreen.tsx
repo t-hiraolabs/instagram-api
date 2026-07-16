@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -12,11 +12,16 @@ import {
 } from 'react-native';
 import { supabase } from '../services/supabaseClient';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
+import { useAppStore } from '../store/appStore';
 
 type Mode = 'login' | 'signup';
 
 export default function AuthScreen() {
-  const [mode, setMode] = useState<Mode>('login');
+  // AI機能・アカウント作成の導線から開いたときは「新規登録」タブを初期表示にする
+  const authInitialMode = useAppStore((s) => s.authInitialMode);
+  const [mode, setMode] = useState<Mode>(authInitialMode);
+  // 画面は常時マウントされたまま開閉されるため、開く直前に設定されたモードに毎回追従させる
+  useEffect(() => { setMode(authInitialMode); }, [authInitialMode]);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
