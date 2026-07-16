@@ -1,7 +1,8 @@
 // 「はじめてガイド」を完了したユーザー向けに、実際のInstagramデータをもとに
 // アカウントの段階（立ち上げ期／成長期／定着期）とS〜Eの総合評価を判定し、それに応じたAIアドバイスを表示する。
-// 連携中のアカウントごとに評価・アドバイスを分けて保持し、週が変わったタイミングで自動的に再分析する
-// （手動更新はなし。次にホームを開いたときに自動で最新化される）。
+// 連携中のアカウントごとに評価・アドバイスを分けて保持し、毎週月曜0:00（端末のローカル時刻、
+// getIsoWeekKeyが月曜始まりの週キーを使うことで判定）を境に自動的に再分析する
+// （手動更新はなし。その週になってから次にホームを開いたときに反映される）。
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, Platform, TextInput, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -189,7 +190,10 @@ export default function MarketingGuideCard({ onChatUsed }: Props) {
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <Ionicons name="trending-up-outline" size={16} color={COLORS.primary} />
-          <Text style={styles.title}>Instagramマーケティングガイド</Text>
+          <View>
+            <Text style={styles.title}>Instagramマーケティングガイド</Text>
+            <Text style={styles.subtitle}>毎週月曜 0:00に自動更新</Text>
+          </View>
         </View>
         {grade && (
           <View style={[styles.gradeBadge, { backgroundColor: ACCOUNT_SCORE_COLOR[grade] }]}>
@@ -276,6 +280,7 @@ const styles = StyleSheet.create({
   },
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   title: { color: COLORS.text, fontSize: 14, fontWeight: '800' },
+  subtitle: { color: COLORS.textMuted, fontSize: 10.5, fontWeight: '600', marginTop: 1 },
   gradeBadge: {
     width: 40,
     height: 40,
