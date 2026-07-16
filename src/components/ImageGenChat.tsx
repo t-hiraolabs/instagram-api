@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
-import { chatWithAssistant, getChatUsagePercent, ChatTurn } from '../services/aiService';
+import { chatWithAssistant, getChatUsage, ChatUsage, ChatTurn } from '../services/aiService';
 import { getAutoAnalysisFacts } from '../services/insightsService';
 import { getAiUsage, AiUsage } from '../services/scheduleService';
 import { ensureLoggedIn } from '../utils/requireLogin';
@@ -40,6 +40,8 @@ interface Props {
   emptyState?: React.ReactNode;
   /** 会話履歴メニューの開閉状態が変わるたびに呼ばれる（ホーム側のロゴの見た目を切り替えるため） */
   onMenuVisibleChange?: (visible: boolean) => void;
+  /** チャット送信に成功するたびに呼ばれる（ホーム上部の利用量表示を即座に更新するため） */
+  onChatUsed?: () => void;
 }
 
 export interface ImageGenChatHandle {
@@ -78,7 +80,7 @@ function extractCopyText(text: string): string {
 }
 
 function ImageGenChat(
-  { visible, onClose, onUseImage, embedded, onBack, emptyState, onMenuVisibleChange }: Props,
+  { visible, onClose, onUseImage, embedded, onBack, emptyState, onMenuVisibleChange, onChatUsed }: Props,
   ref: React.Ref<ImageGenChatHandle>
 ) {
   const [messages, setMessages] = useState<Msg[]>([]);
@@ -179,12 +181,12 @@ function ImageGenChat(
     const a = res.assets[0];
     if (a.base64) setPendingImage({ base64: a.base64, mime: a.mimeType ?? 'image/jpeg', uri: a.uri });
   };
-  const [chatRemainPct, setChatRemainPct] = useState<number | null>(null);
+  const [chatUsage, setChatUsage] = useState<ChatUsage | null>(null);
   const [aiUsage, setAiUsage] = useState<AiUsage | null>(null);
   const scrollRef = useRef<ScrollView>(null);
 
   const refreshUsage = () => {
-    getChatUsagePercent().then((c) => setChatRemainPct(c.remainingPct)).catch(() => {});
+    getChatUsage().then(setChatUsage).catch(() => {});
     getAiUsage().then(setAiUsage).catch(() => {});
   };
 
@@ -309,7 +311,7 @@ function ImageGenChat(
     if (!(await ensureLoggedIn('AIチャットを使うにはアカウント作成が必要です', true))) return;
     // フリープランの1回きりのお試しは、はじめてガイドの「AIに投稿ネタを相談してみる」
     // からのみ利用できる。それ以外の入口では、未使用でもここでブロックする
-    if (aiUsage?.plan === 'free' && chatRemainPct === 100 && !allowFreeTrial) {
+    if (aiUsage?.plan === 'free' && chatUsage?.used === 0 && !allowFreeTrial) {
       const msg = 'フリープランのAIチャットお試しは「はじめてガイド」の「AIに投稿ネタを相談してみる」からご利用いただけます。';
       if (Platform.OS === 'web') window.alert(msg);
       else Alert.alert('お知らせ', msg);
@@ -364,6 +366,7 @@ function ImageGenChat(
       setMessages((m) => [...m, { role: 'assistant', text: reply }]);
       if (id) saveMessage(id, 'assistant', reply).catch(() => {});
       refreshUsage();
+      onChatUsed?.();
     } catch (e) {
       setMessages((m) => [...m, { role: 'error', text: e instanceof Error ? e.message : '応答に失敗しました' }]);
     } finally {
@@ -501,15 +504,15 @@ function ImageGenChat(
                 <Text style={styles.listTitle}>会話</Text>
               </View>
 
-              {(chatRemainPct != null || aiUsage) && (
+              {(chatUsage || aiUsage) && (
                 <View style={styles.usageBox}>
-                  {chatRemainPct != null && (
+                  {chatUsage && (
                     <View style={styles.usageItem}>
                       <View style={styles.usageRow}>
-                        <Text style={styles.usageLabel}>会話の利用量</Text>
-                        <Text style={styles.usageValue}>{100 - chatRemainPct}% 使用済み</Text>
+                        <Text style={styles.usageLabel}>{chatUsage.plan === 'free' ? '会話の利用量（無料・累計）' : '今月の会話利用量'}</Text>
+                        <Text style={styles.usageValue}>{chatUsage.used}/{chatUsage.limit}回</Text>
                       </View>
-                      <UsageBar pct={100 - chatRemainPct} />
+                      <UsageBar pct={chatUsage.limit > 0 ? (chatUsage.used / chatUsage.limit) * 100 : 0} />
                     </View>
                   )}
                   {aiUsage && (
