@@ -12,6 +12,17 @@ import { ZenMaruGothic_900Black } from '@expo-google-fonts/zen-maru-gothic';
 import { Yomogi_400Regular } from '@expo-google-fonts/yomogi';
 import { ReggaeOne_400Regular } from '@expo-google-fonts/reggae-one';
 import { DelaGothicOne_400Regular } from '@expo-google-fonts/dela-gothic-one';
+import { KosugiMaru_400Regular } from '@expo-google-fonts/kosugi-maru';
+import { KleeOne_400Regular } from '@expo-google-fonts/klee-one';
+import { HinaMincho_400Regular } from '@expo-google-fonts/hina-mincho';
+import { RampartOne_400Regular } from '@expo-google-fonts/rampart-one';
+import { YujiSyuku_400Regular } from '@expo-google-fonts/yuji-syuku';
+import { PottaOne_400Regular } from '@expo-google-fonts/potta-one';
+import { Stick_400Regular } from '@expo-google-fonts/stick';
+import { MochiyPopOne_400Regular } from '@expo-google-fonts/mochiy-pop-one';
+import { RocknRollOne_400Regular } from '@expo-google-fonts/rocknroll-one';
+import { ShipporiAntique_400Regular } from '@expo-google-fonts/shippori-antique';
+import { DarumadropOne_400Regular } from '@expo-google-fonts/darumadrop-one';
 
 export interface FontPreset {
   id: string;
@@ -30,6 +41,17 @@ export const FONT_PRESETS: FontPreset[] = [
   { id: 'yomogi', label: '手書き風（よもぎ）', family: 'Yomogi_400Regular', fontWeight: '400' },
   { id: 'reggae', label: 'レトロ（レゲエ）', family: 'ReggaeOne_400Regular', fontWeight: '400' },
   { id: 'delagothic', label: 'インパクト（Dela）', family: 'DelaGothicOne_400Regular', fontWeight: '400' },
+  { id: 'kosugimaru', label: '丸ゴシック（親しみやすい）', family: 'KosugiMaru_400Regular', fontWeight: '400' },
+  { id: 'klee', label: '手書き風（やわらか）', family: 'KleeOne_400Regular', fontWeight: '400' },
+  { id: 'hinamincho', label: 'レトロ明朝（上品）', family: 'HinaMincho_400Regular', fontWeight: '400' },
+  { id: 'rampart', label: '立体ポップ（インパクト）', family: 'RampartOne_400Regular', fontWeight: '400' },
+  { id: 'yujisyuku', label: '筆文字（和風）', family: 'YujiSyuku_400Regular', fontWeight: '400' },
+  { id: 'potta', label: 'ポップ（コミカル）', family: 'PottaOne_400Regular', fontWeight: '400' },
+  { id: 'stick', label: 'スタンプ風（カジュアル）', family: 'Stick_400Regular', fontWeight: '400' },
+  { id: 'mochiy', label: '丸ポップ（かわいい）', family: 'MochiyPopOne_400Regular', fontWeight: '400' },
+  { id: 'rocknroll', label: 'モダン（スタイリッシュ）', family: 'RocknRollOne_400Regular', fontWeight: '400' },
+  { id: 'shipporiantique', label: 'アンティーク（上品）', family: 'ShipporiAntique_400Regular', fontWeight: '400' },
+  { id: 'darumadrop', label: '丸文字（コミカル）', family: 'DarumadropOne_400Regular', fontWeight: '400' },
 ];
 
 export const DEFAULT_FONT_PRESET = FONT_PRESETS[0];
@@ -50,6 +72,17 @@ export function useCreativeFonts(): boolean {
     Yomogi_400Regular,
     ReggaeOne_400Regular,
     DelaGothicOne_400Regular,
+    KosugiMaru_400Regular,
+    KleeOne_400Regular,
+    HinaMincho_400Regular,
+    RampartOne_400Regular,
+    YujiSyuku_400Regular,
+    PottaOne_400Regular,
+    Stick_400Regular,
+    MochiyPopOne_400Regular,
+    RocknRollOne_400Regular,
+    ShipporiAntique_400Regular,
+    DarumadropOne_400Regular,
   });
   return fontsLoaded;
 }
