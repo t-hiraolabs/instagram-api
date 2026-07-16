@@ -472,7 +472,7 @@ export default function ScheduleScreen() {
       alertMsg('テーマを入力してください（例: 夏の新メニュー紹介）');
       return;
     }
-    if (!(await ensureLoggedIn('AI生成を使うにはログインが必要です'))) return;
+    if (!(await ensureLoggedIn('AI生成を使うにはアカウント作成が必要です', true))) return;
     setAiLoading(true);
     try {
       const topPosts = await getTopPostsForGeneration();
@@ -503,7 +503,7 @@ export default function ScheduleScreen() {
       alertMsg('先に投稿する写真を選んでください');
       return;
     }
-    if (!(await ensureLoggedIn('AI生成を使うにはログインが必要です'))) return;
+    if (!(await ensureLoggedIn('AI生成を使うにはアカウント作成が必要です', true))) return;
     setAiLoading(true);
     try {
       const allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
@@ -550,7 +550,7 @@ export default function ScheduleScreen() {
       alertMsg('指示を入力してください（例: もっとカジュアルに、絵文字多めで）');
       return;
     }
-    if (!(await ensureLoggedIn('AI生成を使うにはログインが必要です'))) return;
+    if (!(await ensureLoggedIn('AI生成を使うにはアカウント作成が必要です', true))) return;
     setAiLoading(true);
     try {
       const newCaption = await refineCaption(caption.trim(), aiInstruction.trim());

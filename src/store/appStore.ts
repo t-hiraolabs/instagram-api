@@ -76,6 +76,11 @@ interface AppState {
   loginPromptVisible: boolean;
   setLoginPromptVisible: (visible: boolean) => void;
 
+  /** ログイン画面を開くとき、ログイン/新規登録どちらのタブを初期表示するか
+   *  （AI機能・アカウント作成の導線からは'signup'を優先させる） */
+  authInitialMode: 'login' | 'signup';
+  setAuthInitialMode: (mode: 'login' | 'signup') => void;
+
   /** ホーム等からAI画像生成チャットを開くためのフラグ */
   openImageChat: boolean;
   setOpenImageChat: (v: boolean) => void;
@@ -205,6 +210,9 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   loginPromptVisible: false,
   setLoginPromptVisible: (visible) => set({ loginPromptVisible: visible }),
+
+  authInitialMode: 'login',
+  setAuthInitialMode: (mode) => set({ authInitialMode: mode }),
 
   openImageChat: false,
   setOpenImageChat: (v) => set({ openImageChat: v }),
