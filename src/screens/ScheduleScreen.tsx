@@ -253,7 +253,7 @@ export default function ScheduleScreen() {
   // コラージュ型ストーリーテンプレート（旧フロー。ロールバック用に残置、現在は導線なし）
   const [collageVisible, setCollageVisible] = useState(false);
   const [storyStudioVisible, setStoryStudioVisible] = useState(false);
-  // 「ストーリー作成」統合フロー（写真1枚/複数枚を単一ギャラリーから選ぶ新導線）
+  // 「ストーリー作成」（写真1枚を選んで文字を乗せるだけのシンプルな導線）
   const [storyCreativeVisible, setStoryCreativeVisible] = useState(false);
   // AI画像生成（チャット）
   const [imgChatVisible, setImgChatVisible] = useState(false);
@@ -1260,7 +1260,7 @@ export default function ScheduleScreen() {
             </TouchableOpacity>
             <TouchableOpacity style={styles.createMenuBtn} onPress={openStoryCreative} activeOpacity={0.85}>
               <Ionicons name="sparkles-outline" size={22} color={COLORS.text} style={styles.createMenuEmoji} />
-              <Text style={styles.createMenuLabel}>テンプレート</Text>
+              <Text style={styles.createMenuLabel}>ストーリー</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1435,7 +1435,7 @@ export default function ScheduleScreen() {
         onFinish={handleStoryStudioFinish}
       />
 
-      {/* 「ストーリー作成」統合フロー: 完成テンプレートギャラリーから写真1枚/複数枚を問わず選ぶ */}
+      {/* 「ストーリー作成」: 写真を1枚選んで文字を乗せるだけのシンプルな編集フロー */}
       <StoryTemplateEditor
         visible={storyCreativeVisible}
         onClose={() => setStoryCreativeVisible(false)}
