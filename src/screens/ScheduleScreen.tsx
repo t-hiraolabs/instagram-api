@@ -24,7 +24,7 @@ import CollageEditor from '../components/CollageEditor';
 import StoryStudioScreen from '../components/storyStudio/StoryStudioScreen';
 import StoryTemplateEditor from '../components/creative/StoryTemplateEditor';
 import RosterScreen from './RosterScreen';
-import { generatePost, generateFromImages, refineCaption } from '../services/aiService';
+import { generatePost, generateFromImages } from '../services/aiService';
 import { getTopPostsForGeneration } from '../services/insightsService';
 import {
   getTemplates,
@@ -276,8 +276,10 @@ export default function ScheduleScreen() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingUseImage]);
-  const [aiInstruction, setAiInstruction] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
+  // タグ・場所（アカウントタグ・場所ID・商品タグ）は使う人だけが開く任意項目なので、
+  // 普段は折りたたんでおく
+  const [tagsSectionOpen, setTagsSectionOpen] = useState(false);
   const [composing, setComposing] = useState(false);
 
   const quickDates = getQuickDates();
@@ -309,13 +311,13 @@ export default function ScheduleScreen() {
     setImagePreview('');
     setDateText('');
     setFeedTheme('');
-    setAiInstruction('');
     setRepeat('none');
     setUserTags([]);
     setNewUserTag('');
     setProductTags([]);
     setNewProductTag('');
     setLocationId('');
+    setTagsSectionOpen(false);
     setScheduleModalVisible(false);
     setModalVisible(true);
   };
@@ -466,10 +468,10 @@ export default function ScheduleScreen() {
     setCropVisible(true);
   };
 
-  // フィードのキャプション・ハッシュタグをAI生成
+  // フィードのキャプション・ハッシュタグをAI生成（テーマ・指示を1つの入力欄で兼ねる）
   const handleGenerateFeedText = async () => {
     if (!feedTheme.trim()) {
-      alertMsg('テーマを入力してください（例: 夏の新メニュー紹介）');
+      alertMsg('テーマや指示を入力してください（例: 夏の新メニュー紹介、もっとカジュアルに）');
       return;
     }
     if (!(await ensureLoggedIn('AI生成を使うにはアカウント作成が必要です', true))) return;
@@ -483,7 +485,6 @@ export default function ScheduleScreen() {
         includeHashtags: true,
         language: 'ja',
         industry: brandSettings.industry,
-        instruction: aiInstruction.trim() || undefined,
         topPosts,
       });
       setCaption(g.caption);
@@ -526,7 +527,7 @@ export default function ScheduleScreen() {
         images,
         tone: brandSettings.tone || '明るい・ポジティブ',
         industry: brandSettings.industry,
-        instruction: aiInstruction.trim() || undefined,
+        instruction: feedTheme.trim() || undefined,
         topPosts,
       });
       setCaption(g.caption);
@@ -535,28 +536,6 @@ export default function ScheduleScreen() {
       setResultVisible(true);
     } catch (e) {
       alertMsg(e instanceof Error ? e.message : 'AI生成に失敗しました');
-    } finally {
-      setAiLoading(false);
-    }
-  };
-
-  // 生成済みキャプションを指示に従って書き直す
-  const handleRefineCaption = async () => {
-    if (!caption.trim()) {
-      alertMsg('先にキャプションを作成（または入力）してください');
-      return;
-    }
-    if (!aiInstruction.trim()) {
-      alertMsg('指示を入力してください（例: もっとカジュアルに、絵文字多めで）');
-      return;
-    }
-    if (!(await ensureLoggedIn('AI生成を使うにはアカウント作成が必要です', true))) return;
-    setAiLoading(true);
-    try {
-      const newCaption = await refineCaption(caption.trim(), aiInstruction.trim());
-      setCaption(newCaption);
-    } catch (e) {
-      alertMsg(e instanceof Error ? e.message : '書き直しに失敗しました');
     } finally {
       setAiLoading(false);
     }
@@ -944,10 +923,14 @@ export default function ScheduleScreen() {
     setImageUrls(urls);
     setFeedPreviews(urls);
     setImagePreview(urls[0] ?? '');
-    setAiInstruction('');
-    setUserTags((post as { user_tags?: string[] }).user_tags ?? []);
-    setProductTags((post as { product_tags?: string[] }).product_tags ?? []);
-    setLocationId((post as { location_id?: string }).location_id ?? '');
+    const draftUserTags = (post as { user_tags?: string[] }).user_tags ?? [];
+    const draftProductTags = (post as { product_tags?: string[] }).product_tags ?? [];
+    const draftLocationId = (post as { location_id?: string }).location_id ?? '';
+    setUserTags(draftUserTags);
+    setProductTags(draftProductTags);
+    setLocationId(draftLocationId);
+    // すでにタグ・場所が設定されている下書きを開いた場合は、最初から見えるようにする
+    setTagsSectionOpen(draftUserTags.length > 0 || draftProductTags.length > 0 || !!draftLocationId);
     editingDraftId.current = post.id;
     // 変更検知用に開始時の内容を記録
     draftOriginalRef.current = JSON.stringify({
@@ -1071,7 +1054,6 @@ export default function ScheduleScreen() {
     setImagePreview(urls[0] ?? '');
     setDateText('');
     setFeedTheme('');
-    setAiInstruction('');
     setRepeat('none');
     setScheduleModalVisible(false);
     if (scheduleFromResult.current) {
@@ -1524,38 +1506,28 @@ export default function ScheduleScreen() {
                 )}
               </View>
             )}
-            {/* 写真の追加 */}
+            {/* 写真の編集（追加・調整をまとめた1つの導線。追加は調整画面の中で行う） */}
             <TouchableOpacity
               style={[styles.aiBtnGhost, { marginBottom: SPACING.md }, imageUploading && styles.publishNowBtnDisabled]}
-              onPress={addFeedImages}
+              onPress={feedPreviews.length > 0 ? reAdjustResultImages : addFeedImages}
               disabled={imageUploading}
               activeOpacity={0.85}
             >
               {imageUploading ? (
                 <ActivityIndicator color={COLORS.secondary} />
               ) : (
-                <Text style={styles.aiBtnGhostText}>{feedPreviews.length > 0 ? '＋ 写真を追加' : '写真を選ぶ'}</Text>
+                <Text style={styles.aiBtnGhostText}>{feedPreviews.length > 0 ? '写真を編集する' : '写真を選ぶ'}</Text>
               )}
             </TouchableOpacity>
-            {feedPreviews.length > 0 && (
-              <TouchableOpacity
-                style={[styles.aiBtnGhost, { marginBottom: SPACING.md }, imageUploading && styles.publishNowBtnDisabled]}
-                onPress={reAdjustResultImages}
-                disabled={imageUploading}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.aiBtnGhostText}>写真を調整する</Text>
-              </TouchableOpacity>
-            )}
 
             {/* AIでキャプションを生成 */}
             <Text style={styles.sectionDivider}>AIでキャプションを作る</Text>
-            <Text style={styles.fieldLabel}>テーマ（任意）</Text>
+            <Text style={styles.fieldLabel}>テーマ・指示（任意）</Text>
             <TextInput
               style={styles.input}
               value={feedTheme}
               onChangeText={setFeedTheme}
-              placeholder="例: 夏の新メニュー紹介、週末セールのお知らせ"
+              placeholder={'例: 夏の新メニュー紹介\nもっとカジュアルに、絵文字多めで'}
               placeholderTextColor={COLORS.textMuted}
             />
             <View style={{ flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.sm }}>
@@ -1566,7 +1538,14 @@ export default function ScheduleScreen() {
                   disabled={aiLoading}
                   activeOpacity={0.85}
                 >
-                  {aiLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.aiBtnText}>写真から生成</Text>}
+                  {aiLoading ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <View style={styles.aiBtnRow}>
+                      <Ionicons name="sparkles" size={13} color="#fff" />
+                      <Text style={styles.aiBtnText}>写真から生成</Text>
+                    </View>
+                  )}
                 </TouchableOpacity>
               )}
               <TouchableOpacity
@@ -1575,32 +1554,17 @@ export default function ScheduleScreen() {
                 disabled={aiLoading}
                 activeOpacity={0.85}
               >
-                {aiLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.aiBtnText}>テーマから生成</Text>}
+                {aiLoading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <View style={styles.aiBtnRow}>
+                    <Ionicons name="sparkles" size={13} color="#fff" />
+                    <Text style={styles.aiBtnText}>プロンプトから生成</Text>
+                  </View>
+                )}
               </TouchableOpacity>
             </View>
-
-            {/* AIへの指示で書き直す */}
-            <Text style={[styles.fieldLabel, { marginTop: SPACING.md }]}>AIへの指示で書き直す（任意）</Text>
-            <TextInput
-              style={[styles.input, styles.aiInstructionInput]}
-              value={aiInstruction}
-              onChangeText={setAiInstruction}
-              placeholder={'例: もっとカジュアルに\n絵文字多めで\n短く3行で'}
-              placeholderTextColor={COLORS.textMuted}
-              multiline
-            />
-            <TouchableOpacity
-              style={[styles.aiBtnGhost, { marginBottom: SPACING.md }, aiLoading && styles.publishNowBtnDisabled]}
-              onPress={handleRefineCaption}
-              disabled={aiLoading}
-              activeOpacity={0.85}
-            >
-              {aiLoading ? (
-                <ActivityIndicator color={COLORS.secondary} />
-              ) : (
-                <Text style={styles.aiBtnGhostText}>指示で書き直す</Text>
-              )}
-            </TouchableOpacity>
+            <Text style={styles.aiUsageHint}>✨ AI生成を1回消費します</Text>
 
             {/* キャプション（広めの入力欄） */}
             <Text style={styles.fieldLabel}>キャプション</Text>
@@ -1642,74 +1606,85 @@ export default function ScheduleScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* タグ・場所（フィードのみ） */}
-            <Text style={[styles.sectionDivider, { marginTop: SPACING.lg }]}>タグ・場所（任意）</Text>
+            {/* タグ・場所（フィードのみ）。使う人だけが開く任意項目なので折りたたんでおく */}
+            <TouchableOpacity
+              style={styles.collapsibleHeader}
+              onPress={() => setTagsSectionOpen((v) => !v)}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.sectionDivider, { marginTop: 0 }]}>タグ・場所（任意）</Text>
+              <Ionicons name={tagsSectionOpen ? 'chevron-up' : 'chevron-down'} size={18} color={COLORS.textMuted} />
+            </TouchableOpacity>
 
-            <Text style={styles.fieldLabel}>アカウントをタグ付け</Text>
-            <View style={styles.tagWrap}>
-              {userTags.map((u, i) => (
-                <View key={`${u}-${i}`} style={styles.tagChip}>
-                  <Text style={styles.tagChipText}>@{u}</Text>
-                  <TouchableOpacity onPress={() => setUserTags(userTags.filter((_, j) => j !== i))} hitSlop={{ top: 8, bottom: 8, left: 4, right: 8 }}>
-                    <Text style={styles.tagChipRemove}>✕</Text>
+            {tagsSectionOpen && (
+              <>
+                <Text style={styles.fieldLabel}>アカウントをタグ付け</Text>
+                <View style={styles.tagWrap}>
+                  {userTags.map((u, i) => (
+                    <View key={`${u}-${i}`} style={styles.tagChip}>
+                      <Text style={styles.tagChipText}>@{u}</Text>
+                      <TouchableOpacity onPress={() => setUserTags(userTags.filter((_, j) => j !== i))} hitSlop={{ top: 8, bottom: 8, left: 4, right: 8 }}>
+                        <Text style={styles.tagChipRemove}>✕</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                  {userTags.length === 0 && <Text style={styles.tagEmpty}>なし</Text>}
+                </View>
+                <View style={styles.tagAddRow}>
+                  <TextInput
+                    style={styles.tagInput}
+                    value={newUserTag}
+                    onChangeText={setNewUserTag}
+                    onSubmitEditing={() => { const v = newUserTag.replace(/^@/, '').trim(); if (v) { setUserTags([...userTags, v]); setNewUserTag(''); } }}
+                    placeholder="ユーザー名（@なし）"
+                    placeholderTextColor={COLORS.textMuted}
+                    autoCapitalize="none"
+                    returnKeyType="done"
+                  />
+                  <TouchableOpacity style={styles.tagAddBtn} onPress={() => { const v = newUserTag.replace(/^@/, '').trim(); if (v) { setUserTags([...userTags, v]); setNewUserTag(''); } }}>
+                    <Text style={styles.tagAddBtnText}>追加</Text>
                   </TouchableOpacity>
                 </View>
-              ))}
-              {userTags.length === 0 && <Text style={styles.tagEmpty}>なし</Text>}
-            </View>
-            <View style={styles.tagAddRow}>
-              <TextInput
-                style={styles.tagInput}
-                value={newUserTag}
-                onChangeText={setNewUserTag}
-                onSubmitEditing={() => { const v = newUserTag.replace(/^@/, '').trim(); if (v) { setUserTags([...userTags, v]); setNewUserTag(''); } }}
-                placeholder="ユーザー名（@なし）"
-                placeholderTextColor={COLORS.textMuted}
-                autoCapitalize="none"
-                returnKeyType="done"
-              />
-              <TouchableOpacity style={styles.tagAddBtn} onPress={() => { const v = newUserTag.replace(/^@/, '').trim(); if (v) { setUserTags([...userTags, v]); setNewUserTag(''); } }}>
-                <Text style={styles.tagAddBtnText}>追加</Text>
-              </TouchableOpacity>
-            </View>
 
-            <Text style={[styles.fieldLabel, { marginTop: SPACING.md }]}>場所ID（Facebook Place ID）</Text>
-            <TextInput
-              style={styles.input}
-              value={locationId}
-              onChangeText={setLocationId}
-              placeholder="例: 123456789012345"
-              placeholderTextColor={COLORS.textMuted}
-              keyboardType="number-pad"
-            />
+                <Text style={[styles.fieldLabel, { marginTop: SPACING.md }]}>場所ID（Facebook Place ID）</Text>
+                <TextInput
+                  style={styles.input}
+                  value={locationId}
+                  onChangeText={setLocationId}
+                  placeholder="例: 123456789012345"
+                  placeholderTextColor={COLORS.textMuted}
+                  keyboardType="number-pad"
+                />
 
-            <Text style={[styles.fieldLabel, { marginTop: SPACING.md }]}>商品タグ（商品ID・要ショッピング設定）</Text>
-            <View style={styles.tagWrap}>
-              {productTags.map((p, i) => (
-                <View key={`${p}-${i}`} style={styles.tagChip}>
-                  <Text style={styles.tagChipText}>{p}</Text>
-                  <TouchableOpacity onPress={() => setProductTags(productTags.filter((_, j) => j !== i))} hitSlop={{ top: 8, bottom: 8, left: 4, right: 8 }}>
-                    <Text style={styles.tagChipRemove}>✕</Text>
+                <Text style={[styles.fieldLabel, { marginTop: SPACING.md }]}>商品タグ（商品ID・要ショッピング設定）</Text>
+                <View style={styles.tagWrap}>
+                  {productTags.map((p, i) => (
+                    <View key={`${p}-${i}`} style={styles.tagChip}>
+                      <Text style={styles.tagChipText}>{p}</Text>
+                      <TouchableOpacity onPress={() => setProductTags(productTags.filter((_, j) => j !== i))} hitSlop={{ top: 8, bottom: 8, left: 4, right: 8 }}>
+                        <Text style={styles.tagChipRemove}>✕</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                  {productTags.length === 0 && <Text style={styles.tagEmpty}>なし</Text>}
+                </View>
+                <View style={styles.tagAddRow}>
+                  <TextInput
+                    style={styles.tagInput}
+                    value={newProductTag}
+                    onChangeText={setNewProductTag}
+                    onSubmitEditing={() => { const v = newProductTag.trim(); if (v) { setProductTags([...productTags, v]); setNewProductTag(''); } }}
+                    placeholder="商品ID"
+                    placeholderTextColor={COLORS.textMuted}
+                    autoCapitalize="none"
+                    returnKeyType="done"
+                  />
+                  <TouchableOpacity style={styles.tagAddBtn} onPress={() => { const v = newProductTag.trim(); if (v) { setProductTags([...productTags, v]); setNewProductTag(''); } }}>
+                    <Text style={styles.tagAddBtnText}>追加</Text>
                   </TouchableOpacity>
                 </View>
-              ))}
-              {productTags.length === 0 && <Text style={styles.tagEmpty}>なし</Text>}
-            </View>
-            <View style={styles.tagAddRow}>
-              <TextInput
-                style={styles.tagInput}
-                value={newProductTag}
-                onChangeText={setNewProductTag}
-                onSubmitEditing={() => { const v = newProductTag.trim(); if (v) { setProductTags([...productTags, v]); setNewProductTag(''); } }}
-                placeholder="商品ID"
-                placeholderTextColor={COLORS.textMuted}
-                autoCapitalize="none"
-                returnKeyType="done"
-              />
-              <TouchableOpacity style={styles.tagAddBtn} onPress={() => { const v = newProductTag.trim(); if (v) { setProductTags([...productTags, v]); setNewProductTag(''); } }}>
-                <Text style={styles.tagAddBtnText}>追加</Text>
-              </TouchableOpacity>
-            </View>
+              </>
+            )}
 
             {/* 投稿方法 */}
             <Text style={[styles.sectionDivider, { marginTop: SPACING.lg }]}>投稿方法を選ぶ</Text>
@@ -2855,6 +2830,13 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
+  collapsibleHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: SPACING.lg,
+    paddingVertical: 4,
+  },
   imagePickerBox: {
     backgroundColor: COLORS.surface,
     borderWidth: 1,
@@ -2954,6 +2936,8 @@ const styles = StyleSheet.create({
     marginTop: SPACING.sm,
   },
   aiBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  aiBtnRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  aiUsageHint: { color: COLORS.textMuted, fontSize: 11, marginTop: 6, textAlign: 'center' },
   aiHintText: { color: COLORS.textMuted, fontSize: 11, marginTop: 4, marginBottom: SPACING.sm },
   aiCard: {
     backgroundColor: COLORS.surfaceElevated,
@@ -2985,7 +2969,6 @@ const styles = StyleSheet.create({
     marginTop: SPACING.md,
   },
   aiMethodTitle: { color: COLORS.text, fontSize: 13, fontWeight: '800', marginBottom: SPACING.xs },
-  aiInstructionInput: { height: 90, textAlignVertical: 'top' },
   videoPreviewWrap: {
     width: 200,
     height: 356,
