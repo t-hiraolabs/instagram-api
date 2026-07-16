@@ -19,9 +19,13 @@ import {
   AccountScoreGrade,
 } from '../services/insightsService';
 import { generateMarketingGuide, MarketingGuide, askMarketingGuideQuestion, ChatTurn } from '../services/aiService';
-import { getAiUsage, AiUsage } from '../services/scheduleService';
 
 interface QaMsg { role: 'user' | 'assistant'; text: string }
+
+interface Props {
+  /** 質問チャットを送信するたびに呼ばれる（ホーム上部のチャット利用量表示を更新するため） */
+  onChatUsed?: () => void;
+}
 
 /** チャットの文脈として渡す、このガイドの内容の要約（このやり取りはDBには保存しない） */
 function buildGuideFacts(rank: AccountRank, grade: AccountScoreGrade, guide: MarketingGuide): string {
@@ -67,7 +71,7 @@ function writeCacheEntry(userId: string, entry: CacheEntry) {
   }
 }
 
-export default function MarketingGuideCard() {
+export default function MarketingGuideCard({ onChatUsed }: Props) {
   const creds1 = useAppStore((s) => s.instagramCredentials);
   const creds2 = useAppStore((s) => s.secondInstagramCredentials);
   const creds3 = useAppStore((s) => s.thirdInstagramCredentials);
@@ -85,15 +89,11 @@ export default function MarketingGuideCard() {
   const [qaMessages, setQaMessages] = useState<QaMsg[]>([]);
   const [qaInput, setQaInput] = useState('');
   const [qaSending, setQaSending] = useState(false);
-  const [aiUsage, setAiUsage] = useState<AiUsage | null>(null);
 
   useEffect(() => {
     setQaMessages([]);
     setQaInput('');
   }, [instagramCredentials?.userId]);
-
-  const refreshAiUsage = () => { getAiUsage().then(setAiUsage).catch(() => {}); };
-  useEffect(() => { refreshAiUsage(); }, [instagramCredentials?.userId]);
 
   const askQuestion = async () => {
     const text = qaInput.trim();
@@ -103,11 +103,11 @@ export default function MarketingGuideCard() {
     setQaMessages(next);
     setQaSending(true);
     try {
-      // ガイド自体の生成とは違い、ユーザーが自分で質問する行為なので通常のAI利用回数を消費する
+      // ガイド自体の生成とは違い、ユーザーが自分で質問する行為なので「チャットの利用量」を消費する
       const history: ChatTurn[] = next.map((m) => ({ role: m.role, content: m.text }));
       const reply = await askMarketingGuideQuestion(buildGuideFacts(rank, grade, guide), history);
       setQaMessages((m) => [...m, { role: 'assistant', text: reply }]);
-      refreshAiUsage();
+      onChatUsed?.();
     } catch (e) {
       setQaMessages((m) => [...m, { role: 'assistant', text: e instanceof Error ? e.message : '応答に失敗しました' }]);
     } finally {
@@ -253,9 +253,6 @@ export default function MarketingGuideCard() {
               <Ionicons name="arrow-up" size={16} color="#fff" />
             </TouchableOpacity>
           </View>
-          {aiUsage && (
-            <Text style={styles.qaUsageText}>AI生成 {aiUsage.used}/{aiUsage.limit}回使用済み（質問1回につき1回消費）</Text>
-          )}
         </>
       ) : null}
     </View>
@@ -331,5 +328,4 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   qaSendBtnDisabled: { opacity: 0.5 },
-  qaUsageText: { color: COLORS.textMuted, fontSize: 10.5, marginTop: 6, textAlign: 'right' },
 });
