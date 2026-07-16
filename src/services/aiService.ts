@@ -571,10 +571,11 @@ ${sample}
 
 export interface ChatTurn { role: 'user' | 'assistant'; content: string; }
 
-// クライアント表示用（サーバーの CHAT_TOKEN_LIMITS と揃える。月間トークン数）
-const CHAT_LIMITS: Record<string, number> = { free: 100000, pro: 800000, business: 2000000 };
+// クライアント表示用（サーバーと揃える）。フリーは合計1回きりのメッセージ数、
+// Pro/ビジネスは月間トークン数（CHAT_TOKEN_LIMITSと揃える）
+const CHAT_LIMITS: Record<string, number> = { free: 1, pro: 800000, business: 2000000 };
 
-/** チャット利用量を % で返す（月ごとにリセット）。Claude風の残量表示に使う */
+/** チャット利用量を % で返す。フリーは合計1回（リセットなし）、Pro/ビジネスは月ごとにリセット */
 export async function getChatUsagePercent(): Promise<{ usedPct: number; remainingPct: number }> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { usedPct: 0, remainingPct: 100 };
@@ -585,6 +586,14 @@ export async function getChatUsagePercent(): Promise<{ usedPct: number; remainin
     .maybeSingle();
   const plan = data?.plan === 'pro' || data?.plan === 'business' ? data.plan : 'free';
   const limit = CHAT_LIMITS[plan];
+
+  if (plan === 'free') {
+    // フリープランはchat_usedを累計メッセージ数として使う（月次リセットなし）
+    const used = data?.chat_used ?? 0;
+    const usedPct = Math.min(100, Math.round((used / limit) * 100));
+    return { usedPct, remainingPct: 100 - usedPct };
+  }
+
   const start = data?.chat_period_start ?? new Date().toISOString().slice(0, 10);
   const sameMonth = (() => {
     const t = new Date(); const p = new Date(`${start}T00:00:00Z`);

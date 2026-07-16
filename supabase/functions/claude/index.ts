@@ -6,22 +6,19 @@ const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 // Supabaseが自動で用意するサービスロールキー（profilesの更新に使う＝RLSを越えて書き込める）
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
-// 用途ごとにモデルを使い分けてAIコストを抑える。
-// チャット相談・裏方の分析（頻度が高い/1回の重要度が低い）はHaiku、
-// 実際に投稿として使うキャプション・ストーリー等の生成はSonnetにする。
-// ※クライアントが送ってきたmodelは信用せず、常にサーバー側で決定する。
-const MODEL_SONNET = 'claude-sonnet-4-6';
-const MODEL_HAIKU = 'claude-haiku-4-6';
-
 // プランごとの月間AI回数の上限
-const LIMITS: Record<string, number> = { free: 5, pro: 30, business: 100 };
+const LIMITS: Record<string, number> = { free: 5, pro: 50, business: 300 };
 
 // ブランド分析など「カウント対象外」のAI呼び出しに対する裏の上限（不正利用防止）。
 // フリーは累計、Pro/ビジネスは月間でリセット。
 const BRAND_LIMITS: Record<string, number> = { free: 3, pro: 10, business: 10 };
 
-// チャット会話の「月間」上限（トークン数：入力+出力の合計）。表示は「% 使用」で見せる。
-const CHAT_TOKEN_LIMITS: Record<string, number> = { free: 100000, pro: 300000, business: 1000000 };
+// チャット会話の「月間」上限（トークン数：入力+出力の合計、Pro/ビジネスのみ）。表示は「% 使用」で見せる。
+const CHAT_TOKEN_LIMITS: Record<string, number> = { free: 100000, pro: 800000, business: 2000000 };
+
+// フリープランはAIチャットを合計1回（メッセージ数、累計・リセットなし）までのお試しのみ。
+// それ以降はサブスク（Pro/ビジネス）が必要（chat_usedを流用してメッセージ数として数える）。
+const FREE_CHAT_MSG_LIMIT = 1;
 
 // 同じ月か判定
 function isSameMonth(periodStartStr: string): boolean {
@@ -72,9 +69,6 @@ Deno.serve(async (req) => {
   const skipCount = body.skipCount === true;
   const isChat = body.chat === true; // アシスタント会話（月間上限を%で管理）
   delete body.skipCount; // Anthropicへは渡さない
-  // モデルはクライアントの指定を無視し、用途で強制的に決める（コスト管理のため）。
-  // チャット・ブランド分析(裏方)はHaiku、実際の投稿生成(回数制限あり)はSonnet。
-  body.model = (isChat || skipCount) ? MODEL_HAIKU : MODEL_SONNET;
   delete body.chat;
 
   // --- プラン・使用回数を確認（service roleでprofilesを読み書き）---
@@ -96,8 +90,39 @@ Deno.serve(async (req) => {
   const plan = profile.plan === 'pro' || profile.plan === 'business' ? profile.plan : 'free';
   const limit = LIMITS[plan];
 
-  // === チャット会話：月間トークン上限（%で管理）===
+  // === チャット会話 ===
   if (isChat) {
+    // フリープランは合計1回だけの無料お試し（メッセージ数で判定、月次リセットなし）。
+    // 続けて相談するにはPro/ビジネスへのアップグレードが必要。
+    if (plan === 'free') {
+      const msgUsed = profile.chat_used ?? 0;
+      if (msgUsed >= FREE_CHAT_MSG_LIMIT) {
+        return json(
+          { error: 'AIチャットの無料お試しは1回までです。続けて相談するにはProプランへのアップグレードが必要です。', code: 'CHAT_LIMIT' },
+          429
+        );
+      }
+      try {
+        const res = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': ANTHROPIC_API_KEY,
+            'anthropic-version': '2023-06-01',
+          },
+          body: JSON.stringify(body),
+        });
+        const data = await res.text();
+        if (res.ok) {
+          await admin.from('profiles').update({ chat_used: msgUsed + 1 }).eq('id', user.id);
+        }
+        return new Response(data, { status: res.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      } catch (err) {
+        return json({ error: String(err) }, 500);
+      }
+    }
+
+    // Pro/ビジネス：月間トークン上限（%で管理）
     const chatLimit = CHAT_TOKEN_LIMITS[plan];
     const todayStr = new Date().toISOString().slice(0, 10);
     const cStart = profile.chat_period_start ?? todayStr;
