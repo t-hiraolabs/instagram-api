@@ -217,7 +217,7 @@ export default function HomeScreen() {
         onUseImage={handleUseImage}
       />
 
-      <AccountBadge hideBadge />
+      <AccountBadge />
     </View>
   );
 }
