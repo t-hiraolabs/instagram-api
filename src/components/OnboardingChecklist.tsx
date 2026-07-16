@@ -82,7 +82,9 @@ export default function OnboardingChecklist({ onOpenAdviceChat, onStatusChange }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loaded, allDone]);
 
-  if (allDone) return null;
+  // データ取得中（loaded前）は、達成済みユーザーにも一瞬チェックリストが見えてしまうため
+  // 何も表示しない（読み込み完了後に、実際の状態に応じてチェックリスト/何も出さないが決まる）
+  if (!loaded || allDone) return null;
 
   return (
     <View style={styles.card}>
