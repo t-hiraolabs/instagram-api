@@ -20,9 +20,11 @@ interface ChecklistItem {
 interface Props {
   /** 「AIに相談する」項目から、投稿ネタの相談チャットを新規で開く */
   onOpenAdviceChat: () => void;
+  /** 4項目すべて達成したかどうかを親に伝える（完了後はMarketingGuideCardに差し替えるため） */
+  onStatusChange?: (status: { loaded: boolean; allDone: boolean }) => void;
 }
 
-export default function OnboardingChecklist({ onOpenAdviceChat }: Props) {
+export default function OnboardingChecklist({ onOpenAdviceChat, onStatusChange }: Props) {
   const navigation = useNavigation<any>();
   const brandName = useAppStore((s) => s.brandSettings.brandName);
   const industry = useAppStore((s) => s.brandSettings.industry);
@@ -73,7 +75,14 @@ export default function OnboardingChecklist({ onOpenAdviceChat }: Props) {
   const doneCount = items.filter((i) => i.done).length;
   // データ取得前（null）は「未達成」扱いにして、一瞬だけ全達成の判定にならないようにする
   const loaded = postCount !== null && aiUsed !== null;
-  if (loaded && doneCount === items.length) return null;
+  const allDone = loaded && doneCount === items.length;
+
+  useEffect(() => {
+    onStatusChange?.({ loaded, allDone });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded, allDone]);
+
+  if (allDone) return null;
 
   return (
     <View style={styles.card}>
