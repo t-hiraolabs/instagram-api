@@ -1,5 +1,6 @@
 // 運用に自信がない・投稿がまだ少ないユーザー向けに、最初にやるべきことを順番に示す
-// ハードル型のチェックリスト。ホーム画面に常時表示する（進捗による出し分けはしない）。
+// ハードル型のチェックリスト。全ユーザーに表示するが、4項目すべて達成したユーザーには
+// 表示しない（もう不要なため）。
 import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
@@ -40,17 +41,17 @@ export default function OnboardingChecklist({ onOpenAdviceChat }: Props) {
 
   const items: ChecklistItem[] = [
     {
-      key: 'profile',
-      label: 'プロフィールを整える',
-      icon: 'person-circle-outline',
-      done: !!(brandName.trim() || industry.trim()),
-      onPress: () => navigation.navigate('Profile'),
-    },
-    {
       key: 'connect',
       label: 'Instagramと連携する',
       icon: 'logo-instagram',
       done: !!instagramCredentials,
+      onPress: () => navigation.navigate('Profile'),
+    },
+    {
+      key: 'profile',
+      label: 'ブランド設定を行う',
+      icon: 'person-circle-outline',
+      done: !!(brandName.trim() || industry.trim()),
       onPress: () => navigation.navigate('Profile'),
     },
     {
@@ -70,6 +71,9 @@ export default function OnboardingChecklist({ onOpenAdviceChat }: Props) {
   ];
 
   const doneCount = items.filter((i) => i.done).length;
+  // データ取得前（null）は「未達成」扱いにして、一瞬だけ全達成の判定にならないようにする
+  const loaded = postCount !== null && aiUsed !== null;
+  if (loaded && doneCount === items.length) return null;
 
   return (
     <View style={styles.card}>
