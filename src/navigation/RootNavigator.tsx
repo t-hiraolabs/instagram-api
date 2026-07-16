@@ -7,7 +7,6 @@ import { Ionicons } from '@expo/vector-icons';
 import HomeScreen from '../screens/HomeScreen';
 import ScheduleScreen from '../screens/ScheduleScreen';
 import AnalyticsScreen from '../screens/AnalyticsScreen';
-import DMScreen from '../screens/DMScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import AdminAssetsScreen from '../screens/AdminAssetsScreen';
 import E2ECreativeCanvasScreen from '../screens/__e2e__/E2ECreativeCanvasScreen';
@@ -62,14 +61,12 @@ const TAB_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
   Home: 'home',
   Post: 'add-circle',
   Analytics: 'bar-chart',
-  DM: 'chatbubble-ellipses',
   Profile: 'person',
 };
 const TAB_ICONS_OUTLINE: Record<string, keyof typeof Ionicons.glyphMap> = {
   Home: 'home-outline',
   Post: 'add-circle-outline',
   Analytics: 'bar-chart-outline',
-  DM: 'chatbubble-ellipses-outline',
   Profile: 'person-outline',
 };
 
@@ -117,14 +114,6 @@ function TabNavigator() {
         options={{
           tabBarLabel: '分析',
           tabBarIcon: ({ focused }) => <TabIcon name="Analytics" focused={focused} />,
-        }}
-      />
-      <Tab.Screen
-        name="DM"
-        component={DMScreen}
-        options={{
-          tabBarLabel: 'DM',
-          tabBarIcon: ({ focused }) => <TabIcon name="DM" focused={focused} />,
         }}
       />
       <Tab.Screen

@@ -32,7 +32,6 @@ function getTodaysIdeas(pool: PostIdea[], count: number): PostIdea[] {
 function getTodoItems(): { key: string; label: string; icon: keyof typeof Ionicons.glyphMap }[] {
   return [
     { key: 'story', label: 'ストーリーを作る', icon: 'book' },
-    { key: 'dm', label: 'DM返信', icon: 'chatbubble' },
     { key: 'analytics', label: '分析を見る', icon: 'stats-chart' },
   ];
 }
@@ -109,7 +108,6 @@ export default function HomeScreen() {
   };
 
   const goTodo = (key: string) => {
-    if (key === 'dm') return navigation.navigate('DM');
     if (key === 'analytics') return navigation.navigate('Analytics');
     if (key === 'story') return navigation.navigate('Post');
   };
