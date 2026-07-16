@@ -6,6 +6,7 @@ import { COLORS, SPACING, RADIUS, SHADOWS } from '../utils/theme';
 import { useAppStore } from '../store/appStore';
 import AccountBadge from '../components/AccountBadge';
 import ImageGenChat from '../components/ImageGenChat';
+import OnboardingChecklist from '../components/OnboardingChecklist';
 import { getPostIdeas, PostIdea } from '../utils/postIdeas';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -81,6 +82,14 @@ export default function HomeScreen() {
     setChatVisible(true);
   };
 
+  // 「はじめてガイド」の「AIに相談してみる」から開く、運用相談用のチャット
+  const startAdviceChat = () => {
+    setChatForceNew(true);
+    setChatPrefillText('Instagramの運用について、何から始めればいいか教えてください。');
+    setChatAutoSend(true);
+    setChatVisible(true);
+  };
+
   const goTodo = (key: string) => {
     if (key === 'dm') return navigation.navigate('DM');
     if (key === 'analytics') return navigation.navigate('Analytics');
@@ -109,6 +118,8 @@ export default function HomeScreen() {
           <Text style={[styles.timeLabel, { color: bestTime.color }]}>{bestTime.label}</Text>
           <Text style={styles.timeDesc} numberOfLines={1}>{bestTime.description}</Text>
         </View>
+
+        <OnboardingChecklist onOpenAdviceChat={startAdviceChat} />
 
         <Text style={styles.groupLabel}>今日のおすすめ投稿ネタ</Text>
         {featuredIdeas.map((idea) => (
