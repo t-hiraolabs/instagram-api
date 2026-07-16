@@ -3,7 +3,7 @@
 // 連携中のアカウントごとに評価・アドバイスを分けて保持し、週が変わったタイミングで自動的に再分析する
 // （手動更新はなし。次にホームを開いたときに自動で最新化される）。
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, Platform, TextInput, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
 import { useAppStore } from '../store/appStore';
@@ -18,7 +18,19 @@ import {
   AccountRank,
   AccountScoreGrade,
 } from '../services/insightsService';
-import { generateMarketingGuide, MarketingGuide } from '../services/aiService';
+import { generateMarketingGuide, MarketingGuide, chatWithAssistant, ChatTurn } from '../services/aiService';
+
+interface QaMsg { role: 'user' | 'assistant'; text: string }
+
+/** チャットの文脈として渡す、このガイドの内容の要約（このやり取りはDBには保存しない） */
+function buildGuideFacts(rank: AccountRank, grade: AccountScoreGrade, guide: MarketingGuide): string {
+  return (
+    `【Instagramマーケティングガイド（今週分析済み）】\n` +
+    `段階: ${ACCOUNT_RANK_LABEL[rank]} / 総合評価: ${grade}ランク\n` +
+    `一言: ${guide.headline}\n` +
+    `具体的なアドバイス:\n${guide.tips.map((t, i) => `${i + 1}. ${t}`).join('\n')}`
+  );
+}
 
 const CACHE_KEY = 'aimark_marketing_guide_v2';
 
@@ -66,6 +78,35 @@ export default function MarketingGuideCard() {
   const [guide, setGuide] = useState<MarketingGuide | null>(null);
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
+
+  // ガイドに対する質問チャット。その場限りのやり取りなので保存はしない
+  // （アカウント切り替え・再分析のたびにリセットする）
+  const [qaMessages, setQaMessages] = useState<QaMsg[]>([]);
+  const [qaInput, setQaInput] = useState('');
+  const [qaSending, setQaSending] = useState(false);
+
+  useEffect(() => {
+    setQaMessages([]);
+    setQaInput('');
+  }, [instagramCredentials?.userId]);
+
+  const askQuestion = async () => {
+    const text = qaInput.trim();
+    if (!text || qaSending || !rank || !grade || !guide) return;
+    setQaInput('');
+    const next = [...qaMessages, { role: 'user' as const, text }];
+    setQaMessages(next);
+    setQaSending(true);
+    try {
+      const history: ChatTurn[] = next.map((m) => ({ role: m.role, content: m.text }));
+      const reply = await chatWithAssistant(history, undefined, buildGuideFacts(rank, grade, guide));
+      setQaMessages((m) => [...m, { role: 'assistant', text: reply }]);
+    } catch (e) {
+      setQaMessages((m) => [...m, { role: 'assistant', text: e instanceof Error ? e.message : '応答に失敗しました' }]);
+    } finally {
+      setQaSending(false);
+    }
+  };
 
   useEffect(() => {
     const userId = instagramCredentials?.userId;
@@ -156,6 +197,44 @@ export default function MarketingGuideCard() {
               <Text style={styles.tipText}>{tip}</Text>
             </View>
           ))}
+
+          <View style={styles.qaDivider} />
+          <Text style={styles.qaLabel}>気になることを質問できます</Text>
+
+          {qaMessages.map((m, i) => (
+            <View key={i} style={m.role === 'user' ? styles.qaUserRow : styles.qaAiRow}>
+              <View style={m.role === 'user' ? styles.qaUserBubble : styles.qaAiBubble}>
+                <Text style={m.role === 'user' ? styles.qaUserText : styles.qaAiText} selectable>{m.text}</Text>
+              </View>
+            </View>
+          ))}
+          {qaSending && (
+            <View style={styles.qaAiRow}>
+              <View style={styles.qaAiBubble}>
+                <ActivityIndicator size="small" color={COLORS.primary} />
+              </View>
+            </View>
+          )}
+
+          <View style={styles.qaInputRow}>
+            <TextInput
+              style={styles.qaInput}
+              value={qaInput}
+              onChangeText={setQaInput}
+              placeholder="具体的になにをしたらいい？ など"
+              placeholderTextColor={COLORS.textMuted}
+              onSubmitEditing={askQuestion}
+              returnKeyType="send"
+              editable={!qaSending}
+            />
+            <TouchableOpacity
+              style={[styles.qaSendBtn, (qaSending || !qaInput.trim()) && styles.qaSendBtnDisabled]}
+              onPress={askQuestion}
+              disabled={qaSending || !qaInput.trim()}
+            >
+              <Ionicons name="arrow-up" size={16} color="#fff" />
+            </TouchableOpacity>
+          </View>
         </>
       ) : null}
     </View>
@@ -202,4 +281,33 @@ const styles = StyleSheet.create({
   tipRow: { flexDirection: 'row', marginBottom: 4 },
   tipBullet: { color: COLORS.textSecondary, fontSize: 13 },
   tipText: { flex: 1, color: COLORS.textSecondary, fontSize: 13, lineHeight: 19 },
+  qaDivider: { height: 1, backgroundColor: COLORS.border, marginTop: SPACING.sm, marginBottom: SPACING.sm },
+  qaLabel: { color: COLORS.textMuted, fontSize: 11.5, fontWeight: '700', marginBottom: SPACING.sm },
+  qaUserRow: { alignItems: 'flex-end', marginBottom: SPACING.sm },
+  qaUserBubble: { backgroundColor: COLORS.primary, borderRadius: RADIUS.md, paddingHorizontal: SPACING.sm, paddingVertical: 7, maxWidth: '85%' },
+  qaUserText: { color: '#fff', fontSize: 13, lineHeight: 18 },
+  qaAiRow: { alignItems: 'flex-start', marginBottom: SPACING.sm },
+  qaAiBubble: { backgroundColor: COLORS.surfaceElevated, borderRadius: RADIUS.md, paddingHorizontal: SPACING.sm, paddingVertical: 7, maxWidth: '90%', borderWidth: 1, borderColor: COLORS.border },
+  qaAiText: { color: COLORS.text, fontSize: 13, lineHeight: 19 },
+  qaInputRow: { flexDirection: 'row', gap: SPACING.sm, alignItems: 'center' },
+  qaInput: {
+    flex: 1,
+    backgroundColor: COLORS.surfaceElevated,
+    borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 8,
+    color: COLORS.text,
+    fontSize: 13.5,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  qaSendBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  qaSendBtnDisabled: { opacity: 0.5 },
 });
