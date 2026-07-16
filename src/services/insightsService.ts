@@ -123,17 +123,45 @@ export const ACCOUNT_SCORE_COLOR: Record<AccountScoreGrade, string> = {
   E: '#F44336',
 };
 
-/**
- * エンゲージメント率を軸にS〜Eでアカウントを評価する。エンゲージメント率だけだと
- * 一時的な不調・好調に引っ張られやすいので、直近投稿の反応トレンド（trendPct）で
- * ±1段階の補正をかける。
- */
-export function computeAccountScore(engagementRate: number | null, trendPct: number | null): AccountScoreGrade {
-  const rate = engagementRate ?? 0;
-  const base: AccountScoreGrade =
-    rate >= 6 ? 'S' : rate >= 3 ? 'A' : rate >= 1.5 ? 'B' : rate >= 0.75 ? 'C' : rate >= 0.25 ? 'D' : 'E';
+function gradeForEngagement(rate: number | null): AccountScoreGrade {
+  const r = rate ?? 0;
+  return r >= 8 ? 'S' : r >= 5 ? 'A' : r >= 3 ? 'B' : r >= 1.5 ? 'C' : r >= 0.5 ? 'D' : 'E';
+}
 
-  let idx = GRADE_ORDER.indexOf(base);
+function gradeForFollowers(followers: number): AccountScoreGrade {
+  return followers >= 50000
+    ? 'S'
+    : followers >= 10000
+    ? 'A'
+    : followers >= 3000
+    ? 'B'
+    : followers >= 1000
+    ? 'C'
+    : followers >= 300
+    ? 'D'
+    : 'E';
+}
+
+function gradeForLikes(avgLikes: number): AccountScoreGrade {
+  return avgLikes >= 2000 ? 'S' : avgLikes >= 500 ? 'A' : avgLikes >= 150 ? 'B' : avgLikes >= 50 ? 'C' : avgLikes >= 15 ? 'D' : 'E';
+}
+
+/**
+ * エンゲージメント率・フォロワー数・平均いいね数の3軸で評価し、最も弱い軸に
+ * 引っ張られる形でS〜Eを決める（どれか1つが良いだけでは高評価にならないよう厳しめにする）。
+ * フォロワーが少ないアカウントはエンゲージメント率だけ見ると実態より高く出やすいため、
+ * 絶対数（フォロワー数・平均いいね数）も必ず評価に加える。
+ * 直近投稿の反応トレンド（trendPct）でのみ±1段階の補正をかける。
+ */
+export function computeAccountScore(
+  engagementRate: number | null,
+  trendPct: number | null,
+  followersCount: number,
+  avgLikes: number
+): AccountScoreGrade {
+  const grades = [gradeForEngagement(engagementRate), gradeForFollowers(followersCount), gradeForLikes(avgLikes)];
+  let idx = Math.min(...grades.map((g) => GRADE_ORDER.indexOf(g)));
+
   if (trendPct != null) {
     if (trendPct >= 20) idx = Math.min(idx + 1, GRADE_ORDER.length - 1);
     else if (trendPct <= -20) idx = Math.max(idx - 1, 0);

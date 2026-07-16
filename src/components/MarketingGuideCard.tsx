@@ -18,7 +18,8 @@ import {
   AccountRank,
   AccountScoreGrade,
 } from '../services/insightsService';
-import { generateMarketingGuide, MarketingGuide, chatWithAssistant, ChatTurn } from '../services/aiService';
+import { generateMarketingGuide, MarketingGuide, askMarketingGuideQuestion, ChatTurn } from '../services/aiService';
+import { getAiUsage, AiUsage } from '../services/scheduleService';
 
 interface QaMsg { role: 'user' | 'assistant'; text: string }
 
@@ -84,11 +85,15 @@ export default function MarketingGuideCard() {
   const [qaMessages, setQaMessages] = useState<QaMsg[]>([]);
   const [qaInput, setQaInput] = useState('');
   const [qaSending, setQaSending] = useState(false);
+  const [aiUsage, setAiUsage] = useState<AiUsage | null>(null);
 
   useEffect(() => {
     setQaMessages([]);
     setQaInput('');
   }, [instagramCredentials?.userId]);
+
+  const refreshAiUsage = () => { getAiUsage().then(setAiUsage).catch(() => {}); };
+  useEffect(() => { refreshAiUsage(); }, [instagramCredentials?.userId]);
 
   const askQuestion = async () => {
     const text = qaInput.trim();
@@ -98,9 +103,11 @@ export default function MarketingGuideCard() {
     setQaMessages(next);
     setQaSending(true);
     try {
+      // ガイド自体の生成とは違い、ユーザーが自分で質問する行為なので通常のAI利用回数を消費する
       const history: ChatTurn[] = next.map((m) => ({ role: m.role, content: m.text }));
-      const reply = await chatWithAssistant(history, undefined, buildGuideFacts(rank, grade, guide));
+      const reply = await askMarketingGuideQuestion(buildGuideFacts(rank, grade, guide), history);
       setQaMessages((m) => [...m, { role: 'assistant', text: reply }]);
+      refreshAiUsage();
     } catch (e) {
       setQaMessages((m) => [...m, { role: 'assistant', text: e instanceof Error ? e.message : '応答に失敗しました' }]);
     } finally {
@@ -123,6 +130,12 @@ export default function MarketingGuideCard() {
       return;
     }
 
+    // 別アカウントに切り替えた直後など、そのアカウント用のキャッシュがまだ無い場合は
+    // 前のアカウントの内容を表示し続けないよう、いったんクリアしてから分析し直す
+    setRank(null);
+    setGrade(null);
+    setGuide(null);
+
     let cancelled = false;
     setLoading(true);
     setFailed(false);
@@ -133,7 +146,12 @@ export default function MarketingGuideCard() {
         const followersCount = insights.profile.followers_count ?? 0;
         const mediaCount = insights.profile.media_count ?? insights.media.length;
         const nextRank = computeAccountRank(followersCount, mediaCount);
-        const nextGrade = computeAccountScore(insights.summary.engagement_rate, facts?.details.trendPct ?? null);
+        const nextGrade = computeAccountScore(
+          insights.summary.engagement_rate,
+          facts?.details.trendPct ?? null,
+          followersCount,
+          insights.summary.avg_likes
+        );
 
         const nextGuide = await generateMarketingGuide({
           rankLabel: ACCOUNT_RANK_LABEL[nextRank],
@@ -235,6 +253,9 @@ export default function MarketingGuideCard() {
               <Ionicons name="arrow-up" size={16} color="#fff" />
             </TouchableOpacity>
           </View>
+          {aiUsage && (
+            <Text style={styles.qaUsageText}>AI生成 {aiUsage.used}/{aiUsage.limit}回使用済み（質問1回につき1回消費）</Text>
+          )}
         </>
       ) : null}
     </View>
@@ -310,4 +331,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   qaSendBtnDisabled: { opacity: 0.5 },
+  qaUsageText: { color: COLORS.textMuted, fontSize: 10.5, marginTop: 6, textAlign: 'right' },
 });
