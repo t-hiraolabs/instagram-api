@@ -1,9 +1,9 @@
-// 「ストーリー作成」エディター。テンプレートギャラリーは廃止し、写真を1枚選んで
-// 文字を乗せるだけのシンプルな機能にした（デザインテンプレート機能としてCanva等と
-// 競う方向はやめ、「テキストを入れられるだけ」に絞る方針への変更、2026-07-16）。
-// 単一フロー：①写真を選ぶ→②文字を追加・編集→③プレビュー→④保存または投稿へ進む。
-// 描画はテンプレート方式の頃と同じCreativeCanvas＋creativeEditorStoreをそのまま流用する
-// （写真1枚のフルブリードphotoSlotを1つだけ持つ状態として扱う）。
+// 「ストーリー作成」エディター。テンプレートギャラリーは廃止し、Canva等の汎用デザイン
+// ツールと競う方向はやめた（2026-07-16）。代わりにInstagram標準のストーリー編集機能を
+// 上回るフォント数（19種）・素材（絵文字ステッカー・背景プリセット）を持つ、
+// 「写真 or 背景 + 文字 + ステッカー」だけのシンプルな機能として拡充している。
+// 単一フロー：①写真または背景を選ぶ→②文字・ステッカーを追加編集→③プレビュー→④保存/投稿。
+// 描画はテンプレート方式の頃と同じCreativeCanvas＋creativeEditorStoreをそのまま流用する。
 import React, { useRef, useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
@@ -15,10 +15,13 @@ import ViewShot from 'react-native-view-shot';
 import { COLORS, SPACING, RADIUS } from '../../utils/theme';
 import { saveStoryDraft } from '../../services/storyStudioService';
 import { useCreativeEditorStore, serializeCreativeEditor } from '../../store/creativeEditorStore';
-import { TextLayer, CANVAS_W, CANVAS_H } from '../../types/creativeTemplate';
+import { TextLayer, TemplateLayer, CANVAS_W, CANVAS_H } from '../../types/creativeTemplate';
+import { BackgroundPreset } from '../../utils/backgroundPresets';
 import CreativeCanvas from './CreativeCanvas';
 import CreativeLayerListPanel from './CreativeLayerListPanel';
 import TextStyleModal from './TextStyleModal';
+import BackgroundPickerModal from './BackgroundPickerModal';
+import StickerPickerModal from './StickerPickerModal';
 
 type Step = 'pick' | 'edit';
 
@@ -37,6 +40,8 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
   const [step, setStep] = useState<Step>('pick');
   const [previewMode, setPreviewMode] = useState(false);
   const [textEditVisible, setTextEditVisible] = useState(false);
+  const [bgPickerVisible, setBgPickerVisible] = useState(false);
+  const [stickerPickerVisible, setStickerPickerVisible] = useState(false);
   const [saving, setSaving] = useState(false);
   const [picking, setPicking] = useState(false);
 
@@ -118,6 +123,17 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
     }
   };
 
+  /** 写真を使わず、色・グラデーション・パターンだけの背景で始める */
+  const handleSelectBackground = (preset: BackgroundPreset) => {
+    const bgLayer: TemplateLayer = {
+      id: 'bg', kind: 'background', band: 'background', uri: '', bgPresetId: preset.id,
+      x: 0, y: 0, w: CANVAS_W, h: CANVAS_H,
+    };
+    loadTemplate({ templateId: '', photoSlots: [], layers: [bgLayer], textLayers: [] });
+    setPreviewMode(false);
+    setStep('edit');
+  };
+
   const selectedTextLayer = textLayers.find((t) => t.id === selectedId) as TextLayer | undefined;
 
   const handleAddTextLayer = () => {
@@ -128,6 +144,17 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
     };
     addTextLayer(layer);
     setTextEditVisible(true);
+  };
+
+  /** 絵文字ステッカーを追加する。画像素材を使わず既存のテキストレイヤーの仕組みで
+   *  位置・拡大率・回転をそのまま操作できる（Instagram標準のステッカーより自由度が高い） */
+  const handleAddSticker = (emoji: string) => {
+    const layer: TextLayer = {
+      id: `sticker_${Date.now()}`, label: 'ステッカー', text: emoji,
+      x: (CANVAS_W - 160) / 2, y: (CANVAS_H - 160) / 2, font: 'gothic', color: '#FFFFFF', size: 160,
+      scale: 1, rotation: 0, visible: true,
+    };
+    addTextLayer(layer);
   };
 
   const capture = async (): Promise<string | null> => {
@@ -141,7 +168,8 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
   };
 
   const filledCount = photoSlots.filter((s) => photoAssignments.some((a) => a.slotId === s.id)).length;
-  const allFilled = photoSlots.length > 0 && filledCount === photoSlots.length;
+  const isBackgroundMode = photoSlots.length === 0 && layers.some((l) => l.kind === 'background');
+  const allFilled = isBackgroundMode || (photoSlots.length > 0 && filledCount === photoSlots.length);
 
   const handleSaveDraft = async () => {
     setSaving(true);
@@ -180,10 +208,13 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
         {step === 'pick' && (
           <View style={styles.pickWrap}>
             <Ionicons name="image-outline" size={48} color={COLORS.textMuted} />
-            <Text style={styles.pickTitle}>写真を選んで、文字を入れましょう</Text>
+            <Text style={styles.pickTitle}>写真か背景を選んで、文字を入れましょう</Text>
             <Text style={styles.pickDesc}>Canvaなどで作った画像もそのまま使えます</Text>
             <TouchableOpacity style={styles.pickBtn} onPress={pickInitialPhoto} disabled={picking} activeOpacity={0.85}>
               {picking ? <ActivityIndicator color="#fff" /> : <Text style={styles.pickBtnText}>写真を選ぶ</Text>}
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.pickBtnOutline} onPress={() => setBgPickerVisible(true)} activeOpacity={0.85}>
+              <Text style={styles.pickBtnOutlineText}>背景を選ぶ（写真なし）</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -191,9 +222,11 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
         {step === 'edit' && (
           <View style={{ flex: 1 }}>
             <ScrollView contentContainerStyle={styles.editScroll}>
-              <TouchableOpacity onPress={() => pickPhotoForSlot(PHOTO_SLOT_ID)} activeOpacity={0.85}>
-                <Text style={styles.changePhotoText}>写真を変更する</Text>
-              </TouchableOpacity>
+              {photoSlots.length > 0 && (
+                <TouchableOpacity onPress={() => pickPhotoForSlot(PHOTO_SLOT_ID)} activeOpacity={0.85}>
+                  <Text style={styles.changePhotoText}>写真を変更する</Text>
+                </TouchableOpacity>
+              )}
 
               <ViewShot ref={canvasShotRef} options={{ format: 'png', quality: 0.95, width: 1080, height: 1920 }}>
                 <CreativeCanvas
@@ -217,6 +250,10 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
                     <TouchableOpacity style={styles.toolBtn} onPress={handleAddTextLayer}>
                       <Ionicons name="text-outline" size={20} color={COLORS.text} />
                       <Text style={styles.toolBtnText}>文字を追加</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.toolBtn} onPress={() => setStickerPickerVisible(true)}>
+                      <Ionicons name="happy-outline" size={20} color={COLORS.text} />
+                      <Text style={styles.toolBtnText}>ステッカー</Text>
                     </TouchableOpacity>
                     {selectedTextLayer && (
                       <TouchableOpacity style={styles.toolBtn} onPress={() => setTextEditVisible(true)}>
@@ -276,6 +313,16 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
           onClose={() => setTextEditVisible(false)}
           onChange={(patch) => selectedTextLayer && updateTextLayer(selectedTextLayer.id, patch)}
         />
+        <BackgroundPickerModal
+          visible={bgPickerVisible}
+          onClose={() => setBgPickerVisible(false)}
+          onSelect={handleSelectBackground}
+        />
+        <StickerPickerModal
+          visible={stickerPickerVisible}
+          onClose={() => setStickerPickerVisible(false)}
+          onSelect={handleAddSticker}
+        />
       </View>
     </Modal>
   );
@@ -292,6 +339,8 @@ const styles = StyleSheet.create({
   pickDesc: { color: COLORS.textMuted, fontSize: 12.5, textAlign: 'center', marginBottom: SPACING.md },
   pickBtn: { backgroundColor: COLORS.primary, borderRadius: RADIUS.full, paddingVertical: SPACING.md, paddingHorizontal: SPACING.xl, minWidth: 160, alignItems: 'center' },
   pickBtnText: { color: '#fff', fontWeight: '800', fontSize: 15 },
+  pickBtnOutline: { borderRadius: RADIUS.full, paddingVertical: SPACING.md, paddingHorizontal: SPACING.xl, minWidth: 160, alignItems: 'center', borderWidth: 1, borderColor: COLORS.border },
+  pickBtnOutlineText: { color: COLORS.text, fontWeight: '700', fontSize: 14 },
   changePhotoText: { color: COLORS.primary, fontSize: 13, fontWeight: '700', marginBottom: SPACING.sm },
   toolbar: { flexDirection: 'row', gap: SPACING.md, marginTop: SPACING.md },
   toolBtn: { alignItems: 'center', gap: 2 },
