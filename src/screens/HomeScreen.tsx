@@ -10,7 +10,7 @@ import OnboardingChecklist from '../components/OnboardingChecklist';
 import MarketingGuideCard from '../components/MarketingGuideCard';
 import { getPostIdeas, PostIdea } from '../utils/postIdeas';
 import { getAiUsage, AiUsage } from '../services/scheduleService';
-import { getChatUsagePercent } from '../services/aiService';
+import { getChatUsage, ChatUsage } from '../services/aiService';
 import { Ionicons } from '@expo/vector-icons';
 
 function getGreeting(): string {
@@ -74,12 +74,12 @@ export default function HomeScreen() {
   // 「はじめてガイド」を完了したら、代わりにマーケティングガイドを表示する
   const [onboardingDone, setOnboardingDone] = useState(false);
 
-  // AI生成の残り回数・チャットの利用量。ホーム上部に常に見える形で表示する
+  // AI生成の残り回数・チャットの残り回数。ホーム上部に常に見える形で表示する
   const [aiUsage, setAiUsage] = useState<AiUsage | null>(null);
-  const [chatUsedPct, setChatUsedPct] = useState<number | null>(null);
+  const [chatUsage, setChatUsage] = useState<ChatUsage | null>(null);
   const refreshUsage = useCallback(() => {
     getAiUsage().then(setAiUsage).catch(() => {});
-    getChatUsagePercent().then((c) => setChatUsedPct(c.usedPct)).catch(() => {});
+    getChatUsage().then(setChatUsage).catch(() => {});
   }, []);
   useFocusEffect(useCallback(() => { refreshUsage(); }, [refreshUsage]));
 
@@ -124,7 +124,7 @@ export default function HomeScreen() {
         </View>
       </View>
 
-      {(aiUsage || chatUsedPct !== null) && (
+      {(aiUsage || chatUsage) && (
         <View style={styles.usageRow}>
           {aiUsage && (
             <View style={styles.usageItem}>
@@ -132,10 +132,10 @@ export default function HomeScreen() {
               <Text style={styles.usageItemText}>AI生成 残り{aiUsage.remaining}回</Text>
             </View>
           )}
-          {chatUsedPct !== null && (
+          {chatUsage && (
             <View style={styles.usageItem}>
               <Ionicons name="chatbubble-outline" size={12} color={COLORS.textMuted} />
-              <Text style={styles.usageItemText}>チャット利用量 {chatUsedPct}%使用</Text>
+              <Text style={styles.usageItemText}>チャット 残り{chatUsage.remaining}回</Text>
             </View>
           )}
         </View>
