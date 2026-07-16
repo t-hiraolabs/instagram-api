@@ -16,6 +16,11 @@ import { COLORS, SPACING, RADIUS } from '../utils/theme';
 import { FeedTransform, DEFAULT_FEED_TRANSFORM, ASPECTS, AspectKey, BgMode, composeFeedImage, makeBackgroundUrl } from '../utils/composeFeed';
 import { loadImage } from '../utils/composeStory';
 import { snapValueWithHit } from '../utils/snap';
+import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
+
+// Instagramのカルーセル投稿と同じ、1投稿あたりの写真枚数の上限
+const MAX_PHOTOS = 10;
 
 interface Props {
   visible: boolean;
@@ -85,6 +90,39 @@ export default function FeedCropEditor({ visible, images, initialIndex = 0, onCa
     return () => { cancelled = true; };
   }, [visible, images]);
 
+  // この調整画面の中から写真を追加する（選び直しではなく、既存の写真に追記する）
+  const [addingPhotos, setAddingPhotos] = useState(false);
+  const addMorePhotos = async () => {
+    if (imgs.length >= MAX_PHOTOS) return;
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsMultipleSelection: true,
+      selectionLimit: MAX_PHOTOS - imgs.length,
+      quality: 0.9,
+    });
+    if (res.canceled || res.assets.length === 0) return;
+    setAddingPhotos(true);
+    try {
+      const newUris = res.assets.map((a) => a.uri).slice(0, MAX_PHOTOS - imgs.length);
+      const newMetas: (Meta | null)[] = [];
+      for (const uri of newUris) {
+        try {
+          const img = await loadImage(uri);
+          newMetas.push({ iw: img.width, ih: img.height });
+        } catch {
+          newMetas.push(null);
+        }
+      }
+      const nextIdx = imgs.length;
+      setImgs((prev) => [...prev, ...newUris]);
+      setTransforms((prev) => [...prev, ...newUris.map(() => ({ ...DEFAULT_FEED_TRANSFORM }))]);
+      setMetas((prev) => [...prev, ...newMetas]);
+      setIdx(nextIdx); // 追加した最初の写真を選択状態にする
+    } finally {
+      setAddingPhotos(false);
+    }
+  };
+
   // サムネをドラッグして並べ替える
   const moveThumb = (from: number, to: number) => {
     if (from === to) return;
@@ -116,30 +154,40 @@ export default function FeedCropEditor({ visible, images, initialIndex = 0, onCa
   // ちょうど枠を覆う倍率・中央に近づいてスナップした間だけ、見えやすいガイド線・枠線を表示する
   const [snapped, setSnapped] = useState({ x: false, y: false, scale: false });
 
-  const setT = (patch: Partial<FeedTransform>) => {
+  // snap: ドラッグ・ピンチ操作ではtrue（きりのいい倍率・中央に一瞬止まる）。
+  // スライダー操作ではfalse（つまみの位置と値を1:1に保ち、指を少し動かしただけで
+  // スナップ先の値に引っ張られて戻ったように見える不具合を防ぐ）。
+  const setT = (patch: Partial<FeedTransform>, snap = true) => {
     setTransforms((prev) => {
       const r = refs.current;
       const i = r.idx;
       const next = [...prev];
       const t = { ...(next[i] ?? DEFAULT_FEED_TRANSFORM), ...patch };
       t.scale = clamp(t.scale, MIN_SCALE, MAX_SCALE);
-      // ちょうど枠を覆う倍率（scale=1、縦横どちらか片方がぴったり画面いっぱいになる境目）に加えて、
-      // 覆っていない方の辺（例: 横を覆う倍率で止めた場合の縦）がちょうどぴったり収まる倍率にも
-      // 近づいたら一瞬止まるようにする（coverW/coverHはscale=1のとき片方だけがFRAME_W/frameHと
-      // 一致するよう計算されているため、もう片方が一致する倍率は別に算出する必要がある）
-      const scaleTargets = r.coverW > 0 && r.coverH > 0 ? [1, FRAME_W / r.coverW, r.frameH / r.coverH] : [1];
-      const scaleHit = snapValueWithHit(t.scale, scaleTargets, SCALE_SNAP_ZONE);
-      t.scale = scaleHit.value;
+      let scaleHit: { value: number; hit: number | null } = { value: t.scale, hit: null };
+      if (snap) {
+        // ちょうど枠を覆う倍率（scale=1、縦横どちらか片方がぴったり画面いっぱいになる境目）に加えて、
+        // 覆っていない方の辺（例: 横を覆う倍率で止めた場合の縦）がちょうどぴったり収まる倍率にも
+        // 近づいたら一瞬止まるようにする（coverW/coverHはscale=1のとき片方だけがFRAME_W/frameHと
+        // 一致するよう計算されているため、もう片方が一致する倍率は別に算出する必要がある）
+        const scaleTargets = r.coverW > 0 && r.coverH > 0 ? [1, FRAME_W / r.coverW, r.frameH / r.coverH] : [1];
+        scaleHit = snapValueWithHit(t.scale, scaleTargets, SCALE_SNAP_ZONE);
+        t.scale = scaleHit.value;
+      }
       // 拡大時ははみ出し分、縮小時は余白分まで移動を許可（背景で埋まる）
       const ox = Math.abs(r.coverW * t.scale - FRAME_W) / 2 / FRAME_W;
       const oy = Math.abs(r.coverH * t.scale - r.frameH) / 2 / r.frameH;
       t.x = clamp(t.x, -ox, ox);
       t.y = clamp(t.y, -oy, oy);
-      // 中央に近づいたら一瞬止まるようにする
-      const xHit = snapValueWithHit(t.x, [0], POSITION_SNAP_PX / FRAME_W);
-      const yHit = snapValueWithHit(t.y, [0], POSITION_SNAP_PX / r.frameH);
-      t.x = xHit.value;
-      t.y = yHit.value;
+      let xHit: { value: number; hit: number | null } = { value: t.x, hit: null };
+      let yHit: { value: number; hit: number | null } = { value: t.y, hit: null };
+      if (snap) {
+        // 中央に近づいたら一瞬止まるようにする
+        xHit = snapValueWithHit(t.x, [0], POSITION_SNAP_PX / FRAME_W);
+        yHit = snapValueWithHit(t.y, [0], POSITION_SNAP_PX / r.frameH);
+        t.x = xHit.value;
+        t.y = yHit.value;
+      }
       next[i] = t;
       setSnapped({ x: xHit.hit !== null, y: yHit.hit !== null, scale: scaleHit.hit !== null });
       return next;
@@ -303,9 +351,29 @@ export default function FeedCropEditor({ visible, images, initialIndex = 0, onCa
             value={cur.scale}
             min={MIN_SCALE}
             max={MAX_SCALE}
-            onChange={(v) => setT({ scale: v })}
+            onChange={(v) => setT({ scale: v }, false)}
           />
         </View>
+
+        {/* 調整画面の中から写真を追加できる（選び直さず追記する） */}
+        {imgs.length < MAX_PHOTOS && (
+          <TouchableOpacity
+            testID="feedcrop-add-photo"
+            style={[styles.addPhotoBtn, addingPhotos && { opacity: 0.6 }]}
+            onPress={addMorePhotos}
+            disabled={addingPhotos}
+            activeOpacity={0.8}
+          >
+            {addingPhotos ? (
+              <ActivityIndicator color={COLORS.secondary} size="small" />
+            ) : (
+              <>
+                <Ionicons name="add-circle-outline" size={16} color={COLORS.secondary} />
+                <Text style={styles.addPhotoBtnText}>写真を追加</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        )}
 
         {imgs.length > 1 && (
           <>
@@ -442,6 +510,20 @@ const styles = StyleSheet.create({
     position: 'absolute', width: 22, height: 22, borderRadius: 11,
     backgroundColor: '#fff', borderWidth: 2, borderColor: COLORS.primary,
   },
+  addPhotoBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    alignSelf: 'center',
+    marginTop: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: 9,
+    borderRadius: RADIUS.full,
+    borderWidth: 1,
+    borderColor: COLORS.secondary,
+  },
+  addPhotoBtnText: { color: COLORS.secondary, fontSize: 13.5, fontWeight: '700' },
   reorderHint: { color: COLORS.textMuted, fontSize: 11, textAlign: 'center', marginTop: SPACING.md },
   thumbRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, justifyContent: 'center', marginTop: SPACING.sm, paddingHorizontal: SPACING.md },
   thumb: { width: 56, height: 56, borderRadius: RADIUS.sm, overflow: 'hidden', borderWidth: 2, borderColor: 'transparent' },
