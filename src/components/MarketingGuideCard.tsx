@@ -1,100 +1,127 @@
 // 「はじめてガイド」を完了したユーザー向けに、実際のInstagramデータをもとに
-// アカウントの段階（立ち上げ期／成長期／定着期）を判定し、それに応じたAIアドバイスを表示する。
+// アカウントの段階（立ち上げ期／成長期／定着期）とS〜Eの総合評価を判定し、それに応じたAIアドバイスを表示する。
+// 連携中のアカウントごとに評価・アドバイスを分けて保持し、週が変わったタイミングで自動的に再分析する
+// （手動更新はなし。次にホームを開いたときに自動で最新化される）。
 import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
 import { useAppStore } from '../store/appStore';
-import { getInsightsSummary, computeInsightFacts, computeAccountRank, ACCOUNT_RANK_LABEL, AccountRank } from '../services/insightsService';
+import {
+  getInsightsSummary,
+  computeInsightFacts,
+  computeAccountRank,
+  computeAccountScore,
+  getIsoWeekKey,
+  ACCOUNT_RANK_LABEL,
+  ACCOUNT_SCORE_COLOR,
+  AccountRank,
+  AccountScoreGrade,
+} from '../services/insightsService';
 import { generateMarketingGuide, MarketingGuide } from '../services/aiService';
 
-// 一度生成したアドバイスは端末に保存し、同じ段階の間は再生成しない
-// （ホームを開くたびにAIを呼ぶのは無駄なため。手動更新ボタンでいつでも作り直せる）
-const CACHE_KEY = 'aimark_marketing_guide_v1';
-const CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7日
+const CACHE_KEY = 'aimark_marketing_guide_v2';
 
-interface Cache {
-  userId: string;
+interface CacheEntry {
   rank: AccountRank;
+  grade: AccountScoreGrade;
   guide: MarketingGuide;
-  generatedAt: number;
+  weekKey: string;
 }
 
-function readCache(): Cache | null {
-  if (Platform.OS !== 'web' || typeof localStorage === 'undefined') return null;
+// アカウント（userId）ごとにエントリーを分けて保持する。複数のInstagramアカウントを
+// 連携していても、それぞれ独立して週1回分析される
+type CacheMap = Record<string, CacheEntry>;
+
+function readCacheMap(): CacheMap {
+  if (Platform.OS !== 'web' || typeof localStorage === 'undefined') return {};
   try {
     const raw = localStorage.getItem(CACHE_KEY);
-    return raw ? (JSON.parse(raw) as Cache) : null;
+    return raw ? (JSON.parse(raw) as CacheMap) : {};
   } catch {
-    return null;
+    return {};
   }
 }
 
-function writeCache(cache: Cache) {
+function writeCacheEntry(userId: string, entry: CacheEntry) {
   if (Platform.OS !== 'web' || typeof localStorage === 'undefined') return;
   try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
+    const map = readCacheMap();
+    map[userId] = entry;
+    localStorage.setItem(CACHE_KEY, JSON.stringify(map));
   } catch {
     // 保存に失敗しても致命的ではないので無視
   }
 }
 
 export default function MarketingGuideCard() {
-  const instagramCredentials = useAppStore((s) => s.instagramCredentials);
+  const creds1 = useAppStore((s) => s.instagramCredentials);
+  const creds2 = useAppStore((s) => s.secondInstagramCredentials);
+  const creds3 = useAppStore((s) => s.thirdInstagramCredentials);
+  const activeAccountSlot = useAppStore((s) => s.activeAccountSlot);
+  const instagramCredentials = activeAccountSlot === 3 ? creds3 : activeAccountSlot === 2 ? creds2 : creds1;
+
   const [rank, setRank] = useState<AccountRank | null>(null);
+  const [grade, setGrade] = useState<AccountScoreGrade | null>(null);
   const [guide, setGuide] = useState<MarketingGuide | null>(null);
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
 
-  const load = async (forceRefresh: boolean) => {
-    if (!instagramCredentials?.accessToken) return;
+  useEffect(() => {
+    const userId = instagramCredentials?.userId;
+    const accessToken = instagramCredentials?.accessToken;
+    if (!userId || !accessToken) return;
+
+    const thisWeek = getIsoWeekKey(new Date());
+    const cached = readCacheMap()[userId];
+    if (cached && cached.weekKey === thisWeek) {
+      setRank(cached.rank);
+      setGrade(cached.grade);
+      setGuide(cached.guide);
+      setFailed(false);
+      return;
+    }
+
+    let cancelled = false;
     setLoading(true);
     setFailed(false);
-    try {
-      const insights = await getInsightsSummary(instagramCredentials.accessToken, 24);
-      const facts = computeInsightFacts(insights);
-      const followersCount = insights.profile.followers_count ?? 0;
-      const mediaCount = insights.profile.media_count ?? insights.media.length;
-      const nextRank = computeAccountRank(followersCount, mediaCount);
-      setRank(nextRank);
+    (async () => {
+      try {
+        const insights = await getInsightsSummary(accessToken, 24);
+        const facts = computeInsightFacts(insights);
+        const followersCount = insights.profile.followers_count ?? 0;
+        const mediaCount = insights.profile.media_count ?? insights.media.length;
+        const nextRank = computeAccountRank(followersCount, mediaCount);
+        const nextGrade = computeAccountScore(insights.summary.engagement_rate, facts?.details.trendPct ?? null);
 
-      const cache = readCache();
-      const cacheValid =
-        !forceRefresh &&
-        cache &&
-        cache.userId === instagramCredentials.userId &&
-        cache.rank === nextRank &&
-        Date.now() - cache.generatedAt < CACHE_MAX_AGE_MS;
+        const nextGuide = await generateMarketingGuide({
+          rankLabel: ACCOUNT_RANK_LABEL[nextRank],
+          followersCount,
+          mediaCount,
+          avgLikes: insights.summary.avg_likes,
+          avgComments: insights.summary.avg_comments,
+          engagementRate: insights.summary.engagement_rate,
+          bestHourLabel: facts?.details.bestHour ? `${facts.details.bestHour.hour}時台` : null,
+          bestDowLabel: facts?.details.bestDow ? `${facts.details.bestDow.label}曜日` : null,
+          topPostCaption: facts?.details.topPost?.caption ?? null,
+        });
 
-      if (cacheValid && cache) {
-        setGuide(cache.guide);
-        return;
+        if (cancelled) return;
+        setRank(nextRank);
+        setGrade(nextGrade);
+        setGuide(nextGuide);
+        writeCacheEntry(userId, { rank: nextRank, grade: nextGrade, guide: nextGuide, weekKey: thisWeek });
+      } catch {
+        if (!cancelled) setFailed(true);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
+    })();
 
-      const nextGuide = await generateMarketingGuide({
-        rankLabel: ACCOUNT_RANK_LABEL[nextRank],
-        followersCount,
-        mediaCount,
-        avgLikes: insights.summary.avg_likes,
-        avgComments: insights.summary.avg_comments,
-        engagementRate: insights.summary.engagement_rate,
-        bestHourLabel: facts?.details.bestHour ? `${facts.details.bestHour.hour}時台` : null,
-        bestDowLabel: facts?.details.bestDow ? `${facts.details.bestDow.label}曜日` : null,
-        topPostCaption: facts?.details.topPost?.caption ?? null,
-      });
-      setGuide(nextGuide);
-      writeCache({ userId: instagramCredentials.userId, rank: nextRank, guide: nextGuide, generatedAt: Date.now() });
-    } catch {
-      setFailed(true);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    load(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [instagramCredentials?.userId]);
+    return () => {
+      cancelled = true;
+    };
+  }, [instagramCredentials?.userId, instagramCredentials?.accessToken]);
 
   if (!instagramCredentials || failed) return null;
 
@@ -105,9 +132,11 @@ export default function MarketingGuideCard() {
           <Ionicons name="trending-up-outline" size={16} color={COLORS.primary} />
           <Text style={styles.title}>Instagramマーケティングガイド</Text>
         </View>
-        <TouchableOpacity onPress={() => load(true)} disabled={loading} hitSlop={8}>
-          <Ionicons name="refresh-outline" size={16} color={loading ? COLORS.textMuted : COLORS.textSecondary} />
-        </TouchableOpacity>
+        {grade && (
+          <View style={[styles.gradeBadge, { backgroundColor: ACCOUNT_SCORE_COLOR[grade] }]}>
+            <Text style={styles.gradeBadgeText}>{grade}</Text>
+          </View>
+        )}
       </View>
 
       {loading && !guide ? (
@@ -150,6 +179,14 @@ const styles = StyleSheet.create({
   },
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   title: { color: COLORS.text, fontSize: 14, fontWeight: '800' },
+  gradeBadge: {
+    width: 40,
+    height: 40,
+    borderRadius: RADIUS.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  gradeBadgeText: { color: '#0A0A0A', fontSize: 22, fontWeight: '900' },
   loadingRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, paddingVertical: SPACING.sm },
   loadingText: { color: COLORS.textMuted, fontSize: 12.5 },
   rankBadge: {

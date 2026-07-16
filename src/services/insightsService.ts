@@ -110,6 +110,47 @@ export function computeAccountRank(followersCount: number, mediaCount: number): 
   return 'established';
 }
 
+export type AccountScoreGrade = 'S' | 'A' | 'B' | 'C' | 'D' | 'E';
+
+const GRADE_ORDER: AccountScoreGrade[] = ['E', 'D', 'C', 'B', 'A', 'S'];
+
+export const ACCOUNT_SCORE_COLOR: Record<AccountScoreGrade, string> = {
+  S: '#FFD700',
+  A: '#4CAF50',
+  B: '#29B6F6',
+  C: '#FF9800',
+  D: '#FF5722',
+  E: '#F44336',
+};
+
+/**
+ * エンゲージメント率を軸にS〜Eでアカウントを評価する。エンゲージメント率だけだと
+ * 一時的な不調・好調に引っ張られやすいので、直近投稿の反応トレンド（trendPct）で
+ * ±1段階の補正をかける。
+ */
+export function computeAccountScore(engagementRate: number | null, trendPct: number | null): AccountScoreGrade {
+  const rate = engagementRate ?? 0;
+  const base: AccountScoreGrade =
+    rate >= 6 ? 'S' : rate >= 3 ? 'A' : rate >= 1.5 ? 'B' : rate >= 0.75 ? 'C' : rate >= 0.25 ? 'D' : 'E';
+
+  let idx = GRADE_ORDER.indexOf(base);
+  if (trendPct != null) {
+    if (trendPct >= 20) idx = Math.min(idx + 1, GRADE_ORDER.length - 1);
+    else if (trendPct <= -20) idx = Math.max(idx - 1, 0);
+  }
+  return GRADE_ORDER[idx];
+}
+
+/** ISO週（月曜始まり）のキー。例: "2026-W29"。週次の自動更新タイミングの判定に使う。 */
+export function getIsoWeekKey(date: Date): string {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = d.getUTCDay() || 7; // 日曜=7扱いにして月曜始まりにする
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const weekNum = Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+  return `${d.getUTCFullYear()}-W${String(weekNum).padStart(2, '0')}`;
+}
+
 export type AnalysisFacts =
   | { ok: true; text: string; details: InsightDetails }
   | { ok: false; reason: string };
