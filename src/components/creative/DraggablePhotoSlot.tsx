@@ -14,6 +14,7 @@
 import React from 'react';
 import { View, Image, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { SharedValue } from 'react-native-reanimated';
 import DraggableLayer from './DraggableLayer';
 import { PhotoSlot } from '../../types/creativeTemplate';
 import { PhotoAssignment } from '../../store/creativeEditorStore';
@@ -29,13 +30,15 @@ interface Props {
   selected: boolean;
   locked?: boolean;
   testID?: string;
+  /** キャンバス全体で共有するshared value（DraggableLayerのactiveOwner参照） */
+  activeOwner?: SharedValue<string | null>;
   onSelect: () => void;
   onChange: (patch: { offsetX: number; offsetY: number; scale: number }) => void;
   onPickPhoto?: () => void;
 }
 
 export default function DraggablePhotoSlot({
-  slot, assignment, displayScale, selected, locked, testID, onSelect, onChange, onPickPhoto,
+  slot, assignment, displayScale, selected, locked, testID, activeOwner, onSelect, onChange, onPickPhoto,
 }: Props) {
   const clipStyle = {
     position: 'absolute' as const,
@@ -92,6 +95,7 @@ export default function DraggablePhotoSlot({
         displayScale={displayScale}
         selected={selected}
         locked={locked}
+        activeOwner={activeOwner}
         onSelect={onSelect}
         onChange={handleChange}
       >
