@@ -60,6 +60,14 @@ export default function DraggableLayer({
   const translateY = useSharedValue(y);
   const savedScale = useSharedValue(scale);
   const savedRotation = useSharedValue(rotation);
+  // 各ジェスチャー開始時点の値を控えておき、そこからの差分で計算する（onUpdateの中で
+  // 直接x/y/scale/rotation propsを参照すると、ジェスチャー中に親が再レンダーされた
+  // 場合に古いクロージャ値を基準にしてしまい、位置や拡大率が一瞬で元に戻る不具合の
+  // 原因になっていた。shared valueだけを基準にすることで再レンダーの影響を受けない）
+  const baseX = useSharedValue(x);
+  const baseY = useSharedValue(y);
+  const baseScale = useSharedValue(scale);
+  const baseRotation = useSharedValue(rotation);
   // きりのいい位置・倍率にスナップしている間だけtrueにし、見えやすい枠線を表示する
   const isSnapped = useSharedValue(false);
 
@@ -80,11 +88,15 @@ export default function DraggableLayer({
 
   const pan = Gesture.Pan()
     .enabled(!locked)
-    .onBegin(() => runOnJS(onSelect)())
+    .onBegin(() => {
+      baseX.value = translateX.value;
+      baseY.value = translateY.value;
+      runOnJS(onSelect)();
+    })
     .onUpdate((e) => {
       const zone = POSITION_SNAP_SCREEN_PX / displayScale;
-      let nx = x + e.translationX / displayScale;
-      let ny = y + e.translationY / displayScale;
+      let nx = baseX.value + e.translationX / displayScale;
+      let ny = baseY.value + e.translationY / displayScale;
       let snapped = false;
       if (snapX) { const r = snapValueWithHit(nx, snapX, zone); nx = r.value; if (r.hit !== null) snapped = true; }
       if (snapY) { const r = snapValueWithHit(ny, snapY, zone); ny = r.value; if (r.hit !== null) snapped = true; }
@@ -96,9 +108,12 @@ export default function DraggableLayer({
 
   const pinch = Gesture.Pinch()
     .enabled(!locked)
-    .onBegin(() => runOnJS(onSelect)())
+    .onBegin(() => {
+      baseScale.value = savedScale.value;
+      runOnJS(onSelect)();
+    })
     .onUpdate((e) => {
-      let s = Math.min(maxScale, Math.max(minScale, scale * e.scale));
+      let s = Math.min(maxScale, Math.max(minScale, baseScale.value * e.scale));
       let snapped = false;
       if (snapScale) { const r = snapValueWithHit(s, snapScale, SCALE_SNAP_ZONE); s = r.value; if (r.hit !== null) snapped = true; }
       savedScale.value = s;
@@ -108,9 +123,12 @@ export default function DraggableLayer({
 
   const rotate = Gesture.Rotation()
     .enabled(!locked && rotatable)
-    .onBegin(() => runOnJS(onSelect)())
+    .onBegin(() => {
+      baseRotation.value = savedRotation.value;
+      runOnJS(onSelect)();
+    })
     .onUpdate((e) => {
-      savedRotation.value = rotation + (e.rotation * 180) / Math.PI;
+      savedRotation.value = baseRotation.value + (e.rotation * 180) / Math.PI;
     })
     .onEnd(() => runOnJS(commit)());
 
