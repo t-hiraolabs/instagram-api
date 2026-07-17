@@ -28,10 +28,14 @@ const SCALE_SNAP_ZONE = 0.04;
 const GUIDE_COLOR = '#00E5FF';
 // 文字・ステッカーなど表示上小さい要素は、指2本を近づけて操作する「縮小ピンチ」の
 // 開始位置が実際の見た目の範囲内に収まりにくい（指先の接地面はpxよりずっと大きいため）。
-// 「初期サイズからは縮小できないが、一度拡大したものは縮小できる」という報告は、
-// まさに要素が小さいほど2本指を乗せる余地が狭いことを示している。タッチ判定領域を
-// 見た目よりかなり広げることで、初期サイズの小さい要素でも指2本を置きやすくする。
-const HIT_SLOP = 100;
+// タッチ判定領域を見た目より広げることで小さい要素でも指2本を置きやすくなる一方、
+// 全要素に同じだけ広げると、近くに置かれた「別の」未選択の要素にまで判定が広がり、
+// リサイズ中にもう一方の指が別の要素に触れてそちらが反応してしまう不具合になっていた。
+// 選択中の要素だけ大きく広げ、未選択の要素は控えめにすることで両立させる
+// （通常の操作は「タップで選択→その要素を操作」の順なので、選択済みの間だけ
+// 広い判定でよい）。
+const HIT_SLOP_SELECTED = 100;
+const HIT_SLOP_UNSELECTED = 16;
 
 interface Props {
   x: number;
@@ -76,6 +80,7 @@ export default function DraggableLayer({
   const baseRotation = useSharedValue(rotation);
   // きりのいい位置・倍率にスナップしている間だけtrueにし、見えやすい枠線を表示する
   const isSnapped = useSharedValue(false);
+  const hitSlop = selected ? HIT_SLOP_SELECTED : HIT_SLOP_UNSELECTED;
 
   // 外部（他の編集操作・レイヤー切替）からの値変更を反映
   React.useEffect(() => { translateX.value = x; }, [x]);
@@ -94,7 +99,7 @@ export default function DraggableLayer({
 
   const pan = Gesture.Pan()
     .enabled(!locked)
-    .hitSlop(HIT_SLOP)
+    .hitSlop(hitSlop)
     .onBegin(() => {
       baseX.value = translateX.value;
       baseY.value = translateY.value;
@@ -115,7 +120,7 @@ export default function DraggableLayer({
 
   const pinch = Gesture.Pinch()
     .enabled(!locked)
-    .hitSlop(HIT_SLOP)
+    .hitSlop(hitSlop)
     .onBegin(() => {
       baseScale.value = savedScale.value;
       runOnJS(onSelect)();
@@ -131,7 +136,7 @@ export default function DraggableLayer({
 
   const rotate = Gesture.Rotation()
     .enabled(!locked && rotatable)
-    .hitSlop(HIT_SLOP)
+    .hitSlop(hitSlop)
     .onBegin(() => {
       baseRotation.value = savedRotation.value;
       runOnJS(onSelect)();
@@ -141,7 +146,7 @@ export default function DraggableLayer({
     })
     .onEnd(() => runOnJS(commit)());
 
-  const tap = Gesture.Tap().enabled(!locked).hitSlop(HIT_SLOP).onEnd(() => runOnJS(onSelect)());
+  const tap = Gesture.Tap().enabled(!locked).hitSlop(hitSlop).onEnd(() => runOnJS(onSelect)());
 
   const composed = Gesture.Simultaneous(pan, pinch, rotate, tap);
 
