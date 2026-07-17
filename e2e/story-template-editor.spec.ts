@@ -1,4 +1,4 @@
-// StoryTemplateEditorの、テキストのプロパティパネル・中央プレビュー表示切り替えの回帰テスト。
+// StoryTemplateEditorの、テキストのプロパティパネル・上部プレビュー表示切り替えの回帰テスト。
 // src/screens/__e2e__/E2EStoryTemplateEditorScreen.tsxを?e2e=storyTemplateEditorで直接マウント
 // し、ログインや写真選択に依存せず検証する。
 import { test, expect, CDPSession } from '@playwright/test';
@@ -8,7 +8,7 @@ async function dispatchTouch(client: CDPSession, type: 'touchStart' | 'touchMove
 }
 
 test.describe('StoryTemplateEditor テキストのプロパティ表示', () => {
-  test('文字を追加すると自動選択され、プロパティと中央プレビューが表示される', async ({ page }) => {
+  test('文字を追加すると自動選択され、プロパティと上部プレビューが表示される', async ({ page }) => {
     await page.goto('/?e2e=storyTemplateEditor');
     await page.waitForTimeout(1000);
 
@@ -34,7 +34,7 @@ test.describe('StoryTemplateEditor テキストのプロパティ表示', () => 
     await expect(page.getByTestId('story-editor-text-preview')).toHaveCount(0);
   });
 
-  test('テキストをワンタップすると再び選択され、プロパティと中央プレビューが表示される', async ({ page }) => {
+  test('テキストをワンタップすると再び選択され、プロパティと上部プレビューが表示される', async ({ page }) => {
     await page.goto('/?e2e=storyTemplateEditor');
     await page.waitForTimeout(1000);
 
@@ -227,5 +227,39 @@ test.describe('StoryTemplateEditor フォントのドロップダウン', () => 
 
     await expect(page.getByTestId('font-dropdown-trigger-label')).toHaveText('明朝（上品）');
     await expect(page.getByTestId('font-dropdown-scroll')).toHaveCount(0);
+  });
+});
+
+test.describe('StoryTemplateEditor 上部プレビューでの文字編集', () => {
+  test('上部プレビューへ直接入力すると、テキスト内容が変わりキャンバスにも反映される', async ({ page }) => {
+    await page.goto('/?e2e=storyTemplateEditor');
+    await page.waitForTimeout(1000);
+
+    await page.getByTestId('story-editor-add-text-btn').click();
+    await page.waitForTimeout(500);
+
+    const previewInput = page.getByTestId('story-editor-text-preview-input');
+    await expect(previewInput).toBeVisible();
+    await previewInput.click();
+    await previewInput.fill('こんにちは世界');
+    await page.waitForTimeout(300);
+
+    await expect(previewInput).toHaveValue('こんにちは世界');
+    const canvasText = await page.evaluate(() => {
+      const el = document.querySelector('[data-testid^="layer-text_"]');
+      return el ? el.textContent : null;
+    });
+    expect(canvasText).toBe('こんにちは世界');
+  });
+
+  test('プロパティパネル側には文字入力欄が重複して存在しない', async ({ page }) => {
+    await page.goto('/?e2e=storyTemplateEditor');
+    await page.waitForTimeout(1000);
+
+    await page.getByTestId('story-editor-add-text-btn').click();
+    await page.waitForTimeout(500);
+
+    // 「文字を入力」というプレースホルダーを持つ入力欄は、上部プレビューの1つだけ
+    await expect(page.locator('[placeholder="文字を入力"]')).toHaveCount(1);
   });
 });

@@ -114,11 +114,16 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
   const [saving, setSaving] = useState(false);
   const [picking, setPicking] = useState(false);
   const [started, setStarted] = useState(false);
-  // プロパティパネル・中央プレビューの表示状態。「選択中かどうか」とは独立して持つ：
+  // プロパティパネル・上部プレビューの表示状態。「選択中かどうか」とは独立して持つ：
   // タップして指を離した時だけtrueにし、指で位置を動かし始めた瞬間にfalseへ戻す。
   // 動かして離した後もtrueへは戻さない（＝移動操作の最後はプロパティを表示しない）。
   // 再び表示するには、もう一度タップして離す必要がある
   const [showProps, setShowProps] = useState(false);
+  // 上部プレビューの入力欄（TextInput）は、<Text>と違って内容に合わせて自動的に
+  // 縮まない（既定では実際の文字より大きな当たり判定を持つ）。そのままだと見えない
+  // 余白部分が、キャンバス上の実際の（小さい）テキストへのドラッグ操作を奪ってしまう
+  // ため、内容の実寸を測って追従させ、見た目とほぼ同じ大きさの当たり判定に留める
+  const [previewInputSize, setPreviewInputSize] = useState<{ width: number; height: number } | null>(null);
 
   const canvasShotRef = useRef<ViewShot>(null);
 
@@ -213,6 +218,7 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
   };
 
   const selectedTextLayer = textLayers.find((t) => t.id === selectedId) as TextLayer | undefined;
+  React.useEffect(() => { setPreviewInputSize(null); }, [selectedTextLayer?.id]);
 
   const handleAddTextLayer = () => {
     const layer: TextLayer = {
@@ -285,7 +291,7 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
   const availH = Math.max(200, winH - reservedH);
   const canvasWByHeight = availH * (CANVAS_W / CANVAS_H);
   const canvasW = Math.min(winW - SPACING.lg * 2, canvasWByHeight);
-  // テキストをタップして選択した時だけプロパティ・中央プレビューを表示する
+  // テキストをタップして選択した時だけプロパティ・上部プレビューを表示する
   // （showPropsの管理はstate定義側のコメント参照）
   const showTextProps = !!selectedTextLayer && showProps;
   const overlayActive = showTextProps || panel !== 'none';
@@ -329,15 +335,48 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
           {/* パネル表示中はキャンバスのサイズを変えず、少し暗くしてその上にパネルを重ねる */}
           {overlayActive && <View style={styles.dimOverlay} pointerEvents="none" />}
 
-          {/* テキストをタップして選択した時だけ、実際の配置とは別に中央へ大きく表示する
-              プレビュー（キャンバス上では小さく・回転していて見づらいことがあるため）。
-              位置を動かしている間は配置先を隠さないよう表示しない。pointerEventsは
-              noneにして、下の実際のテキストへのドラッグ操作を邪魔しないようにする */}
+          {/* テキストをタップして選択した時だけ、実際の配置とは別にキャンバス上部へ
+              大きく表示するプレビュー（キャンバス上では小さく・回転していて見づらい
+              ことがあるため）。文字内容自体はここへ直接入力して変更できる
+              （プロパティパネル側には重複する入力欄を置かない）。位置を動かしている
+              間は配置先を隠さないよう表示しない。外枠はbox-noneにして、入力欄以外の
+              部分は下の実際のテキストへのドラッグ操作を邪魔しないようにする。中央では
+              なく上部に置くのは、大きな文字サイズの入力欄がキャンバス全体を覆うほど
+              広くなりがちで、中央だとキャンバス上の実際のテキストへのドラッグ操作を
+              奪ってしまう（プレビューが上に乗って触れなくなる）ことがあったため */}
           {showTextProps && selectedTextLayer && (
-            <View testID="story-editor-text-preview" style={styles.previewWrap} pointerEvents="none">
-              <Text
+            <View testID="story-editor-text-preview" style={styles.previewWrap} pointerEvents="box-none">
+              {/* 入力欄自身のonContentSizeChangeで自分の大きさを決めると、適用した
+                  大きさがまた新しいcontentSizeを報告し直してしまい無限ループになる
+                  ため、独立した非表示の計測専用テキストで実寸を求める（見た目には
+                  出さず、入力欄の大きさだけに反映する） */}
+              <View style={styles.previewMeasure} pointerEvents="none">
+                <Text
+                  style={[
+                    styles.previewText,
+                    {
+                      maxWidth: canvasW - SPACING.lg * 2,
+                      fontSize: previewFontSize,
+                      fontFamily: getFontPreset(selectedTextLayer.font).family,
+                      fontWeight: getFontPreset(selectedTextLayer.font).fontWeight as any,
+                    },
+                  ]}
+                  onLayout={(e) => {
+                    const { width, height } = e.nativeEvent.layout;
+                    setPreviewInputSize((prev) => {
+                      if (prev && Math.abs(prev.width - width) < 0.5 && Math.abs(prev.height - height) < 0.5) return prev;
+                      return { width, height };
+                    });
+                  }}
+                >
+                  {selectedTextLayer.text || ' '}
+                </Text>
+              </View>
+              <TextInput
+                testID="story-editor-text-preview-input"
                 style={[
                   styles.previewText,
+                  styles.previewInput,
                   {
                     color: selectedTextLayer.color,
                     fontSize: previewFontSize,
@@ -345,11 +384,17 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
                     fontWeight: getFontPreset(selectedTextLayer.font).fontWeight as any,
                     textAlign: selectedTextLayer.align ?? 'center',
                   },
+                  Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : null,
+                  previewInputSize
+                    ? { width: previewInputSize.width + 8, height: previewInputSize.height + 8 }
+                    : null,
                 ]}
-                numberOfLines={4}
-              >
-                {selectedTextLayer.text}
-              </Text>
+                value={selectedTextLayer.text}
+                onChangeText={(text) => updateTextLayer(selectedTextLayer.id, { text })}
+                multiline
+                placeholder="文字を入力"
+                placeholderTextColor={COLORS.textMuted}
+              />
             </View>
           )}
 
@@ -357,13 +402,8 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
           {showTextProps && selectedTextLayer && (
             <View testID="story-editor-text-panel" style={[styles.textPanel, styles.overlayPanel]}>
               <View style={styles.textPanelTopRow}>
-                <TextInput
-                  style={styles.textInput}
-                  value={selectedTextLayer.text}
-                  onChangeText={(text) => updateTextLayer(selectedTextLayer.id, { text })}
-                  placeholder="文字を入力"
-                  placeholderTextColor={COLORS.textMuted}
-                />
+                {/* 文字内容の編集は上部プレビュー側の入力欄で直接行う（ここには重複させない） */}
+                <View style={{ flex: 1 }} />
                 <TouchableOpacity onPress={() => { removeTextLayer(selectedTextLayer.id); }} hitSlop={8}>
                   <Ionicons name="trash-outline" size={20} color={COLORS.error} />
                 </TouchableOpacity>
@@ -480,10 +520,14 @@ const styles = StyleSheet.create({
   canvasWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', position: 'relative' },
   dimOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.45)' },
   previewWrap: {
+    // 中央ではなく上部に配置する（編集可能な入力欄になったことで、キャンバス上の
+    // 実際のテキストへのドラッグ操作をなるべく邪魔しないようにするため）
     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-    alignItems: 'center', justifyContent: 'center', paddingHorizontal: SPACING.lg,
+    alignItems: 'center', justifyContent: 'flex-start', paddingHorizontal: SPACING.lg, paddingTop: SPACING.lg,
   },
   previewText: { textAlign: 'center' },
+  previewInput: { padding: 0, margin: 0, borderWidth: 0, backgroundColor: 'transparent' },
+  previewMeasure: { position: 'absolute', opacity: 0 },
   overlayPanel: {
     position: 'absolute', left: 0, right: 0, bottom: 0,
     backgroundColor: COLORS.surfaceElevated, borderTopLeftRadius: RADIUS.lg, borderTopRightRadius: RADIUS.lg,
@@ -505,10 +549,6 @@ const styles = StyleSheet.create({
   stickerEmoji: { fontSize: 24 },
   textPanel: { minHeight: 132, paddingVertical: SPACING.sm, gap: SPACING.xs },
   textPanelTopRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, paddingHorizontal: SPACING.md },
-  textInput: {
-    flex: 1, borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.md,
-    paddingHorizontal: SPACING.sm, paddingVertical: 6, color: COLORS.text, backgroundColor: COLORS.surface, fontSize: 14,
-  },
   doneText: { color: COLORS.primary, fontSize: 14, fontWeight: '700' },
   chipRow: { gap: SPACING.sm, paddingHorizontal: SPACING.md },
   chipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
