@@ -88,10 +88,36 @@ test.describe('CreativeCanvas', () => {
     const afterZoomOut = await page.getByTestId('e2e-offset-photo_3').textContent();
     expect(afterZoomOut).not.toMatch(/scale=1\.00/);
 
-    // 2回目: スロットをちょうど覆う倍率（scale=1）付近まで縮小する
+    // 2回目: scale=1のスナップ範囲に入った瞬間に指を離してコミットする（合成タッチイベントで
+    // ちょうど1.00に着地させるのは狙いにくいため、スナップが効いた瞬間を検出して確定させる）。
+    // e2e-offset-*のテキストはonEnd時にしか更新されない（ライブ中の値ではない）ため、
+    // ライブ中に更新される枠線の色（isSnapped）でスナップの瞬間を検出する。
+    async function borderColor() {
+      return page.evaluate(() => {
+        const el = document.querySelector('[data-testid="layer-photo_3"] > div') as HTMLElement | null;
+        return el ? getComputedStyle(el).borderTopColor : null;
+      });
+    }
+    await dispatchTouch(client, 'touchStart', [{ x: cx - 60, y: cy }, { x: cx + 60, y: cy }]);
+    await page.waitForTimeout(100);
+    const steps = 60;
+    for (let i = 1; i <= steps; i++) {
+      const offset = 60 + ((8 - 60) * i) / steps;
+      await dispatchTouch(client, 'touchMove', [{ x: cx - offset, y: cy }, { x: cx + offset, y: cy }]);
+      await page.waitForTimeout(15);
+      if ((await borderColor()) === 'rgb(0, 229, 255)') break; // スナップ中の色を検出したら即座に離す
+    }
+    await dispatchTouch(client, 'touchEnd', []);
+    await page.waitForTimeout(300);
+    const afterSnapCommit = await page.getByTestId('e2e-offset-photo_3').textContent();
+    expect(afterSnapCommit).toMatch(/scale=1\.00/);
+
+    // 3回目: scale=1はもはや下限ではないため、さらに縮小して1未満にもできる
+    // （写真をスロットより小さくして周囲に余白を作れるようにする、意図した仕様変更）
     await pinch(60, 20);
-    const afterZoomIn = await page.getByTestId('e2e-offset-photo_3').textContent();
-    expect(afterZoomIn).toMatch(/scale=1\.00/);
+    const afterShrinkBelowOne = await page.getByTestId('e2e-offset-photo_3').textContent();
+    const finalScale = Number(afterShrinkBelowOne!.match(/scale=([\d.]+)/)![1]);
+    expect(finalScale).toBeLessThan(0.9);
   });
 
   test('スナップ中は写真スロットの枠線が見えやすい色になり、離すと選択枠の色に戻る', async ({ page }) => {
@@ -124,16 +150,21 @@ test.describe('CreativeCanvas', () => {
     await page.waitForTimeout(300);
     expect(await borderColor()).toBe('rgb(74, 144, 217)'); // 選択枠の色（スナップしていない）
 
-    // scale=1付近まで縮小する（スナップ範囲内）
+    // scale=1（もはや下限ではなく、あくまでスナップ先の1つ）を通過するくらいまで、
+    // 細かいステップでゆっくり縮小し、スナップ色になる瞬間があることを確認する
+    // （「1.00にちょうど着地させる」のは合成タッチイベントでは狙いにくいため、
+    // 通過過程で確認する方式にしている）
     await dispatchTouch(client, 'touchStart', [{ x: cx - 60, y: cy }, { x: cx + 60, y: cy }]);
     await page.waitForTimeout(100);
-    for (let i = 1; i <= 8; i++) {
-      const offset = 60 + ((20 - 60) * i) / 8;
+    let sawSnapColor = false;
+    const steps = 60;
+    for (let i = 1; i <= steps; i++) {
+      const offset = 60 + ((8 - 60) * i) / steps;
       await dispatchTouch(client, 'touchMove', [{ x: cx - offset, y: cy }, { x: cx + offset, y: cy }]);
-      await page.waitForTimeout(40);
+      await page.waitForTimeout(15);
+      if ((await borderColor()) === 'rgb(0, 229, 255)') sawSnapColor = true;
     }
-    await page.waitForTimeout(150);
-    expect(await borderColor()).toBe('rgb(0, 229, 255)'); // スナップ中の見えやすい色
+    expect(sawSnapColor).toBe(true);
 
     await dispatchTouch(client, 'touchEnd', []);
     await page.waitForTimeout(300);
