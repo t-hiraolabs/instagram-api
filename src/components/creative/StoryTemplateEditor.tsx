@@ -41,36 +41,22 @@ const FONT_ROW_H = 44;
 // 一覧はこの高さのまま内側でスクロールするだけなので、増加分の影響を受けない
 const FONT_LIST_H = FONT_ROW_H * 3;
 
-/** フォント選択用のドロップダウン。開くと縦スクロールの一覧になり、指を離した位置に
- *  最も近い行へ自動的にスナップして選択が切り替わる（1件ずつタップしなくても、
+/** フォント選択用のドロップダウン。開くと縦スクロールの一覧になり、スクロールしている
+ *  最中に中央へ来た行がそのままリアルタイムに選択へ切り替わる（指を離すのを待たず、
  *  スクロールしながら見た目を確認するだけで選べる）。フォント数が今後増えても
  *  一覧の高さは変えず、内側でスクロールするだけで対応できる。
  *  注意: react-native-webの`ScrollView`はonMomentumScrollEnd/onScrollEndDragを
- *  Web上では一切発火しない（ネイティブ専用の実装のため）。そのため「スクロールが
- *  止まった」判定はonScroll自体を自前でデバウンスして検出する（Web・ネイティブ両対応）*/
+ *  Web上では一切発火しない（ネイティブ専用の実装のため）ため、onScroll自体を使う
+ *  （Web・ネイティブ両対応）*/
 function FontDropdown({ value, onChange }: { value: string; onChange: (fontId: string) => void }) {
   const [open, setOpen] = useState(false);
   const current = getFontPreset(value);
-  const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // 閉じた後に、閉じる直前のスクロール位置由来の切り替えが遅れて反映されないよう、
-  // 保留中のタイマーを破棄する
-  React.useEffect(() => {
-    if (!open && settleTimer.current) {
-      clearTimeout(settleTimer.current);
-      settleTimer.current = null;
-    }
-  }, [open]);
 
   const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const y = e.nativeEvent.contentOffset.y;
-    if (settleTimer.current) clearTimeout(settleTimer.current);
-    settleTimer.current = setTimeout(() => {
-      const index = Math.round(y / FONT_ROW_H);
-      const clamped = Math.max(0, Math.min(FONT_PRESETS.length - 1, index));
-      const preset = FONT_PRESETS[clamped];
-      onChange(preset.id);
-    }, 120);
+    const index = Math.round(e.nativeEvent.contentOffset.y / FONT_ROW_H);
+    const clamped = Math.max(0, Math.min(FONT_PRESETS.length - 1, index));
+    const preset = FONT_PRESETS[clamped];
+    if (preset.id !== value) onChange(preset.id);
   };
 
   return (
@@ -541,7 +527,7 @@ const styles = StyleSheet.create({
   },
   fontDropdownCenterMarker: {
     position: 'absolute', left: 0, right: 0, top: (FONT_LIST_H - FONT_ROW_H) / 2, height: FONT_ROW_H,
-    borderTopWidth: 1, borderBottomWidth: 1, borderColor: COLORS.primary, backgroundColor: 'rgba(255,255,255,0.04)',
+    backgroundColor: 'rgba(255,255,255,0.12)',
   },
   fontDropdownRow: { height: FONT_ROW_H, justifyContent: 'center', paddingHorizontal: SPACING.md },
   fontDropdownRowText: { color: COLORS.textMuted, fontSize: 15 },
