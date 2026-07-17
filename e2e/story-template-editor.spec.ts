@@ -1,4 +1,4 @@
-// StoryTemplateEditorの、テキストのプロパティパネル・上部プレビュー表示切り替えの回帰テスト。
+// StoryTemplateEditorの、テキストのプロパティパネル・中央プレビュー表示切り替えの回帰テスト。
 // src/screens/__e2e__/E2EStoryTemplateEditorScreen.tsxを?e2e=storyTemplateEditorで直接マウント
 // し、ログインや写真選択に依存せず検証する。
 import { test, expect, CDPSession } from '@playwright/test';
@@ -8,7 +8,7 @@ async function dispatchTouch(client: CDPSession, type: 'touchStart' | 'touchMove
 }
 
 test.describe('StoryTemplateEditor テキストのプロパティ表示', () => {
-  test('文字を追加すると自動選択され、プロパティと上部プレビューが表示される', async ({ page }) => {
+  test('文字を追加すると自動選択され、プロパティと中央プレビューが表示される', async ({ page }) => {
     await page.goto('/?e2e=storyTemplateEditor');
     await page.waitForTimeout(1000);
 
@@ -34,7 +34,7 @@ test.describe('StoryTemplateEditor テキストのプロパティ表示', () => 
     await expect(page.getByTestId('story-editor-text-preview')).toHaveCount(0);
   });
 
-  test('テキストをワンタップすると再び選択され、プロパティと上部プレビューが表示される', async ({ page }) => {
+  test('テキストをワンタップすると再び選択され、プロパティと中央プレビューが表示される', async ({ page }) => {
     await page.goto('/?e2e=storyTemplateEditor');
     await page.waitForTimeout(1000);
 
@@ -67,7 +67,12 @@ test.describe('StoryTemplateEditor テキストのプロパティ表示', () => 
 
     await page.getByTestId('story-editor-add-text-btn').click();
     await page.waitForTimeout(500);
-    await expect(page.getByTestId('story-editor-text-panel')).toBeVisible();
+    // Instagram同様、編集中（プロパティ・プレビュー表示中）は大きな入力欄がキャンバスの
+    // ほぼ全体を覆うため、キャンバス上の実際のテキストへ直接ドラッグすることはできない。
+    // 位置を動かすには、まず「完了」で編集を閉じる必要がある
+    await page.getByText('完了').click();
+    await page.waitForTimeout(300);
+    await expect(page.getByTestId('story-editor-text-panel')).toHaveCount(0);
 
     const layer = page.locator('[data-testid^="layer-text_"]');
     const box = await layer.boundingBox();
@@ -85,7 +90,7 @@ test.describe('StoryTemplateEditor テキストのプロパティ表示', () => 
     }
     await page.waitForTimeout(100);
 
-    // 移動中は、配置先を隠さないようプロパティ・プレビューの両方が非表示になる
+    // 移動中は、配置先を隠さないようプロパティ・プレビューの両方が非表示のまま
     await expect(page.getByTestId('story-editor-text-panel')).toHaveCount(0);
     await expect(page.getByTestId('story-editor-text-preview')).toHaveCount(0);
 
@@ -104,6 +109,8 @@ test.describe('StoryTemplateEditor テキストのプロパティ表示', () => 
 
     await page.getByTestId('story-editor-add-text-btn').click();
     await page.waitForTimeout(500);
+    await page.getByText('完了').click();
+    await page.waitForTimeout(300);
 
     const layer = page.locator('[data-testid^="layer-text_"]');
     const box = await layer.boundingBox();
@@ -230,8 +237,8 @@ test.describe('StoryTemplateEditor フォントのドロップダウン', () => 
   });
 });
 
-test.describe('StoryTemplateEditor 上部プレビューでの文字編集', () => {
-  test('上部プレビューへ直接入力すると、テキスト内容が変わりキャンバスにも反映される', async ({ page }) => {
+test.describe('StoryTemplateEditor 中央プレビューでの文字編集', () => {
+  test('中央プレビューへ直接入力すると、テキスト内容が変わりキャンバスにも反映される', async ({ page }) => {
     await page.goto('/?e2e=storyTemplateEditor');
     await page.waitForTimeout(1000);
 
@@ -259,7 +266,7 @@ test.describe('StoryTemplateEditor 上部プレビューでの文字編集', () 
     await page.getByTestId('story-editor-add-text-btn').click();
     await page.waitForTimeout(500);
 
-    // 「文字を入力」というプレースホルダーを持つ入力欄は、上部プレビューの1つだけ
+    // 「文字を入力」というプレースホルダーを持つ入力欄は、中央プレビューの1つだけ
     await expect(page.locator('[placeholder="文字を入力"]')).toHaveCount(1);
   });
 });
