@@ -26,6 +26,10 @@ const POSITION_SNAP_SCREEN_PX = 8;
 const SCALE_SNAP_ZONE = 0.04;
 // スナップ中だけ表示する、見えやすい枠線の色
 const GUIDE_COLOR = '#00E5FF';
+// 文字・ステッカーなど表示上小さい要素は、指2本を近づけて操作する「縮小ピンチ」の
+// 開始位置が実際の見た目の範囲内に収まりにくい（指先の接地面はpxよりずっと大きいため）。
+// タッチ判定領域を見た目より広げておくことで、小さい要素でも掴みやすくする。
+const HIT_SLOP = 40;
 
 interface Props {
   x: number;
@@ -88,6 +92,7 @@ export default function DraggableLayer({
 
   const pan = Gesture.Pan()
     .enabled(!locked)
+    .hitSlop(HIT_SLOP)
     .onBegin(() => {
       baseX.value = translateX.value;
       baseY.value = translateY.value;
@@ -108,6 +113,7 @@ export default function DraggableLayer({
 
   const pinch = Gesture.Pinch()
     .enabled(!locked)
+    .hitSlop(HIT_SLOP)
     .onBegin(() => {
       baseScale.value = savedScale.value;
       runOnJS(onSelect)();
@@ -123,6 +129,7 @@ export default function DraggableLayer({
 
   const rotate = Gesture.Rotation()
     .enabled(!locked && rotatable)
+    .hitSlop(HIT_SLOP)
     .onBegin(() => {
       baseRotation.value = savedRotation.value;
       runOnJS(onSelect)();
@@ -132,7 +139,7 @@ export default function DraggableLayer({
     })
     .onEnd(() => runOnJS(commit)());
 
-  const tap = Gesture.Tap().enabled(!locked).onEnd(() => runOnJS(onSelect)());
+  const tap = Gesture.Tap().enabled(!locked).hitSlop(HIT_SLOP).onEnd(() => runOnJS(onSelect)());
 
   const composed = Gesture.Simultaneous(pan, pinch, rotate, tap);
 
