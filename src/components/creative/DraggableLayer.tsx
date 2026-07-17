@@ -113,6 +113,9 @@ interface Props {
    *  区別する）。呼び出し側はこれを使って、移動中はプロパティパネルを隠すなどの
    *  切り替えができる */
   onDragStateChange?: (dragging: boolean) => void;
+  /** 移動を伴わない「タップして指を離した」時だけ呼ぶ（onSelectはドラッグ開始時にも
+   *  呼ばれるため、それとは区別してプロパティパネルを開く等の用途に使う） */
+  onTap?: () => void;
   children: React.ReactNode;
 }
 
@@ -120,7 +123,7 @@ export default function DraggableLayer({
   id, x, y, scale, rotation, displayScale, selected, locked, rotatable = true,
   minScale = 0.2, maxScale = 4, snapX, snapY, snapScale, width, height, guideV, guideH,
   showSelectionBorder = true, activeOwner, activeRefs, canvasGestures, testID, onSelect, onChange,
-  onDragStateChange, children,
+  onDragStateChange, onTap, children,
 }: Props) {
   const translateX = useSharedValue(x);
   const translateY = useSharedValue(y);
@@ -270,6 +273,7 @@ export default function DraggableLayer({
     .onEnd(() => {
       if (!isActiveSession.value) return;
       runOnJS(onSelect)();
+      if (onTap) runOnJS(onTap)();
     });
 
   const composed = Gesture.Simultaneous(pan, tap);

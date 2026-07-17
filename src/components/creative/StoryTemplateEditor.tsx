@@ -49,9 +49,11 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
   const [saving, setSaving] = useState(false);
   const [picking, setPicking] = useState(false);
   const [started, setStarted] = useState(false);
-  // テキストを指で実際に動かしている間はtrue（タップだけの選択では立たない）。
-  // 移動中はプロパティパネル・中央プレビューを隠し、配置先を隠さず確認できるようにする
-  const [textDragging, setTextDragging] = useState(false);
+  // プロパティパネル・中央プレビューの表示状態。「選択中かどうか」とは独立して持つ：
+  // タップして指を離した時だけtrueにし、指で位置を動かし始めた瞬間にfalseへ戻す。
+  // 動かして離した後もtrueへは戻さない（＝移動操作の最後はプロパティを表示しない）。
+  // 再び表示するには、もう一度タップして離す必要がある
+  const [showProps, setShowProps] = useState(false);
 
   const canvasShotRef = useRef<ViewShot>(null);
 
@@ -88,6 +90,7 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
     reset();
     setStarted(false);
     setPanel('none');
+    setShowProps(false);
     onClose();
   };
 
@@ -164,6 +167,7 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
     };
     addTextLayer(layer);
     setPanel('none');
+    setShowProps(true);
   };
 
   const handleAddSticker = (emoji: string) => {
@@ -174,6 +178,7 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
     };
     addTextLayer(layer);
     setPanel('none');
+    setShowProps(true);
   };
 
   const capture = async (): Promise<string | null> => {
@@ -225,9 +230,9 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
   const availH = Math.max(200, winH - reservedH);
   const canvasWByHeight = availH * (CANVAS_W / CANVAS_H);
   const canvasW = Math.min(winW - SPACING.lg * 2, canvasWByHeight);
-  // テキストをタップして選択した時だけプロパティ・中央プレビューを表示する。
-  // 位置を指で動かしている間は、配置先を隠さないよう両方とも表示しない
-  const showTextProps = !!selectedTextLayer && !textDragging;
+  // テキストをタップして選択した時だけプロパティ・中央プレビューを表示する
+  // （showPropsの管理はstate定義側のコメント参照）
+  const showTextProps = !!selectedTextLayer && showProps;
   const overlayActive = showTextProps || panel !== 'none';
   const previewDisplayScale = canvasW / CANVAS_W;
   const previewFontSize = selectedTextLayer
@@ -261,7 +266,8 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
               onPickPhoto={pickPhoto}
               onSelectText={selectItem}
               onTextChange={(id, patch) => updateTextLayer(id, patch)}
-              onTextDragStateChange={setTextDragging}
+              onTextTap={() => setShowProps(true)}
+              onTextDragStateChange={(dragging) => { if (dragging) setShowProps(false); }}
             />
           </ViewShot>
 
@@ -306,7 +312,7 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
                 <TouchableOpacity onPress={() => { removeTextLayer(selectedTextLayer.id); }} hitSlop={8}>
                   <Ionicons name="trash-outline" size={20} color={COLORS.error} />
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => selectItem(null)} hitSlop={8}>
+                <TouchableOpacity onPress={() => { selectItem(null); setShowProps(false); }} hitSlop={8}>
                   <Text style={styles.doneText}>完了</Text>
                 </TouchableOpacity>
               </View>

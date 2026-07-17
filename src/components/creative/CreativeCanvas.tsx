@@ -143,12 +143,16 @@ interface Props {
   /** テキストを指で実際に動かし始めた・動かし終えた瞬間に呼ぶ（タップだけの選択とは
    *  区別する）。呼び出し側は、移動中はプロパティパネルを隠す等に使う */
   onTextDragStateChange?: (dragging: boolean) => void;
+  /** 移動を伴わない「テキストをタップして指を離した」時だけ呼ぶ（onSelectTextは
+   *  ドラッグ開始時にも呼ばれるため、それとは区別してプロパティパネルを開く等に使う） */
+  onTextTap?: (id: string) => void;
 }
 
 export default function CreativeCanvas({
   canvasRef, photoSlots, layers, textLayers, photoAssignments,
   displayWidth, locked,
-  selectedId, onSelectSlot, onSlotChange, onPickPhoto, onSelectText, onTextChange, onTextDragStateChange,
+  selectedId, onSelectSlot, onSlotChange, onPickPhoto, onSelectText, onTextChange,
+  onTextDragStateChange, onTextTap,
 }: Props) {
   const width = displayWidth ?? DISPLAY_W;
   const displayScale = width / CANVAS_W;
@@ -335,6 +339,7 @@ export default function CreativeCanvas({
             onSelect={() => onSelectText?.(t.id)}
             onChange={(patch) => onTextChange?.(t.id, patch)}
             onDragStateChange={onTextDragStateChange}
+            onTap={() => onTextTap?.(t.id)}
           >
             <TextContent
               layer={t}
