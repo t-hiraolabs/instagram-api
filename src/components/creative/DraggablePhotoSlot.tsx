@@ -3,10 +3,13 @@
 // 旧StoryCanvas.tsxは常にキャンバス全面1枚だけを暗黙のスロットとして扱っていたが、
 // これを複数の独立したスロットに一般化したもの。
 //
-// - 最小スケールは「スロットを覆いきる（cover）」倍率を1.0として動的に決まるため、
-//   ズームアウトしてスロットの外側（余白）が見えることはない。
-// - パン（位置調整）も、画像の端がスロットの端より内側に入らないようクランプするため、
-//   隙間が出ることはない。
+// - 拡大率1.0は「スロットを覆いきる（cover）」倍率で、そこに近づくと一瞬止まる
+//   （スナップする）ガイドとして機能する。ただし固定の下限ではなく、そこからさらに
+//   縮小することもできる（縮小するとスロットの外側に背景が見える余白ができる。
+//   これは意図した挙動で、常に隙間なく覆う必要がある場合はscale=1で使う）。
+// - パン（位置調整）は、画像が拡大率1.0以上（スロットを覆っている間）は画像の端が
+//   スロットの端より内側に入らないようクランプする。拡大率1.0未満（余白がある状態）
+//   では画像は自動的に中央に固定される。
 // - 回転は無効（「位置と拡大率」のみが要件のため）。
 import React from 'react';
 import { View, Image, TouchableOpacity, StyleSheet } from 'react-native';
@@ -15,6 +18,9 @@ import DraggableLayer from './DraggableLayer';
 import { PhotoSlot } from '../../types/creativeTemplate';
 import { PhotoAssignment } from '../../store/creativeEditorStore';
 import { COLORS } from '../../utils/theme';
+
+/** 写真の縮小下限（0.2 = スロットを覆う倍率の20%まで縮小可能。テキスト/ステッカーと同じ既定値） */
+const MIN_PHOTO_SCALE = 0.2;
 
 interface Props {
   slot: PhotoSlot;
@@ -56,10 +62,11 @@ export default function DraggablePhotoSlot({
   const centerY = (slot.h - imgH) / 2;
 
   const handleChange = (patch: { x: number; y: number; scale: number }) => {
-    const scale = Math.max(1, Math.min(4, patch.scale));
+    const scale = Math.max(MIN_PHOTO_SCALE, Math.min(4, patch.scale));
     // 画像の端がスロットの端より内側に入らないよう、現在のscaleに応じてoffsetをクランプする
     // （DraggableLayerのscale transformはbox自身の中心を軸に効くため、画像の中心は
-    // offsetに関わらず固定。境界はimgW*scale/imgH*scaleから導出できる）
+    // offsetに関わらず固定。境界はimgW*scale/imgH*scaleから導出できる。scaleが1未満で
+    // 画像がスロットより小さいときはbound=0となり、常に中央に固定される＝余白は左右/上下均等）
     const boundX = Math.max(0, (imgW * scale - slot.w) / 2);
     const boundY = Math.max(0, (imgH * scale - slot.h) / 2);
     const offsetX = Math.max(-boundX, Math.min(boundX, patch.x - centerX));
@@ -75,7 +82,7 @@ export default function DraggablePhotoSlot({
         scale={assignment.scale}
         rotation={0}
         rotatable={false}
-        minScale={1}
+        minScale={MIN_PHOTO_SCALE}
         maxScale={4}
         // 中央（隙間なくスロットに収まる基準位置）と、スロットをちょうど覆う倍率（scale=1、
         // 縮小していくとスロットの上下または左右がぴったり収まる境目）に近づいたら一瞬止まる
