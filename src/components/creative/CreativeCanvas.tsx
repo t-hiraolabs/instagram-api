@@ -24,6 +24,13 @@ import { COLORS } from '../../utils/theme';
 // 位置スナップ許容量と対になる値だが、ピンチ・回転はこのファイル側のキャンバス全体
 // ジェスチャーで扱うため、ここに置く（詳細はDraggableLayer.tsx冒頭のコメント参照）。
 const SCALE_SNAP_ZONE = 0.04;
+// 2本指でサイズ変更（ピンチ）するつもりでも、指の動きは完全に一直線にはならず、
+// わずかな角度のブレが必ず生じる。そのブレをそのまま回転として反映すると
+// 「サイズを変えただけなのに最初から角度が変わってしまう」と感じられてしまうため、
+// この角度（度）未満の変化は無視し、指の開始位置を基準として回転が「効いていない」
+// 状態を保つ。超えた場合も、しきい値の分だけ角度が急に飛ばないよう差し引いてから
+// 反映する（超えた瞬間になめらかに回転が始まるようにするため）。
+const ROTATION_DEADZONE_DEG = 6;
 
 const screenW = Dimensions.get('window').width;
 export const DISPLAY_W = Math.min(screenW - 64, 300);
@@ -185,7 +192,11 @@ export default function CreativeCanvas({
     .onUpdate((e) => {
       const refs = sessionRefs.value;
       if (!refs || !refs.rotatable) return;
-      refs.savedRotation.value = refs.baseRotation.value + (e.rotation * 180) / Math.PI;
+      const deltaDeg = (e.rotation * 180) / Math.PI;
+      let applied = 0;
+      if (deltaDeg > ROTATION_DEADZONE_DEG) applied = deltaDeg - ROTATION_DEADZONE_DEG;
+      else if (deltaDeg < -ROTATION_DEADZONE_DEG) applied = deltaDeg + ROTATION_DEADZONE_DEG;
+      refs.savedRotation.value = refs.baseRotation.value + applied;
     })
     .onEnd(() => {
       const refs = sessionRefs.value;
