@@ -109,13 +109,18 @@ interface Props {
   testID?: string;
   onSelect: () => void;
   onChange: (patch: { x: number; y: number; scale: number; rotation: number }) => void;
+  /** 指で実際に動かし始めた・動かし終えた瞬間に呼ぶ（tapのみで移動を伴わない選択とは
+   *  区別する）。呼び出し側はこれを使って、移動中はプロパティパネルを隠すなどの
+   *  切り替えができる */
+  onDragStateChange?: (dragging: boolean) => void;
   children: React.ReactNode;
 }
 
 export default function DraggableLayer({
   id, x, y, scale, rotation, displayScale, selected, locked, rotatable = true,
   minScale = 0.2, maxScale = 4, snapX, snapY, snapScale, width, height, guideV, guideH,
-  showSelectionBorder = true, activeOwner, activeRefs, canvasGestures, testID, onSelect, onChange, children,
+  showSelectionBorder = true, activeOwner, activeRefs, canvasGestures, testID, onSelect, onChange,
+  onDragStateChange, children,
 }: Props) {
   const translateX = useSharedValue(x);
   const translateY = useSharedValue(y);
@@ -131,6 +136,10 @@ export default function DraggableLayer({
   const baseRotation = useSharedValue(rotation);
   // きりのいい位置・倍率にスナップしている間だけtrueにし、見えやすい枠線を表示する
   const isSnapped = useSharedValue(false);
+  // 今回のpanセッションで実際に指が動いてonDragStateChange(true)を通知済みかどうか。
+  // タップだけ（移動なし）ではonUpdate自体が呼ばれないため、実際に動いた時だけ
+  // 一度だけ通知する（毎フレームJSへ呼び出しを飛ばさないためのガード）
+  const dragNotified = useSharedValue(false);
   // このジェスチャーセッションの間、自分がロックの持ち主として確定したかどうかの
   // スナップショット。activeOwner.valueを都度読み直すのではなく、開始時点で一度だけ
   // 判定してここへ控える：終了時（onTouchesUp）にactiveOwnerをクリアする処理と、
@@ -202,10 +211,15 @@ export default function DraggableLayer({
       if (!isActiveSession.value) return;
       baseX.value = translateX.value;
       baseY.value = translateY.value;
+      dragNotified.value = false;
       runOnJS(onSelect)();
     })
     .onUpdate((e) => {
       if (!isActiveSession.value) return;
+      if (!dragNotified.value) {
+        dragNotified.value = true;
+        if (onDragStateChange) runOnJS(onDragStateChange)(true);
+      }
       const zone = POSITION_SNAP_SCREEN_PX / displayScale;
       let nx = baseX.value + e.translationX / displayScale;
       let ny = baseY.value + e.translationY / displayScale;
@@ -236,6 +250,10 @@ export default function DraggableLayer({
       isSnapped.value = false;
       if (guideV) guideV.value = false;
       if (guideH) guideH.value = false;
+      if (dragNotified.value) {
+        dragNotified.value = false;
+        if (onDragStateChange) runOnJS(onDragStateChange)(false);
+      }
       runOnJS(commit)();
     });
 
