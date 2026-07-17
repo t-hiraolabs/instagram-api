@@ -114,12 +114,12 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
   const [saving, setSaving] = useState(false);
   const [picking, setPicking] = useState(false);
   const [started, setStarted] = useState(false);
-  // プロパティパネル・上部プレビューの表示状態。「選択中かどうか」とは独立して持つ：
+  // プロパティパネル・中央プレビューの表示状態。「選択中かどうか」とは独立して持つ：
   // タップして指を離した時だけtrueにし、指で位置を動かし始めた瞬間にfalseへ戻す。
   // 動かして離した後もtrueへは戻さない（＝移動操作の最後はプロパティを表示しない）。
   // 再び表示するには、もう一度タップして離す必要がある
   const [showProps, setShowProps] = useState(false);
-  // 上部プレビューの入力欄（TextInput）は、<Text>と違って内容に合わせて自動的に
+  // 中央プレビューの入力欄（TextInput）は、<Text>と違って内容に合わせて自動的に
   // 縮まない（既定では実際の文字より大きな当たり判定を持つ）。そのままだと見えない
   // 余白部分が、キャンバス上の実際の（小さい）テキストへのドラッグ操作を奪ってしまう
   // ため、内容の実寸を測って追従させ、見た目とほぼ同じ大きさの当たり判定に留める
@@ -291,7 +291,7 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
   const availH = Math.max(200, winH - reservedH);
   const canvasWByHeight = availH * (CANVAS_W / CANVAS_H);
   const canvasW = Math.min(winW - SPACING.lg * 2, canvasWByHeight);
-  // テキストをタップして選択した時だけプロパティ・上部プレビューを表示する
+  // テキストをタップして選択した時だけプロパティ・中央プレビューを表示する
   // （showPropsの管理はstate定義側のコメント参照）
   const showTextProps = !!selectedTextLayer && showProps;
   const overlayActive = showTextProps || panel !== 'none';
@@ -335,15 +335,15 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
           {/* パネル表示中はキャンバスのサイズを変えず、少し暗くしてその上にパネルを重ねる */}
           {overlayActive && <View style={styles.dimOverlay} pointerEvents="none" />}
 
-          {/* テキストをタップして選択した時だけ、実際の配置とは別にキャンバス上部へ
-              大きく表示するプレビュー（キャンバス上では小さく・回転していて見づらい
-              ことがあるため）。文字内容自体はここへ直接入力して変更できる
-              （プロパティパネル側には重複する入力欄を置かない）。位置を動かしている
-              間は配置先を隠さないよう表示しない。外枠はbox-noneにして、入力欄以外の
-              部分は下の実際のテキストへのドラッグ操作を邪魔しないようにする。中央では
-              なく上部に置くのは、大きな文字サイズの入力欄がキャンバス全体を覆うほど
-              広くなりがちで、中央だとキャンバス上の実際のテキストへのドラッグ操作を
-              奪ってしまう（プレビューが上に乗って触れなくなる）ことがあったため */}
+          {/* テキストをタップして選択した時、Instagramのストーリー編集と同じく
+              画面中央に大きく表示するプレビュー（キャンバス上では小さく・回転して
+              いて見づらいことがあるため）。文字内容自体はここへ直接入力して変更
+              できる（プロパティパネル側には重複する入力欄を置かない）。Instagram
+              同様、編集中（このプレビュー表示中）はキャンバス上の実際のテキストへ
+              直接ドラッグすることはできない（大きな入力欄がキャンバスのほぼ全体を
+              覆うため）。位置を動かしたい時は、先に「完了」で編集を閉じてから
+              キャンバス上でドラッグする。位置を動かしている間は配置先を隠さない
+              よう表示しない */}
           {showTextProps && selectedTextLayer && (
             <View testID="story-editor-text-preview" style={styles.previewWrap} pointerEvents="box-none">
               {/* 入力欄自身のonContentSizeChangeで自分の大きさを決めると、適用した
@@ -402,7 +402,7 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
           {showTextProps && selectedTextLayer && (
             <View testID="story-editor-text-panel" style={[styles.textPanel, styles.overlayPanel]}>
               <View style={styles.textPanelTopRow}>
-                {/* 文字内容の編集は上部プレビュー側の入力欄で直接行う（ここには重複させない） */}
+                {/* 文字内容の編集は中央プレビュー側の入力欄で直接行う（ここには重複させない） */}
                 <View style={{ flex: 1 }} />
                 <TouchableOpacity onPress={() => { removeTextLayer(selectedTextLayer.id); }} hitSlop={8}>
                   <Ionicons name="trash-outline" size={20} color={COLORS.error} />
@@ -520,10 +520,12 @@ const styles = StyleSheet.create({
   canvasWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', position: 'relative' },
   dimOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.45)' },
   previewWrap: {
-    // 中央ではなく上部に配置する（編集可能な入力欄になったことで、キャンバス上の
-    // 実際のテキストへのドラッグ操作をなるべく邪魔しないようにするため）
+    // Instagramのストーリー編集と同じく、テキストは画面中央で大きく編集する。
+    // 編集中（プロパティ・プレビュー表示中）はキャンバス上の実際のテキストへの
+    // ドラッグ操作は受け付けない（Instagram同様、位置を動かすには先に「完了」で
+    // 編集を閉じてからキャンバス上でドラッグする）
     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-    alignItems: 'center', justifyContent: 'flex-start', paddingHorizontal: SPACING.lg, paddingTop: SPACING.lg,
+    alignItems: 'center', justifyContent: 'center', paddingHorizontal: SPACING.lg,
   },
   previewText: { textAlign: 'center' },
   previewInput: { padding: 0, margin: 0, borderWidth: 0, backgroundColor: 'transparent' },
