@@ -12,6 +12,7 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   runOnJS,
+  SharedValue,
 } from 'react-native-reanimated';
 import {
   Gesture,
@@ -28,14 +29,12 @@ const SCALE_SNAP_ZONE = 0.04;
 const GUIDE_COLOR = '#00E5FF';
 // 文字・ステッカーなど表示上小さい要素は、指2本を近づけて操作する「縮小ピンチ」の
 // 開始位置が実際の見た目の範囲内に収まりにくい（指先の接地面はpxよりずっと大きいため）。
-// タッチ判定領域を見た目より広げることで小さい要素でも指2本を置きやすくなる一方、
-// 全要素に同じだけ広げると、近くに置かれた「別の」未選択の要素にまで判定が広がり、
-// リサイズ中にもう一方の指が別の要素に触れてそちらが反応してしまう不具合になっていた。
-// 選択中の要素だけ大きく広げ、未選択の要素は控えめにすることで両立させる
-// （通常の操作は「タップで選択→その要素を操作」の順なので、選択済みの間だけ
-// 広い判定でよい）。
-const HIT_SLOP_SELECTED = 100;
-const HIT_SLOP_UNSELECTED = 16;
+// タッチ判定領域を見た目より広げることで小さい要素でも指2本を置きやすくする。
+// 以前はこれを選択中の要素だけに絞って未選択要素は狭くしていたが、それだと逆に
+// 未選択の小さい要素（テキスト等）を拡大しようとする最初のピンチ自体が始めにくくなって
+// しまっていた。他要素への干渉はhitSlopの大小ではなくactiveOwner（下記）による
+// 排他制御で防ぐことにしたため、hitSlopは全要素で常に広げてよい。
+const HIT_SLOP = 100;
 
 interface Props {
   x: number;
@@ -57,15 +56,24 @@ interface Props {
   snapX?: number[];
   snapY?: number[];
   snapScale?: number[];
+  /** 同じキャンバス上の全レイヤーで共有するshared value。ある要素を指で操作している間、
+   *  他の要素が別の指の操作に反応しないようにする排他ロックに使う（下記参照）。
+   *  未指定なら排他制御なし（従来通り、各要素が独立して各自のタッチに反応する） */
+  activeOwner?: SharedValue<string | null>;
+  testID?: string;
   onSelect: () => void;
   onChange: (patch: { x: number; y: number; scale: number; rotation: number }) => void;
   children: React.ReactNode;
 }
 
+let nextInstanceId = 0;
+
 export default function DraggableLayer({
   x, y, scale, rotation, displayScale, selected, locked, rotatable = true,
-  minScale = 0.2, maxScale = 4, snapX, snapY, snapScale, onSelect, onChange, children,
+  minScale = 0.2, maxScale = 4, snapX, snapY, snapScale, activeOwner, testID, onSelect, onChange, children,
 }: Props) {
+  // activeOwnerロックの持ち主を識別するためだけの、このコンポーネントインスタンス固有のID
+  const myId = React.useRef(`layer_${nextInstanceId++}`).current;
   const translateX = useSharedValue(x);
   const translateY = useSharedValue(y);
   const savedScale = useSharedValue(scale);
@@ -80,7 +88,27 @@ export default function DraggableLayer({
   const baseRotation = useSharedValue(rotation);
   // きりのいい位置・倍率にスナップしている間だけtrueにし、見えやすい枠線を表示する
   const isSnapped = useSharedValue(false);
-  const hitSlop = selected ? HIT_SLOP_SELECTED : HIT_SLOP_UNSELECTED;
+
+  // 指がこの要素に触れた瞬間に呼ぶ：既に「別の」要素がロックを持っていればこの要素への
+  // タッチ自体を失敗させ、そちらの要素だけが反応し続けるようにする（2本指でそれぞれ別の
+  // 要素を同時に操作できてしまう不具合の対策）。ロックが空いていれば自分が獲得する。
+  const acquireLock = (manager: { fail: () => void }) => {
+    'worklet';
+    if (!activeOwner) return;
+    if (activeOwner.value !== null && activeOwner.value !== myId) {
+      manager.fail();
+      return;
+    }
+    activeOwner.value = myId;
+  };
+  // この要素上の全ての指が離れたらロックを解放する（自分が持っている場合のみ）
+  const releaseLockIfEmpty = (numberOfTouches: number) => {
+    'worklet';
+    if (!activeOwner) return;
+    if (numberOfTouches === 0 && activeOwner.value === myId) {
+      activeOwner.value = null;
+    }
+  };
 
   // 外部（他の編集操作・レイヤー切替）からの値変更を反映
   React.useEffect(() => { translateX.value = x; }, [x]);
@@ -99,7 +127,10 @@ export default function DraggableLayer({
 
   const pan = Gesture.Pan()
     .enabled(!locked)
-    .hitSlop(hitSlop)
+    .hitSlop(HIT_SLOP)
+    .onTouchesDown((_e, manager) => acquireLock(manager))
+    .onTouchesUp((e) => releaseLockIfEmpty(e.numberOfTouches))
+    .onTouchesCancelled((e) => releaseLockIfEmpty(e.numberOfTouches))
     .onBegin(() => {
       baseX.value = translateX.value;
       baseY.value = translateY.value;
@@ -120,7 +151,10 @@ export default function DraggableLayer({
 
   const pinch = Gesture.Pinch()
     .enabled(!locked)
-    .hitSlop(hitSlop)
+    .hitSlop(HIT_SLOP)
+    .onTouchesDown((_e, manager) => acquireLock(manager))
+    .onTouchesUp((e) => releaseLockIfEmpty(e.numberOfTouches))
+    .onTouchesCancelled((e) => releaseLockIfEmpty(e.numberOfTouches))
     .onBegin(() => {
       baseScale.value = savedScale.value;
       runOnJS(onSelect)();
@@ -136,7 +170,10 @@ export default function DraggableLayer({
 
   const rotate = Gesture.Rotation()
     .enabled(!locked && rotatable)
-    .hitSlop(hitSlop)
+    .hitSlop(HIT_SLOP)
+    .onTouchesDown((_e, manager) => acquireLock(manager))
+    .onTouchesUp((e) => releaseLockIfEmpty(e.numberOfTouches))
+    .onTouchesCancelled((e) => releaseLockIfEmpty(e.numberOfTouches))
     .onBegin(() => {
       baseRotation.value = savedRotation.value;
       runOnJS(onSelect)();
@@ -146,7 +183,13 @@ export default function DraggableLayer({
     })
     .onEnd(() => runOnJS(commit)());
 
-  const tap = Gesture.Tap().enabled(!locked).hitSlop(hitSlop).onEnd(() => runOnJS(onSelect)());
+  const tap = Gesture.Tap()
+    .enabled(!locked)
+    .hitSlop(HIT_SLOP)
+    .onTouchesDown((_e, manager) => acquireLock(manager))
+    .onTouchesUp((e) => releaseLockIfEmpty(e.numberOfTouches))
+    .onTouchesCancelled((e) => releaseLockIfEmpty(e.numberOfTouches))
+    .onEnd(() => runOnJS(onSelect)());
 
   const composed = Gesture.Simultaneous(pan, pinch, rotate, tap);
 
@@ -173,7 +216,7 @@ export default function DraggableLayer({
 
   return (
     <GestureDetector gesture={composed}>
-      <Animated.View style={[styles.wrap, style]}>
+      <Animated.View testID={testID} style={[styles.wrap, style]}>
         {children}
       </Animated.View>
     </GestureDetector>
