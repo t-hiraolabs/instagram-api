@@ -47,7 +47,7 @@ export default function E2ECreativeCanvasScreen() {
           </Text>
         ))}
         <Text testID="e2e-offset-title">
-          title: scale={textLayer.scale.toFixed(2)}
+          title: x={textLayer.x.toFixed(1)} y={textLayer.y.toFixed(1)} scale={textLayer.scale.toFixed(2)}
         </Text>
       </View>
       <CreativeCanvas
