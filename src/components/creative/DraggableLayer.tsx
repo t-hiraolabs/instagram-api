@@ -1,11 +1,20 @@
-// レイヤー共通のジェスチャーラッパー：移動・拡大縮小・回転を指操作だけで行う。
+// レイヤー共通のジェスチャーラッパー：移動・タップ選択を指操作で行う。
 // 座標は常に論理座標（呼び出し側が渡すキャンバス/スロット基準）で保持し、
 // 表示側でdisplayScaleを掛けて縮小表示する。x,yはレイヤーの左上位置。
 // scale/rotationは各レイヤー自身の中心を軸に効く（React Nativeのtransformは
 // デフォルトで要素自身の中心が基準になるため）。
-// storyStudio/DraggableLayer.tsxのジェスチャーロジックをそのまま移植したもの
-// （「ストーリー作成」統合により、写真1枚のテンプレートに限らず汎用のドラッグ可能な
-// レイヤーコンテナとして使う）。
+//
+// 拡大縮小・回転（ピンチ・回転ジェスチャー）はこのコンポーネント自身では扱わない。
+// react-native-gesture-handlerのWeb実装は、新しいタッチの捕捉先を「そのView自身の
+// 実際のDOM矩形内かどうか」だけで判定し、hitSlopは（begin後の継続判定にしか使われず）
+// 新規タッチの捕捉範囲を広げない（isPointerInBoundsが素のgetBoundingClientRectしか
+// 見ていないため）。そのため「小さい要素に1本指で触れていれば、もう1本の指は
+// どこに触れてもピンチとして扱ってよい」という挙動は、要素ごとの当たり判定を
+// 広げる方式では実現できない。代わりに、ピンチ・回転はキャンバス全体を覆う
+// CreativeCanvas側の1つのジェスチャーで受け止め、「今どの要素が操作対象か」を
+// 示すactiveRefs（下記）を介して対象要素のshared valueを直接更新する。
+// このコンポーネントが担当するのは、指1本での移動（pan）とタップ選択、および
+// 「今操作対象になっている要素はどれか」をactiveOwner/activeRefsへ登録することだけ。
 import React from 'react';
 import { StyleSheet } from 'react-native';
 import Animated, {
@@ -17,26 +26,41 @@ import Animated, {
 import {
   Gesture,
   GestureDetector,
+  GestureType,
 } from 'react-native-gesture-handler';
 import { snapValueWithHit } from '../../utils/snap';
 
-// きりのいい位置・倍率（中央寄せ、スロットをちょうど覆う倍率など）に近づいたときに
-// 一瞬止まる感触を出すための許容量。位置は画面px基準（displayScaleで論理px換算）、
-// 倍率は比率そのもの（0.04 = 4%以内）。
+// きりのいい位置（中央寄せなど）に近づいたときに一瞬止まる感触を出すための許容量
+// （画面px基準、displayScaleで論理px換算）。
 const POSITION_SNAP_SCREEN_PX = 8;
-const SCALE_SNAP_ZONE = 0.04;
 // スナップ中だけ表示する、見えやすい枠線の色
 const GUIDE_COLOR = '#00E5FF';
-// 文字・ステッカーなど表示上小さい要素は、指2本を近づけて操作する「縮小ピンチ」の
-// 開始位置が実際の見た目の範囲内に収まりにくい（指先の接地面はpxよりずっと大きいため）。
-// タッチ判定領域を見た目より広げることで小さい要素でも指2本を置きやすくする。
-// 以前はこれを選択中の要素だけに絞って未選択要素は狭くしていたが、それだと逆に
-// 未選択の小さい要素（テキスト等）を拡大しようとする最初のピンチ自体が始めにくくなって
-// しまっていた。他要素への干渉はhitSlopの大小ではなくactiveOwner（下記）による
-// 排他制御で防ぐことにしたため、hitSlopは全要素で常に広げてよい。
+// 移動・タップ選択の当たり判定は見た目の範囲より少し広めに取る（指先の接地面は
+// pxよりずっと大きいため、小さい要素でも触れやすくする）。
 const HIT_SLOP = 100;
 
+/** キャンバス全体で共有する、「今どの要素が操作対象か」を示すロックの中身。
+ *  ピンチ・回転はCreativeCanvas側の1つのジェスチャーで受け止め、これを介して
+ *  対象要素のshared valueを直接更新する（詳細はファイル先頭のコメント参照）。 */
+export interface ActiveLayerRefs {
+  id: string;
+  translateX: SharedValue<number>;
+  translateY: SharedValue<number>;
+  baseScale: SharedValue<number>;
+  savedScale: SharedValue<number>;
+  baseRotation: SharedValue<number>;
+  savedRotation: SharedValue<number>;
+  isSnapped: SharedValue<boolean>;
+  minScale: number;
+  maxScale: number;
+  rotatable: boolean;
+  snapScale?: number[];
+}
+
 interface Props {
+  /** 写真スロットID・テキストレイヤーIDなど、呼び出し側での意味のある一意なID。
+   *  activeOwner/activeRefsの持ち主を識別するのに使う */
+  id: string;
   x: number;
   y: number;
   scale: number;
@@ -56,24 +80,29 @@ interface Props {
   snapX?: number[];
   snapY?: number[];
   snapScale?: number[];
-  /** 同じキャンバス上の全レイヤーで共有するshared value。ある要素を指で操作している間、
-   *  他の要素が別の指の操作に反応しないようにする排他ロックに使う（下記参照）。
-   *  未指定なら排他制御なし（従来通り、各要素が独立して各自のタッチに反応する） */
-  activeOwner?: SharedValue<string | null>;
+  /** 同じキャンバス上の全レイヤーで共有するshared value。「今操作対象になっている要素の
+   *  ID」を持ち、他の要素が別の指の操作に反応しないようにする排他ロックに使う */
+  activeOwner: SharedValue<string | null>;
+  /** activeOwnerと対になる、対象要素のshared value参照。CreativeCanvas側のピンチ・回転
+   *  ジェスチャーがこれを介して直接scale/rotationを更新する */
+  activeRefs: SharedValue<ActiveLayerRefs | null>;
+  /** CreativeCanvas側のキャンバス全体を覆うピンチ・回転ジェスチャー。react-native-gesture-
+   *  handlerは、ネストしたView同士のジェスチャーをデフォルトで排他的に扱う（子が同じ
+   *  タッチを"所有"すると判断すると、たとえ子のジェスチャーが後でfailしても親は
+   *  そのタッチを一切受け取れない）。simultaneousWithExternalGestureで明示的に
+   *  「同時に認識してよい」関係を宣言しないと、2本目の指が他の要素の上に乗った時に
+   *  キャンバス側のピンチ・回転が全く反応しなくなってしまう */
+  canvasGestures: GestureType[];
   testID?: string;
   onSelect: () => void;
   onChange: (patch: { x: number; y: number; scale: number; rotation: number }) => void;
   children: React.ReactNode;
 }
 
-let nextInstanceId = 0;
-
 export default function DraggableLayer({
-  x, y, scale, rotation, displayScale, selected, locked, rotatable = true,
-  minScale = 0.2, maxScale = 4, snapX, snapY, snapScale, activeOwner, testID, onSelect, onChange, children,
+  id, x, y, scale, rotation, displayScale, selected, locked, rotatable = true,
+  minScale = 0.2, maxScale = 4, snapX, snapY, snapScale, activeOwner, activeRefs, canvasGestures, testID, onSelect, onChange, children,
 }: Props) {
-  // activeOwnerロックの持ち主を識別するためだけの、このコンポーネントインスタンス固有のID
-  const myId = React.useRef(`layer_${nextInstanceId++}`).current;
   const translateX = useSharedValue(x);
   const translateY = useSharedValue(y);
   const savedScale = useSharedValue(scale);
@@ -91,22 +120,27 @@ export default function DraggableLayer({
 
   // 指がこの要素に触れた瞬間に呼ぶ：既に「別の」要素がロックを持っていればこの要素への
   // タッチ自体を失敗させ、そちらの要素だけが反応し続けるようにする（2本指でそれぞれ別の
-  // 要素を同時に操作できてしまう不具合の対策）。ロックが空いていれば自分が獲得する。
+  // 要素を同時に操作できてしまう不具合の対策）。ロックが空いていれば自分が獲得し、
+  // 同時にactiveRefsへ自分のshared value参照を登録する（ピンチ・回転はキャンバス
+  // レベルのジェスチャーがこれを見て、この要素を直接操作できるようにするため）。
   const acquireLock = (manager: { fail: () => void }) => {
     'worklet';
-    if (!activeOwner) return;
-    if (activeOwner.value !== null && activeOwner.value !== myId) {
+    if (activeOwner.value !== null && activeOwner.value !== id) {
       manager.fail();
       return;
     }
-    activeOwner.value = myId;
+    activeOwner.value = id;
+    activeRefs.value = {
+      id, translateX, translateY, baseScale, savedScale, baseRotation, savedRotation, isSnapped,
+      minScale, maxScale, rotatable, snapScale,
+    };
   };
   // この要素上の全ての指が離れたらロックを解放する（自分が持っている場合のみ）
   const releaseLockIfEmpty = (numberOfTouches: number) => {
     'worklet';
-    if (!activeOwner) return;
-    if (numberOfTouches === 0 && activeOwner.value === myId) {
+    if (numberOfTouches === 0 && activeOwner.value === id) {
       activeOwner.value = null;
+      activeRefs.value = null;
     }
   };
 
@@ -128,6 +162,7 @@ export default function DraggableLayer({
   const pan = Gesture.Pan()
     .enabled(!locked)
     .hitSlop(HIT_SLOP)
+    .simultaneousWithExternalGesture(...canvasGestures)
     .onTouchesDown((_e, manager) => acquireLock(manager))
     .onTouchesUp((e) => releaseLockIfEmpty(e.numberOfTouches))
     .onTouchesCancelled((e) => releaseLockIfEmpty(e.numberOfTouches))
@@ -149,49 +184,16 @@ export default function DraggableLayer({
     })
     .onEnd(() => { isSnapped.value = false; runOnJS(commit)(); });
 
-  const pinch = Gesture.Pinch()
-    .enabled(!locked)
-    .hitSlop(HIT_SLOP)
-    .onTouchesDown((_e, manager) => acquireLock(manager))
-    .onTouchesUp((e) => releaseLockIfEmpty(e.numberOfTouches))
-    .onTouchesCancelled((e) => releaseLockIfEmpty(e.numberOfTouches))
-    .onBegin(() => {
-      baseScale.value = savedScale.value;
-      runOnJS(onSelect)();
-    })
-    .onUpdate((e) => {
-      let s = Math.min(maxScale, Math.max(minScale, baseScale.value * e.scale));
-      let snapped = false;
-      if (snapScale) { const r = snapValueWithHit(s, snapScale, SCALE_SNAP_ZONE); s = r.value; if (r.hit !== null) snapped = true; }
-      savedScale.value = s;
-      isSnapped.value = snapped;
-    })
-    .onEnd(() => { isSnapped.value = false; runOnJS(commit)(); });
-
-  const rotate = Gesture.Rotation()
-    .enabled(!locked && rotatable)
-    .hitSlop(HIT_SLOP)
-    .onTouchesDown((_e, manager) => acquireLock(manager))
-    .onTouchesUp((e) => releaseLockIfEmpty(e.numberOfTouches))
-    .onTouchesCancelled((e) => releaseLockIfEmpty(e.numberOfTouches))
-    .onBegin(() => {
-      baseRotation.value = savedRotation.value;
-      runOnJS(onSelect)();
-    })
-    .onUpdate((e) => {
-      savedRotation.value = baseRotation.value + (e.rotation * 180) / Math.PI;
-    })
-    .onEnd(() => runOnJS(commit)());
-
   const tap = Gesture.Tap()
     .enabled(!locked)
     .hitSlop(HIT_SLOP)
+    .simultaneousWithExternalGesture(...canvasGestures)
     .onTouchesDown((_e, manager) => acquireLock(manager))
     .onTouchesUp((e) => releaseLockIfEmpty(e.numberOfTouches))
     .onTouchesCancelled((e) => releaseLockIfEmpty(e.numberOfTouches))
     .onEnd(() => runOnJS(onSelect)());
 
-  const composed = Gesture.Simultaneous(pan, pinch, rotate, tap);
+  const composed = Gesture.Simultaneous(pan, tap);
 
   const style = useAnimatedStyle(() => {
     // 枠線の優先順位: スナップ中（見えやすい色）＞選択中（通常の選択枠）＞非表示

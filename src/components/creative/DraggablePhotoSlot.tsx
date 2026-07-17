@@ -15,13 +15,12 @@ import React from 'react';
 import { View, Image, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SharedValue } from 'react-native-reanimated';
-import DraggableLayer from './DraggableLayer';
+import { GestureType } from 'react-native-gesture-handler';
+import DraggableLayer, { ActiveLayerRefs } from './DraggableLayer';
 import { PhotoSlot } from '../../types/creativeTemplate';
 import { PhotoAssignment } from '../../store/creativeEditorStore';
 import { COLORS } from '../../utils/theme';
-
-/** 写真の縮小下限（0.2 = スロットを覆う倍率の20%まで縮小可能。テキスト/ステッカーと同じ既定値） */
-const MIN_PHOTO_SCALE = 0.2;
+import { MIN_PHOTO_SCALE, photoSlotGeometry, clampPhotoOffset } from '../../utils/photoSlotMath';
 
 interface Props {
   slot: PhotoSlot;
@@ -30,15 +29,18 @@ interface Props {
   selected: boolean;
   locked?: boolean;
   testID?: string;
-  /** キャンバス全体で共有するshared value（DraggableLayerのactiveOwner参照） */
-  activeOwner?: SharedValue<string | null>;
+  /** キャンバス全体で共有するshared value（DraggableLayer参照） */
+  activeOwner: SharedValue<string | null>;
+  activeRefs: SharedValue<ActiveLayerRefs | null>;
+  /** CreativeCanvas側のキャンバス全体を覆うピンチ・回転ジェスチャー（DraggableLayer参照） */
+  canvasGestures: GestureType[];
   onSelect: () => void;
   onChange: (patch: { offsetX: number; offsetY: number; scale: number }) => void;
   onPickPhoto?: () => void;
 }
 
 export default function DraggablePhotoSlot({
-  slot, assignment, displayScale, selected, locked, testID, activeOwner, onSelect, onChange, onPickPhoto,
+  slot, assignment, displayScale, selected, locked, testID, activeOwner, activeRefs, canvasGestures, onSelect, onChange, onPickPhoto,
 }: Props) {
   const clipStyle = {
     position: 'absolute' as const,
@@ -58,28 +60,16 @@ export default function DraggablePhotoSlot({
   }
 
   // スロットをcoverする基準サイズ（assignment.scale===1のときにちょうどスロットを覆う）
-  const coverScale = Math.max(slot.w / assignment.naturalW, slot.h / assignment.naturalH);
-  const imgW = assignment.naturalW * coverScale;
-  const imgH = assignment.naturalH * coverScale;
-  const centerX = (slot.w - imgW) / 2;
-  const centerY = (slot.h - imgH) / 2;
+  const { imgW, imgH, centerX, centerY } = photoSlotGeometry(slot, assignment);
 
   const handleChange = (patch: { x: number; y: number; scale: number }) => {
-    const scale = Math.max(MIN_PHOTO_SCALE, Math.min(4, patch.scale));
-    // 画像の端がスロットの端より内側に入らないよう、現在のscaleに応じてoffsetをクランプする
-    // （DraggableLayerのscale transformはbox自身の中心を軸に効くため、画像の中心は
-    // offsetに関わらず固定。境界はimgW*scale/imgH*scaleから導出できる。scaleが1未満で
-    // 画像がスロットより小さいときはbound=0となり、常に中央に固定される＝余白は左右/上下均等）
-    const boundX = Math.max(0, (imgW * scale - slot.w) / 2);
-    const boundY = Math.max(0, (imgH * scale - slot.h) / 2);
-    const offsetX = Math.max(-boundX, Math.min(boundX, patch.x - centerX));
-    const offsetY = Math.max(-boundY, Math.min(boundY, patch.y - centerY));
-    onChange({ offsetX, offsetY, scale });
+    onChange(clampPhotoOffset(slot, assignment, patch.x, patch.y, patch.scale));
   };
 
   return (
     <View style={clipStyle} testID={testID}>
       <DraggableLayer
+        id={slot.id}
         x={centerX + assignment.offsetX}
         y={centerY + assignment.offsetY}
         scale={assignment.scale}
@@ -96,6 +86,8 @@ export default function DraggablePhotoSlot({
         selected={selected}
         locked={locked}
         activeOwner={activeOwner}
+        activeRefs={activeRefs}
+        canvasGestures={canvasGestures}
         onSelect={onSelect}
         onChange={handleChange}
       >
