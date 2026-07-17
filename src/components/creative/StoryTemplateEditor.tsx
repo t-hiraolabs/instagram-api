@@ -1,14 +1,16 @@
-// 「ストーリー作成」エディター。テンプレートギャラリーは廃止し、Canva等の汎用デザイン
-// ツールと競う方向はやめた（2026-07-16）。代わりにInstagram標準のストーリー編集機能を
-// 上回るフォント数（19種）・素材（絵文字ステッカー・背景プリセット）を持つ、
-// 「写真 or 背景 + 文字 + ステッカー」だけのシンプルな機能として拡充している。
-// 単一フロー：①写真または背景を選ぶ→②文字・ステッカーを追加編集→③プレビュー→④保存/投稿。
-// 描画はテンプレート方式の頃と同じCreativeCanvas＋creativeEditorStoreをそのまま流用する。
+// 「ストーリー作成」エディター。Instagram本体のストーリー編集画面と同じ体験
+// （1画面完結・スクロール無し・選択した要素のプロパティをその場で操作）を目指し、
+// 別モーダルに逃がしていた文字編集・ステッカー選択・背景選択をすべて同一画面内の
+// インラインパネルに統合した（2026-07-17）。写真 or 背景の上に、文字・絵文字
+// ステッカーを乗せるだけのシンプルな機能で、Canva等の汎用デザインツールとは
+// 競わず、Instagram標準のストーリー編集（フォント数少・ステッカー限定的）を
+// フォント19種・ステッカー50種・背景12種で上回ることを狙う。
 import React, { useRef, useState } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  ActivityIndicator, Platform, Alert, Modal,
+  View, Text, TextInput, TouchableOpacity, StyleSheet,
+  ActivityIndicator, Platform, Alert, Modal, ScrollView, useWindowDimensions,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import ViewShot from 'react-native-view-shot';
@@ -16,18 +18,20 @@ import { COLORS, SPACING, RADIUS } from '../../utils/theme';
 import { saveStoryDraft } from '../../services/storyStudioService';
 import { useCreativeEditorStore, serializeCreativeEditor } from '../../store/creativeEditorStore';
 import { TextLayer, TemplateLayer, CANVAS_W, CANVAS_H } from '../../types/creativeTemplate';
-import { BackgroundPreset } from '../../utils/backgroundPresets';
+import { FONT_PRESETS } from '../../utils/fontPresets';
+import { BACKGROUND_PRESETS } from '../../utils/backgroundPresets';
+import { STICKER_CATEGORIES } from '../../utils/stickerPresets';
 import CreativeCanvas from './CreativeCanvas';
-import CreativeLayerListPanel from './CreativeLayerListPanel';
-import TextStyleModal from './TextStyleModal';
-import BackgroundPickerModal from './BackgroundPickerModal';
-import StickerPickerModal from './StickerPickerModal';
-
-type Step = 'pick' | 'edit';
+import BackgroundPresetSvg from './BackgroundPresetSvg';
 
 const PHOTO_SLOT_ID = 'photo_1';
-/** 写真1枚がキャンバス全面を覆うフルブリードスロット（テンプレート無し・常にこの1枚だけ） */
 const FULL_BLEED_SLOT = { id: PHOTO_SLOT_ID, x: 0, y: 0, w: CANVAS_W, h: CANVAS_H };
+const TEXT_COLOR_OPTIONS = ['#FFFFFF', '#000000', '#FF7A59', '#FFD36E', '#8B5FBF', '#38BDF8', '#3E8E6E', '#D6597A'];
+const ALIGN_OPTIONS: { key: NonNullable<TextLayer['align']>; icon: keyof typeof Ionicons.glyphMap }[] = [
+  { key: 'left', icon: 'menu-outline' }, { key: 'center', icon: 'reorder-two-outline' }, { key: 'right', icon: 'menu-outline' },
+];
+
+type Panel = 'none' | 'background' | 'sticker';
 
 interface Props {
   visible: boolean;
@@ -37,13 +41,13 @@ interface Props {
 }
 
 export default function StoryTemplateEditor({ visible, onClose, onFinish }: Props) {
-  const [step, setStep] = useState<Step>('pick');
-  const [previewMode, setPreviewMode] = useState(false);
-  const [textEditVisible, setTextEditVisible] = useState(false);
-  const [bgPickerVisible, setBgPickerVisible] = useState(false);
-  const [stickerPickerVisible, setStickerPickerVisible] = useState(false);
+  const { width: winW, height: winH } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+
+  const [panel, setPanel] = useState<Panel>('none');
   const [saving, setSaving] = useState(false);
   const [picking, setPicking] = useState(false);
+  const [started, setStarted] = useState(false);
 
   const canvasShotRef = useRef<ViewShot>(null);
 
@@ -53,35 +57,37 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
   const layers = useCreativeEditorStore((s) => s.layers);
   const textLayers = useCreativeEditorStore((s) => s.textLayers);
   const selectedId = useCreativeEditorStore((s) => s.selectedId);
-  const activeSlotId = useCreativeEditorStore((s) => s.activeSlotId);
   const loadTemplate = useCreativeEditorStore((s) => s.loadTemplate);
   const reset = useCreativeEditorStore((s) => s.reset);
   const selectItem = useCreativeEditorStore((s) => s.selectItem);
   const setActiveSlot = useCreativeEditorStore((s) => s.setActiveSlot);
   const assignPhoto = useCreativeEditorStore((s) => s.assignPhoto);
   const updatePhotoAssignment = useCreativeEditorStore((s) => s.updatePhotoAssignment);
-  const swapPhotoAssignments = useCreativeEditorStore((s) => s.swapPhotoAssignments);
   const addTextLayer = useCreativeEditorStore((s) => s.addTextLayer);
   const updateTextLayer = useCreativeEditorStore((s) => s.updateTextLayer);
   const removeTextLayer = useCreativeEditorStore((s) => s.removeTextLayer);
-  const toggleTextVisible = useCreativeEditorStore((s) => s.toggleTextVisible);
-  const bringToFront = useCreativeEditorStore((s) => s.bringToFront);
-  const sendToBack = useCreativeEditorStore((s) => s.sendToBack);
 
   const alertMsg = (msg: string, title = 'お知らせ') => {
     if (Platform.OS === 'web') window.alert(msg);
     else Alert.alert(title, msg);
   };
 
+  // 開いたら常に写真スロット（空）から始める。写真を選ぶ・背景に切り替える・
+  // 文字やステッカーを足す、をすべて同じ1画面上で行う（Instagramのストーリー
+  // 作成と同じく、ギャラリー選択などの別ステップを挟まない）。
+  if (visible && !started) {
+    loadTemplate({ templateId: '', photoSlots: [FULL_BLEED_SLOT], layers: [], textLayers: [] });
+    setStarted(true);
+  }
+
   const close = () => {
     reset();
-    setStep('pick');
-    setPreviewMode(false);
-    setTextEditVisible(false);
+    setStarted(false);
+    setPanel('none');
     onClose();
   };
 
-  const pickPhotoForSlot = async (slotId: string) => {
+  const pickPhoto = async () => {
     if (Platform.OS !== 'web') {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') { alertMsg('写真へのアクセスを許可してください', '権限エラー'); return; }
@@ -94,44 +100,25 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
       });
       if (res.canceled || !res.assets[0]) return;
       const asset = res.assets[0];
-      assignPhoto(slotId, asset.uri, asset.width || CANVAS_W, asset.height || CANVAS_H);
-    } finally {
-      setPicking(false);
-    }
-  };
-
-  /** 最初の1枚を選ぶ。テンプレートは使わず、常にキャンバス全面のフルブリードスロット1つだけを持つ状態にする */
-  const pickInitialPhoto = async () => {
-    if (Platform.OS !== 'web') {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') { alertMsg('写真へのアクセスを許可してください', '権限エラー'); return; }
-    }
-    setPicking(true);
-    try {
-      const res = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        quality: 0.9,
-      });
-      if (res.canceled || !res.assets[0]) return;
-      const asset = res.assets[0];
-      loadTemplate({ templateId: '', photoSlots: [FULL_BLEED_SLOT], layers: [], textLayers: [] });
+      // 背景モードだった場合は解除し、写真スロットへ戻す（文字・ステッカーは維持）
+      if (photoSlots.length === 0) {
+        loadTemplate({ templateId: templateId || '', photoSlots: [FULL_BLEED_SLOT], layers: [], textLayers });
+      }
       assignPhoto(PHOTO_SLOT_ID, asset.uri, asset.width || CANVAS_W, asset.height || CANVAS_H);
-      setPreviewMode(false);
-      setStep('edit');
+      setPanel('none');
     } finally {
       setPicking(false);
     }
   };
 
-  /** 写真を使わず、色・グラデーション・パターンだけの背景で始める */
-  const handleSelectBackground = (preset: BackgroundPreset) => {
+  const selectBackground = (presetId: string) => {
     const bgLayer: TemplateLayer = {
-      id: 'bg', kind: 'background', band: 'background', uri: '', bgPresetId: preset.id,
+      id: 'bg', kind: 'background', band: 'background', uri: '', bgPresetId: presetId,
       x: 0, y: 0, w: CANVAS_W, h: CANVAS_H,
     };
-    loadTemplate({ templateId: '', photoSlots: [], layers: [bgLayer], textLayers: [] });
-    setPreviewMode(false);
-    setStep('edit');
+    // 写真は使わないので写真スロットは空にする（文字・ステッカーは維持）
+    loadTemplate({ templateId: templateId || '', photoSlots: [], layers: [bgLayer], textLayers });
+    setPanel('none');
   };
 
   const selectedTextLayer = textLayers.find((t) => t.id === selectedId) as TextLayer | undefined;
@@ -139,15 +126,13 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
   const handleAddTextLayer = () => {
     const layer: TextLayer = {
       id: `text_${Date.now()}`, text: '新しいテキスト',
-      x: 100, y: 900, font: 'gothic', color: '#FFFFFF', size: 64,
+      x: 120, y: 860, font: 'gothic', color: '#FFFFFF', size: 64, align: 'left',
       scale: 1, rotation: 0, visible: true,
     };
     addTextLayer(layer);
-    setTextEditVisible(true);
+    setPanel('none');
   };
 
-  /** 絵文字ステッカーを追加する。画像素材を使わず既存のテキストレイヤーの仕組みで
-   *  位置・拡大率・回転をそのまま操作できる（Instagram標準のステッカーより自由度が高い） */
   const handleAddSticker = (emoji: string) => {
     const layer: TextLayer = {
       id: `sticker_${Date.now()}`, label: 'ステッカー', text: emoji,
@@ -155,6 +140,7 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
       scale: 1, rotation: 0, visible: true,
     };
     addTextLayer(layer);
+    setPanel('none');
   };
 
   const capture = async (): Promise<string | null> => {
@@ -169,7 +155,7 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
 
   const filledCount = photoSlots.filter((s) => photoAssignments.some((a) => a.slotId === s.id)).length;
   const isBackgroundMode = photoSlots.length === 0 && layers.some((l) => l.kind === 'background');
-  const allFilled = isBackgroundMode || (photoSlots.length > 0 && filledCount === photoSlots.length);
+  const canFinish = isBackgroundMode || (photoSlots.length > 0 && filledCount === photoSlots.length);
 
   const handleSaveDraft = async () => {
     setSaving(true);
@@ -196,133 +182,158 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
     }
   };
 
+  // --- レイアウト計算: 縦スクロール無しで1画面に収まるよう、残り高さからキャンバス幅を逆算する ---
+  const TOPBAR_H = 48;
+  const TOOLBAR_H = 56;
+  const FINISH_H = 64;
+  const TEXT_PANEL_H = 132;
+  const STRIP_PANEL_H = 96;
+  const reservedH = insets.top + insets.bottom + TOPBAR_H + TOOLBAR_H + FINISH_H
+    + (selectedTextLayer ? TEXT_PANEL_H : panel !== 'none' ? STRIP_PANEL_H : 0)
+    + SPACING.md * 2;
+  const availH = Math.max(200, winH - reservedH);
+  const canvasWByHeight = availH * (CANVAS_W / CANVAS_H);
+  const canvasW = Math.min(winW - SPACING.lg * 2, canvasWByHeight);
+
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={close}>
-      <View style={styles.modal}>
+      <View style={[styles.modal, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={close}><Text style={styles.cancel}>閉じる</Text></TouchableOpacity>
+          <TouchableOpacity onPress={close}><Ionicons name="close" size={26} color={COLORS.text} /></TouchableOpacity>
           <Text style={styles.title}>ストーリーを作る</Text>
-          <View style={{ width: 48 }} />
+          <View style={{ width: 26 }} />
         </View>
 
-        {step === 'pick' && (
-          <View style={styles.pickWrap}>
-            <Ionicons name="image-outline" size={48} color={COLORS.textMuted} />
-            <Text style={styles.pickTitle}>写真か背景を選んで、文字を入れましょう</Text>
-            <Text style={styles.pickDesc}>Canvaなどで作った画像もそのまま使えます</Text>
-            <TouchableOpacity style={styles.pickBtn} onPress={pickInitialPhoto} disabled={picking} activeOpacity={0.85}>
-              {picking ? <ActivityIndicator color="#fff" /> : <Text style={styles.pickBtnText}>写真を選ぶ</Text>}
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.pickBtnOutline} onPress={() => setBgPickerVisible(true)} activeOpacity={0.85}>
-              <Text style={styles.pickBtnOutlineText}>背景を選ぶ（写真なし）</Text>
-            </TouchableOpacity>
-          </View>
-        )}
+        <View style={styles.canvasWrap}>
+          <ViewShot ref={canvasShotRef} options={{ format: 'png', quality: 0.95, width: 1080, height: 1920 }}>
+            <CreativeCanvas
+              displayWidth={canvasW}
+              photoSlots={photoSlots}
+              layers={layers}
+              textLayers={textLayers}
+              photoAssignments={photoAssignments}
+              selectedId={selectedId}
+              onSelectSlot={setActiveSlot}
+              onSlotChange={(slotId, patch) => updatePhotoAssignment(slotId, patch)}
+              onPickPhoto={pickPhoto}
+              onSelectText={selectItem}
+              onTextChange={(id, patch) => updateTextLayer(id, patch)}
+            />
+          </ViewShot>
+        </View>
 
-        {step === 'edit' && (
-          <View style={{ flex: 1 }}>
-            <ScrollView contentContainerStyle={styles.editScroll}>
-              {photoSlots.length > 0 && (
-                <TouchableOpacity onPress={() => pickPhotoForSlot(PHOTO_SLOT_ID)} activeOpacity={0.85}>
-                  <Text style={styles.changePhotoText}>写真を変更する</Text>
+        {/* 選択中の文字・ステッカーのプロパティ（別モーダルではなく同一画面内に表示） */}
+        {selectedTextLayer && (
+          <View style={styles.textPanel}>
+            <View style={styles.textPanelTopRow}>
+              <TextInput
+                style={styles.textInput}
+                value={selectedTextLayer.text}
+                onChangeText={(text) => updateTextLayer(selectedTextLayer.id, { text })}
+                placeholder="文字を入力"
+                placeholderTextColor={COLORS.textMuted}
+              />
+              <TouchableOpacity onPress={() => { removeTextLayer(selectedTextLayer.id); }} hitSlop={8}>
+                <Ionicons name="trash-outline" size={20} color={COLORS.error} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => selectItem(null)} hitSlop={8}>
+                <Text style={styles.doneText}>完了</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+              {FONT_PRESETS.map((f) => (
+                <TouchableOpacity
+                  key={f.id}
+                  style={[styles.fontChip, selectedTextLayer.font === f.id && styles.chipActive]}
+                  onPress={() => updateTextLayer(selectedTextLayer.id, { font: f.id })}
+                >
+                  <Text style={[styles.fontChipText, { fontFamily: f.family }, selectedTextLayer.font === f.id && styles.chipTextActive]}>{f.label}</Text>
                 </TouchableOpacity>
-              )}
-
-              <ViewShot ref={canvasShotRef} options={{ format: 'png', quality: 0.95, width: 1080, height: 1920 }}>
-                <CreativeCanvas
-                  photoSlots={photoSlots}
-                  layers={layers}
-                  textLayers={textLayers}
-                  photoAssignments={photoAssignments}
-                  locked={previewMode}
-                  selectedId={selectedId}
-                  onSelectSlot={setActiveSlot}
-                  onSlotChange={(slotId, patch) => updatePhotoAssignment(slotId, patch)}
-                  onPickPhoto={pickPhotoForSlot}
-                  onSelectText={selectItem}
-                  onTextChange={(id, patch) => updateTextLayer(id, patch)}
-                />
-              </ViewShot>
-
-              {!previewMode && (
-                <>
-                  <View style={styles.toolbar}>
-                    <TouchableOpacity style={styles.toolBtn} onPress={handleAddTextLayer}>
-                      <Ionicons name="text-outline" size={20} color={COLORS.text} />
-                      <Text style={styles.toolBtnText}>文字を追加</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.toolBtn} onPress={() => setStickerPickerVisible(true)}>
-                      <Ionicons name="happy-outline" size={20} color={COLORS.text} />
-                      <Text style={styles.toolBtnText}>ステッカー</Text>
-                    </TouchableOpacity>
-                    {selectedTextLayer && (
-                      <TouchableOpacity style={styles.toolBtn} onPress={() => setTextEditVisible(true)}>
-                        <Ionicons name="create-outline" size={20} color={COLORS.text} />
-                        <Text style={styles.toolBtnText}>文字を編集</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-
-                  <CreativeLayerListPanel
-                    photoSlots={photoSlots}
-                    photoAssignments={photoAssignments}
-                    layers={layers}
-                    textLayers={textLayers}
-                    selectedId={selectedId}
-                    activeSlotId={activeSlotId}
-                    onSelectSlot={setActiveSlot}
-                    onSwapSlots={swapPhotoAssignments}
-                    onSelectItem={selectItem}
-                    onToggleTextVisible={toggleTextVisible}
-                    onBringToFront={bringToFront}
-                    onSendToBack={sendToBack}
-                    onRemoveText={removeTextLayer}
-                  />
-                </>
-              )}
-
-              <TouchableOpacity
-                style={styles.previewToggle}
-                onPress={() => setPreviewMode((v) => !v)}
-                activeOpacity={0.85}
-              >
-                <Ionicons name={previewMode ? 'create-outline' : 'eye-outline'} size={16} color={COLORS.primary} />
-                <Text style={styles.previewToggleText}>{previewMode ? '編集に戻る' : 'プレビュー'}</Text>
-              </TouchableOpacity>
+              ))}
             </ScrollView>
-
-            <View style={styles.finishRow}>
-              <TouchableOpacity style={styles.saveBtn} onPress={handleSaveDraft} disabled={saving} activeOpacity={0.85}>
-                {saving ? <ActivityIndicator color={COLORS.text} /> : <Text style={styles.saveBtnText}>保存</Text>}
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.publishBtn, !allFilled && styles.publishBtnDisabled]}
-                onPress={handlePublish}
-                disabled={saving || !allFilled}
-                activeOpacity={0.85}
-              >
-                {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.publishBtnText}>投稿する ›</Text>}
-              </TouchableOpacity>
+            <View style={styles.colorAlignRow}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+                {TEXT_COLOR_OPTIONS.map((c) => (
+                  <TouchableOpacity
+                    key={c}
+                    style={[styles.swatch, { backgroundColor: c }, selectedTextLayer.color === c && styles.swatchActive]}
+                    onPress={() => updateTextLayer(selectedTextLayer.id, { color: c })}
+                  />
+                ))}
+              </ScrollView>
+              <View style={styles.alignRow}>
+                {ALIGN_OPTIONS.map((a) => (
+                  <TouchableOpacity
+                    key={a.key}
+                    style={[styles.alignBtn, (selectedTextLayer.align ?? 'left') === a.key && styles.chipActive]}
+                    onPress={() => updateTextLayer(selectedTextLayer.id, { align: a.key })}
+                  >
+                    <Ionicons name={a.icon} size={16} color={(selectedTextLayer.align ?? 'left') === a.key ? '#fff' : COLORS.textMuted} />
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
           </View>
         )}
 
-        <TextStyleModal
-          visible={textEditVisible}
-          layer={selectedTextLayer ?? null}
-          onClose={() => setTextEditVisible(false)}
-          onChange={(patch) => selectedTextLayer && updateTextLayer(selectedTextLayer.id, patch)}
-        />
-        <BackgroundPickerModal
-          visible={bgPickerVisible}
-          onClose={() => setBgPickerVisible(false)}
-          onSelect={handleSelectBackground}
-        />
-        <StickerPickerModal
-          visible={stickerPickerVisible}
-          onClose={() => setStickerPickerVisible(false)}
-          onSelect={handleAddSticker}
-        />
+        {/* 背景プリセット・ステッカーのインライン選択パネル（別モーダルにしない） */}
+        {!selectedTextLayer && panel === 'background' && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.stripPanel} contentContainerStyle={styles.stripContent}>
+            {BACKGROUND_PRESETS.map((preset) => (
+              <TouchableOpacity key={preset.id} style={styles.bgSwatchItem} onPress={() => selectBackground(preset.id)} activeOpacity={0.85}>
+                <View style={styles.bgSwatch}>
+                  <BackgroundPresetSvg preset={preset} width={44} height={78} />
+                </View>
+                <Text style={styles.bgSwatchLabel} numberOfLines={1}>{preset.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
+        {!selectedTextLayer && panel === 'sticker' && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.stripPanel} contentContainerStyle={styles.stripContent}>
+            {STICKER_CATEGORIES.flatMap((cat) => cat.emojis).map((emoji, i) => (
+              <TouchableOpacity key={`${emoji}_${i}`} style={styles.stickerItem} onPress={() => handleAddSticker(emoji)} activeOpacity={0.7}>
+                <Text style={styles.stickerEmoji}>{emoji}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
+
+        {/* アイコンツールバー（常時表示） */}
+        {!selectedTextLayer && (
+          <View style={styles.toolbar}>
+            <TouchableOpacity style={styles.toolBtn} onPress={pickPhoto} disabled={picking}>
+              {picking ? <ActivityIndicator size="small" color={COLORS.text} /> : <Ionicons name="image-outline" size={22} color={COLORS.text} />}
+              <Text style={styles.toolBtnText}>写真</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.toolBtn} onPress={() => setPanel((p) => (p === 'background' ? 'none' : 'background'))}>
+              <Ionicons name="color-palette-outline" size={22} color={panel === 'background' ? COLORS.primary : COLORS.text} />
+              <Text style={[styles.toolBtnText, panel === 'background' && styles.toolBtnTextActive]}>背景</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.toolBtn} onPress={handleAddTextLayer}>
+              <Ionicons name="text-outline" size={22} color={COLORS.text} />
+              <Text style={styles.toolBtnText}>文字</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.toolBtn} onPress={() => setPanel((p) => (p === 'sticker' ? 'none' : 'sticker'))}>
+              <Ionicons name="happy-outline" size={22} color={panel === 'sticker' ? COLORS.primary : COLORS.text} />
+              <Text style={[styles.toolBtnText, panel === 'sticker' && styles.toolBtnTextActive]}>ステッカー</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        <View style={styles.finishRow}>
+          <TouchableOpacity style={styles.saveBtn} onPress={handleSaveDraft} disabled={saving} activeOpacity={0.85}>
+            {saving ? <ActivityIndicator color={COLORS.text} /> : <Text style={styles.saveBtnText}>保存</Text>}
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.publishBtn, !canFinish && styles.publishBtnDisabled]}
+            onPress={handlePublish}
+            disabled={saving || !canFinish}
+            activeOpacity={0.85}
+          >
+            {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.publishBtnText}>投稿する ›</Text>}
+          </TouchableOpacity>
+        </View>
       </View>
     </Modal>
   );
@@ -330,37 +341,50 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
 
 const styles = StyleSheet.create({
   modal: { flex: 1, backgroundColor: COLORS.background },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: SPACING.md, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  cancel: { color: COLORS.textMuted, fontSize: 15 },
-  title: { color: COLORS.text, fontSize: 16, fontWeight: '800' },
-  editScroll: { alignItems: 'center', paddingVertical: SPACING.md, paddingBottom: 120 },
-  pickWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: SPACING.xl, gap: SPACING.sm },
-  pickTitle: { color: COLORS.text, fontSize: 16, fontWeight: '800', marginTop: SPACING.sm, textAlign: 'center' },
-  pickDesc: { color: COLORS.textMuted, fontSize: 12.5, textAlign: 'center', marginBottom: SPACING.md },
-  pickBtn: { backgroundColor: COLORS.primary, borderRadius: RADIUS.full, paddingVertical: SPACING.md, paddingHorizontal: SPACING.xl, minWidth: 160, alignItems: 'center' },
-  pickBtnText: { color: '#fff', fontWeight: '800', fontSize: 15 },
-  pickBtnOutline: { borderRadius: RADIUS.full, paddingVertical: SPACING.md, paddingHorizontal: SPACING.xl, minWidth: 160, alignItems: 'center', borderWidth: 1, borderColor: COLORS.border },
-  pickBtnOutlineText: { color: COLORS.text, fontWeight: '700', fontSize: 14 },
-  changePhotoText: { color: COLORS.primary, fontSize: 13, fontWeight: '700', marginBottom: SPACING.sm },
-  toolbar: { flexDirection: 'row', gap: SPACING.md, marginTop: SPACING.md },
-  toolBtn: { alignItems: 'center', gap: 2 },
-  toolBtnText: { color: COLORS.textSecondary, fontSize: 11 },
-  previewToggle: {
-    flexDirection: 'row', alignItems: 'center', gap: SPACING.xs, marginTop: SPACING.md,
-    paddingVertical: SPACING.xs, paddingHorizontal: SPACING.md, borderRadius: RADIUS.full,
-    borderWidth: 1, borderColor: COLORS.primary,
+  header: { height: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: SPACING.md, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  title: { color: COLORS.text, fontSize: 15, fontWeight: '800' },
+  canvasWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  toolbar: {
+    height: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around',
+    borderTopWidth: 1, borderTopColor: COLORS.border,
   },
-  previewToggleText: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
+  toolBtn: { alignItems: 'center', gap: 2 },
+  toolBtnText: { color: COLORS.textSecondary, fontSize: 11, fontWeight: '600' },
+  toolBtnTextActive: { color: COLORS.primary },
+  stripPanel: { height: 96, borderTopWidth: 1, borderTopColor: COLORS.border },
+  stripContent: { alignItems: 'center', gap: SPACING.sm, paddingHorizontal: SPACING.md },
+  bgSwatchItem: { alignItems: 'center', gap: 4 },
+  bgSwatch: { width: 44, height: 78, borderRadius: RADIUS.sm, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border },
+  bgSwatchLabel: { color: COLORS.textMuted, fontSize: 9, maxWidth: 50, textAlign: 'center' },
+  stickerItem: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: RADIUS.md, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border },
+  stickerEmoji: { fontSize: 24 },
+  textPanel: { minHeight: 132, borderTopWidth: 1, borderTopColor: COLORS.border, paddingVertical: SPACING.sm, gap: SPACING.xs },
+  textPanelTopRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, paddingHorizontal: SPACING.md },
+  textInput: {
+    flex: 1, borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.sm, paddingVertical: 6, color: COLORS.text, backgroundColor: COLORS.surface, fontSize: 14,
+  },
+  doneText: { color: COLORS.primary, fontSize: 14, fontWeight: '700' },
+  chipRow: { gap: SPACING.sm, paddingHorizontal: SPACING.md },
+  fontChip: { paddingVertical: 6, paddingHorizontal: SPACING.md, borderRadius: RADIUS.full, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.surface },
+  fontChipText: { color: COLORS.textMuted, fontSize: 12, fontWeight: '700' },
+  chipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  chipTextActive: { color: '#fff' },
+  colorAlignRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  swatch: { width: 26, height: 26, borderRadius: 13, borderWidth: 2, borderColor: COLORS.border },
+  swatchActive: { borderColor: COLORS.primary },
+  alignRow: { flexDirection: 'row', gap: SPACING.xs, paddingRight: SPACING.md },
+  alignBtn: { width: 30, height: 30, borderRadius: RADIUS.sm, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.surface },
   finishRow: {
-    flexDirection: 'row', gap: SPACING.sm, padding: SPACING.md,
-    borderTopWidth: 1, borderTopColor: COLORS.border, backgroundColor: COLORS.background,
+    height: 64, flexDirection: 'row', gap: SPACING.sm, paddingHorizontal: SPACING.md, alignItems: 'center',
+    borderTopWidth: 1, borderTopColor: COLORS.border,
   },
   saveBtn: {
-    flex: 1, alignItems: 'center', paddingVertical: SPACING.md, borderRadius: RADIUS.full,
+    flex: 1, alignItems: 'center', paddingVertical: SPACING.sm, borderRadius: RADIUS.full,
     borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.surface,
   },
-  saveBtnText: { color: COLORS.text, fontWeight: '800', fontSize: 15 },
-  publishBtn: { flex: 1, alignItems: 'center', paddingVertical: SPACING.md, borderRadius: RADIUS.full, backgroundColor: COLORS.primary },
+  saveBtnText: { color: COLORS.text, fontWeight: '800', fontSize: 14 },
+  publishBtn: { flex: 1, alignItems: 'center', paddingVertical: SPACING.sm, borderRadius: RADIUS.full, backgroundColor: COLORS.primary },
   publishBtnDisabled: { opacity: 0.4 },
-  publishBtnText: { color: '#fff', fontWeight: '800', fontSize: 15 },
+  publishBtnText: { color: '#fff', fontWeight: '800', fontSize: 14 },
 });
