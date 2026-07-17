@@ -14,6 +14,7 @@ import E2ELayerPanelScreen from '../screens/__e2e__/E2ELayerPanelScreen';
 import E2EGalleryScreen from '../screens/__e2e__/E2EGalleryScreen';
 import E2EFeedCropScreen from '../screens/__e2e__/E2EFeedCropScreen';
 import E2EPositionCanvasScreen from '../screens/__e2e__/E2EPositionCanvasScreen';
+import E2EStoryTemplateEditorScreen from '../screens/__e2e__/E2EStoryTemplateEditorScreen';
 import { COLORS } from '../utils/theme';
 
 // Playwright回帰テスト（フェーズ5）専用の起動ルート判定。?e2e=... クエリがある時だけ
@@ -24,6 +25,7 @@ const E2E_ROUTES: Record<string, string> = {
   gallery: 'E2EGallery',
   feedCrop: 'E2EFeedCrop',
   positionCanvas: 'E2EPositionCanvas',
+  storyTemplateEditor: 'E2EStoryTemplateEditor',
 };
 function getInitialRouteName(): string {
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
@@ -145,6 +147,7 @@ export default function RootNavigator() {
         <Stack.Screen name="E2EGallery" component={E2EGalleryScreen} />
         <Stack.Screen name="E2EFeedCrop" component={E2EFeedCropScreen} />
         <Stack.Screen name="E2EPositionCanvas" component={E2EPositionCanvasScreen} />
+        <Stack.Screen name="E2EStoryTemplateEditor" component={E2EStoryTemplateEditorScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

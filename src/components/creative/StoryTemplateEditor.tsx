@@ -19,7 +19,7 @@ import { COLORS, SPACING, RADIUS } from '../../utils/theme';
 import { saveStoryDraft } from '../../services/storyStudioService';
 import { useCreativeEditorStore, serializeCreativeEditor } from '../../store/creativeEditorStore';
 import { TextLayer, TemplateLayer, CANVAS_W, CANVAS_H } from '../../types/creativeTemplate';
-import { FONT_PRESETS } from '../../utils/fontPresets';
+import { FONT_PRESETS, getFontPreset } from '../../utils/fontPresets';
 import { BACKGROUND_PRESETS } from '../../utils/backgroundPresets';
 import { STICKER_CATEGORIES } from '../../utils/stickerPresets';
 import CreativeCanvas from './CreativeCanvas';
@@ -49,6 +49,9 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
   const [saving, setSaving] = useState(false);
   const [picking, setPicking] = useState(false);
   const [started, setStarted] = useState(false);
+  // テキストを指で実際に動かしている間はtrue（タップだけの選択では立たない）。
+  // 移動中はプロパティパネル・中央プレビューを隠し、配置先を隠さず確認できるようにする
+  const [textDragging, setTextDragging] = useState(false);
 
   const canvasShotRef = useRef<ViewShot>(null);
 
@@ -222,7 +225,14 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
   const availH = Math.max(200, winH - reservedH);
   const canvasWByHeight = availH * (CANVAS_W / CANVAS_H);
   const canvasW = Math.min(winW - SPACING.lg * 2, canvasWByHeight);
-  const overlayActive = !!selectedTextLayer || panel !== 'none';
+  // テキストをタップして選択した時だけプロパティ・中央プレビューを表示する。
+  // 位置を指で動かしている間は、配置先を隠さないよう両方とも表示しない
+  const showTextProps = !!selectedTextLayer && !textDragging;
+  const overlayActive = showTextProps || panel !== 'none';
+  const previewDisplayScale = canvasW / CANVAS_W;
+  const previewFontSize = selectedTextLayer
+    ? Math.min(72, Math.max(20, selectedTextLayer.size * previewDisplayScale * 2.2))
+    : 0;
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={close}>
@@ -251,15 +261,40 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
               onPickPhoto={pickPhoto}
               onSelectText={selectItem}
               onTextChange={(id, patch) => updateTextLayer(id, patch)}
+              onTextDragStateChange={setTextDragging}
             />
           </ViewShot>
 
           {/* パネル表示中はキャンバスのサイズを変えず、少し暗くしてその上にパネルを重ねる */}
           {overlayActive && <View style={styles.dimOverlay} pointerEvents="none" />}
 
+          {/* テキストをタップして選択した時だけ、実際の配置とは別に中央へ大きく表示する
+              プレビュー（キャンバス上では小さく・回転していて見づらいことがあるため）。
+              位置を動かしている間は配置先を隠さないよう表示しない。pointerEventsは
+              noneにして、下の実際のテキストへのドラッグ操作を邪魔しないようにする */}
+          {showTextProps && selectedTextLayer && (
+            <View testID="story-editor-text-preview" style={styles.previewWrap} pointerEvents="none">
+              <Text
+                style={[
+                  styles.previewText,
+                  {
+                    color: selectedTextLayer.color,
+                    fontSize: previewFontSize,
+                    fontFamily: getFontPreset(selectedTextLayer.font).family,
+                    fontWeight: getFontPreset(selectedTextLayer.font).fontWeight as any,
+                    textAlign: selectedTextLayer.align ?? 'center',
+                  },
+                ]}
+                numberOfLines={4}
+              >
+                {selectedTextLayer.text}
+              </Text>
+            </View>
+          )}
+
           {/* 選択中の文字・ステッカーのプロパティ（別モーダルではなく同一画面内、キャンバスの上に重ねて表示） */}
-          {selectedTextLayer && (
-            <View style={[styles.textPanel, styles.overlayPanel]}>
+          {showTextProps && selectedTextLayer && (
+            <View testID="story-editor-text-panel" style={[styles.textPanel, styles.overlayPanel]}>
               <View style={styles.textPanelTopRow}>
                 <TextInput
                   style={styles.textInput}
@@ -351,7 +386,7 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
                 <Ionicons name="color-palette-outline" size={22} color={panel === 'background' ? COLORS.primary : COLORS.text} />
                 <Text style={[styles.toolBtnText, panel === 'background' && styles.toolBtnTextActive]}>背景</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.toolBtn} onPress={handleAddTextLayer}>
+              <TouchableOpacity testID="story-editor-add-text-btn" style={styles.toolBtn} onPress={handleAddTextLayer}>
                 <Ionicons name="text-outline" size={22} color={COLORS.text} />
                 <Text style={styles.toolBtnText}>文字</Text>
               </TouchableOpacity>
@@ -388,6 +423,11 @@ const styles = StyleSheet.create({
   title: { color: COLORS.text, fontSize: 15, fontWeight: '800' },
   canvasWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', position: 'relative' },
   dimOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.45)' },
+  previewWrap: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    alignItems: 'center', justifyContent: 'center', paddingHorizontal: SPACING.lg,
+  },
+  previewText: { textAlign: 'center' },
   overlayPanel: {
     position: 'absolute', left: 0, right: 0, bottom: 0,
     backgroundColor: COLORS.surfaceElevated, borderTopLeftRadius: RADIUS.lg, borderTopRightRadius: RADIUS.lg,
