@@ -29,12 +29,13 @@ import {
   GestureType,
 } from 'react-native-gesture-handler';
 import { snapValueWithHit } from '../../utils/snap';
+import { CANVAS_W, CANVAS_H } from '../../types/creativeTemplate';
 
 // きりのいい位置（中央寄せなど）に近づいたときに一瞬止まる感触を出すための許容量
 // （画面px基準、displayScaleで論理px換算）。
 const POSITION_SNAP_SCREEN_PX = 8;
 // スナップ中だけ表示する、見えやすい枠線の色
-const GUIDE_COLOR = '#00E5FF';
+export const GUIDE_COLOR = '#00E5FF';
 // 移動・タップ選択の当たり判定は見た目の範囲より少し広めに取る（指先の接地面は
 // pxよりずっと大きいため、小さい要素でも触れやすくする）。
 const HIT_SLOP = 100;
@@ -80,6 +81,18 @@ interface Props {
   snapX?: number[];
   snapY?: number[];
   snapScale?: number[];
+  /** 要素の実寸（論理px）。指定した場合のみ、移動中に要素の中心がキャンバスの水平・垂直
+   *  中央線に近づいたときに一瞬止まり、guideV/guideHで渡されたキャンバス全体のガイド線を
+   *  表示する。テキストなど実寸が動的な要素は呼び出し側でonLayout等から測って渡す */
+  width?: number;
+  height?: number;
+  /** キャンバス中央への整列時に表示する、キャンバス全体を貫くガイド線の表示状態
+   *  （CreativeCanvas側で1つ生成し、全レイヤーで共有する） */
+  guideV?: SharedValue<boolean>;
+  guideH?: SharedValue<boolean>;
+  /** falseにすると選択中の青い枠線を表示しない（写真は枠線なしにしたいが、スナップ中の
+   *  見えやすい枠線(isSnapped)は選択枠線とは別物なので、falseでも影響を受けない） */
+  showSelectionBorder?: boolean;
   /** 同じキャンバス上の全レイヤーで共有するshared value。「今操作対象になっている要素の
    *  ID」を持ち、他の要素が別の指の操作に反応しないようにする排他ロックに使う */
   activeOwner: SharedValue<string | null>;
@@ -101,7 +114,8 @@ interface Props {
 
 export default function DraggableLayer({
   id, x, y, scale, rotation, displayScale, selected, locked, rotatable = true,
-  minScale = 0.2, maxScale = 4, snapX, snapY, snapScale, activeOwner, activeRefs, canvasGestures, testID, onSelect, onChange, children,
+  minScale = 0.2, maxScale = 4, snapX, snapY, snapScale, width, height, guideV, guideH,
+  showSelectionBorder = true, activeOwner, activeRefs, canvasGestures, testID, onSelect, onChange, children,
 }: Props) {
   const translateX = useSharedValue(x);
   const translateY = useSharedValue(y);
@@ -198,13 +212,30 @@ export default function DraggableLayer({
       let snapped = false;
       if (snapX) { const r = snapValueWithHit(nx, snapX, zone); nx = r.value; if (r.hit !== null) snapped = true; }
       if (snapY) { const r = snapValueWithHit(ny, snapY, zone); ny = r.value; if (r.hit !== null) snapped = true; }
+      // キャンバス中央への整列ガイド（実寸がわかっている要素のみ。widthは水平中央線＝
+      // 縦のガイド線、heightは垂直中央線＝横のガイド線に対応する）
+      let vGuideHit = false, hGuideHit = false;
+      if (width) {
+        const centerX = nx + width / 2;
+        const r = snapValueWithHit(centerX, [CANVAS_W / 2], zone);
+        if (r.hit !== null) { nx = r.value - width / 2; snapped = true; vGuideHit = true; }
+      }
+      if (height) {
+        const centerY = ny + height / 2;
+        const r = snapValueWithHit(centerY, [CANVAS_H / 2], zone);
+        if (r.hit !== null) { ny = r.value - height / 2; snapped = true; hGuideHit = true; }
+      }
       translateX.value = nx;
       translateY.value = ny;
       isSnapped.value = snapped;
+      if (guideV) guideV.value = vGuideHit;
+      if (guideH) guideH.value = hGuideHit;
     })
     .onEnd(() => {
       if (!isActiveSession.value) return;
       isSnapped.value = false;
+      if (guideV) guideV.value = false;
+      if (guideH) guideH.value = false;
       runOnJS(commit)();
     });
 
@@ -232,7 +263,7 @@ export default function DraggableLayer({
     let borderStyle: 'solid' | 'dashed' = 'dashed';
     if (isSnapped.value) {
       borderWidth = 2.5; borderColor = GUIDE_COLOR; borderStyle = 'solid';
-    } else if (selected) {
+    } else if (selected && showSelectionBorder) {
       borderWidth = 1.5; borderColor = '#4A90D9'; borderStyle = 'dashed';
     }
     return {

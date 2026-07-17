@@ -24,14 +24,14 @@ export default function E2ECreativeCanvasScreen() {
   // スロットとぴったり同じ比率だとcover-fitでスラックがゼロになり、隙間防止クランプにより
   // オフセットが常に0へ戻ってしまう＝パン操作の効果が測れない）。
   const [assignments, setAssignments] = useState<PhotoAssignment[]>([
-    { slotId: 'photo_1', uri: FIXTURE_PHOTO_URIS.photo1, offsetX: 0, offsetY: 0, scale: 1, naturalW: 1600, naturalH: 640 },
-    { slotId: 'photo_2', uri: FIXTURE_PHOTO_URIS.photo2, offsetX: 0, offsetY: 0, scale: 1, naturalW: 540, naturalH: 640 },
-    { slotId: 'photo_3', uri: FIXTURE_PHOTO_URIS.photo3, offsetX: 0, offsetY: 0, scale: 1, naturalW: 540, naturalH: 640 },
+    { slotId: 'photo_1', uri: FIXTURE_PHOTO_URIS.photo1, offsetX: 0, offsetY: 0, scale: 1, rotation: 0, naturalW: 1600, naturalH: 640 },
+    { slotId: 'photo_2', uri: FIXTURE_PHOTO_URIS.photo2, offsetX: 0, offsetY: 0, scale: 1, rotation: 0, naturalW: 540, naturalH: 640 },
+    { slotId: 'photo_3', uri: FIXTURE_PHOTO_URIS.photo3, offsetX: 0, offsetY: 0, scale: 1, rotation: 0, naturalW: 540, naturalH: 640 },
   ]);
   const [textLayer, setTextLayer] = useState<TextLayer>(E2E_TEXT_LAYER);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const handleSlotChange = (slotId: string, patch: { offsetX: number; offsetY: number; scale: number }) => {
+  const handleSlotChange = (slotId: string, patch: { offsetX: number; offsetY: number; scale: number; rotation: number }) => {
     setAssignments((prev) => prev.map((a) => (a.slotId === slotId ? { ...a, ...patch } : a)));
   };
   const handleTextChange = (id: string, patch: { x: number; y: number; scale: number; rotation: number }) => {
@@ -43,7 +43,7 @@ export default function E2ECreativeCanvasScreen() {
       <View testID="e2e-offsets">
         {assignments.map((a) => (
           <Text key={a.slotId} testID={`e2e-offset-${a.slotId}`}>
-            {a.slotId}: x={a.offsetX.toFixed(1)} y={a.offsetY.toFixed(1)} scale={a.scale.toFixed(2)}
+            {a.slotId}: x={a.offsetX.toFixed(1)} y={a.offsetY.toFixed(1)} scale={a.scale.toFixed(2)} rotation={a.rotation.toFixed(1)}
           </Text>
         ))}
         <Text testID="e2e-offset-title">

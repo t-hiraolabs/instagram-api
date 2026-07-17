@@ -1,5 +1,5 @@
 // 「ストーリー作成」統合の核心部分。写真スロット1件を、スロット自身の矩形で
-// overflow:hiddenクリップし、その内側だけで写真をpan+pinch操作できるようにする。
+// overflow:hiddenクリップし、その内側だけで写真をpan+pinch+回転操作できるようにする。
 // 旧StoryCanvas.tsxは常にキャンバス全面1枚だけを暗黙のスロットとして扱っていたが、
 // これを複数の独立したスロットに一般化したもの。
 //
@@ -9,8 +9,8 @@
 //   これは意図した挙動で、常に隙間なく覆う必要がある場合はscale=1で使う）。
 // - パン（位置調整）は、画像が拡大率1.0以上（スロットを覆っている間）は画像の端が
 //   スロットの端より内側に入らないようクランプする。拡大率1.0未満（余白がある状態）
-//   では画像は自動的に中央に固定される。
-// - 回転は無効（「位置と拡大率」のみが要件のため）。
+//   では画像は自動的に中央に固定される（このクランプは軸に沿った矩形を前提にした
+//   近似のため、回転中は多少の誤差が生じうる）。
 import React from 'react';
 import { View, Image, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -32,15 +32,18 @@ interface Props {
   /** キャンバス全体で共有するshared value（DraggableLayer参照） */
   activeOwner: SharedValue<string | null>;
   activeRefs: SharedValue<ActiveLayerRefs | null>;
+  /** キャンバス中央整列ガイド線の表示状態（DraggableLayer参照） */
+  guideV: SharedValue<boolean>;
+  guideH: SharedValue<boolean>;
   /** CreativeCanvas側のキャンバス全体を覆うピンチ・回転ジェスチャー（DraggableLayer参照） */
   canvasGestures: GestureType[];
   onSelect: () => void;
-  onChange: (patch: { offsetX: number; offsetY: number; scale: number }) => void;
+  onChange: (patch: { offsetX: number; offsetY: number; scale: number; rotation: number }) => void;
   onPickPhoto?: () => void;
 }
 
 export default function DraggablePhotoSlot({
-  slot, assignment, displayScale, selected, locked, testID, activeOwner, activeRefs, canvasGestures, onSelect, onChange, onPickPhoto,
+  slot, assignment, displayScale, selected, locked, testID, activeOwner, activeRefs, guideV, guideH, canvasGestures, onSelect, onChange, onPickPhoto,
 }: Props) {
   const clipStyle = {
     position: 'absolute' as const,
@@ -62,8 +65,8 @@ export default function DraggablePhotoSlot({
   // スロットをcoverする基準サイズ（assignment.scale===1のときにちょうどスロットを覆う）
   const { imgW, imgH, centerX, centerY } = photoSlotGeometry(slot, assignment);
 
-  const handleChange = (patch: { x: number; y: number; scale: number }) => {
-    onChange(clampPhotoOffset(slot, assignment, patch.x, patch.y, patch.scale));
+  const handleChange = (patch: { x: number; y: number; scale: number; rotation: number }) => {
+    onChange(clampPhotoOffset(slot, assignment, patch.x, patch.y, patch.scale, patch.rotation));
   };
 
   return (
@@ -73,8 +76,7 @@ export default function DraggablePhotoSlot({
         x={centerX + assignment.offsetX}
         y={centerY + assignment.offsetY}
         scale={assignment.scale}
-        rotation={0}
-        rotatable={false}
+        rotation={assignment.rotation}
         minScale={MIN_PHOTO_SCALE}
         maxScale={4}
         // 中央（隙間なくスロットに収まる基準位置）と、スロットをちょうど覆う倍率（scale=1、
@@ -82,6 +84,11 @@ export default function DraggablePhotoSlot({
         snapX={[centerX]}
         snapY={[centerY]}
         snapScale={[1]}
+        width={imgW}
+        height={imgH}
+        guideV={guideV}
+        guideH={guideH}
+        showSelectionBorder={false}
         displayScale={displayScale}
         selected={selected}
         locked={locked}
