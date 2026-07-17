@@ -69,8 +69,6 @@ function FontDropdown({ value, onChange }: { value: string; onChange: (fontId: s
       </TouchableOpacity>
       {open && (
         <View style={styles.fontDropdownList}>
-          {/* 現在中央に来ている行を示す目印（見た目のみ、操作は受け付けない） */}
-          <View style={styles.fontDropdownCenterMarker} pointerEvents="none" />
           <ScrollView
             testID="font-dropdown-scroll"
             showsVerticalScrollIndicator={false}
@@ -524,10 +522,6 @@ const styles = StyleSheet.create({
   fontDropdownList: {
     height: FONT_LIST_H, marginTop: SPACING.xs, borderRadius: RADIUS.md,
     borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.surface, overflow: 'hidden',
-  },
-  fontDropdownCenterMarker: {
-    position: 'absolute', left: 0, right: 0, top: (FONT_LIST_H - FONT_ROW_H) / 2, height: FONT_ROW_H,
-    backgroundColor: 'rgba(255,255,255,0.12)',
   },
   fontDropdownRow: { height: FONT_ROW_H, justifyContent: 'center', paddingHorizontal: SPACING.md },
   fontDropdownRowText: { color: COLORS.textMuted, fontSize: 15 },
