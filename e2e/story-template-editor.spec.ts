@@ -182,7 +182,7 @@ test.describe('StoryTemplateEditor フォントのドロップダウン', () => 
     await expect(page.getByTestId('font-dropdown-scroll')).toBeVisible();
   });
 
-  test('一覧をスクロールすると、指を離さなくても自動的にフォントが切り替わる', async ({ page }) => {
+  test('一覧をスクロールしている最中に、指を離さなくてもリアルタイムでフォントが切り替わる', async ({ page }) => {
     await page.goto('/?e2e=storyTemplateEditor');
     await page.waitForTimeout(1000);
 
@@ -193,17 +193,24 @@ test.describe('StoryTemplateEditor フォントのドロップダウン', () => 
     await page.getByTestId('font-dropdown-trigger').click();
     await page.waitForTimeout(200);
 
-    // react-native-webのScrollViewは自前でscrollイベントをリッスンしているため、
-    // scrollTopを直接動かしてscrollイベントを発火させ、その後の切り替え（自前の
-    // デバウンス判定）を待つ
-    await page.evaluate(() => {
-      const el = document.querySelector('[data-testid="font-dropdown-scroll"]') as HTMLElement;
-      el.scrollTop = 44 * 3;
-      el.dispatchEvent(new Event('scroll', { bubbles: true }));
-    });
-    await page.waitForTimeout(400);
+    async function scrollTo(y: number) {
+      await page.evaluate((yy) => {
+        const el = document.querySelector('[data-testid="font-dropdown-scroll"]') as HTMLElement;
+        el.scrollTop = yy;
+        el.dispatchEvent(new Event('scroll', { bubbles: true }));
+      }, y);
+    }
 
+    // 「スクロール中」であることを示すため、指を離す動作を挟まず、ごく短い待ち時間
+    // （デバウンスに頼っていた場合は間に合わない長さ）だけでも切り替わることを確認する
+    await scrollTo(44 * 3);
+    await page.waitForTimeout(30);
     await expect(page.getByTestId('font-dropdown-trigger-label')).toHaveText('装飾セリフ');
+
+    // さらにスクロールを続ける（1回で終わりではなく、動いている間ずっと追従することを確認）
+    await scrollTo(44 * 5);
+    await page.waitForTimeout(30);
+    await expect(page.getByTestId('font-dropdown-trigger-label')).toHaveText('手書き風（よもぎ）');
   });
 
   test('行を直接タップしても選択され、一覧が閉じる', async ({ page }) => {
