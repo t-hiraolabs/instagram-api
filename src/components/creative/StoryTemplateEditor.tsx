@@ -9,6 +9,7 @@ import React, { useRef, useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   ActivityIndicator, Platform, Alert, Modal, ScrollView, useWindowDimensions,
+  NativeSyntheticEvent, NativeScrollEvent,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -33,6 +34,86 @@ const ALIGN_OPTIONS: { key: NonNullable<TextLayer['align']>; icon: keyof typeof 
 ];
 
 type Panel = 'none' | 'background' | 'sticker';
+
+// フォント一覧の各行の高さ（スナップ幅と一致させる）
+const FONT_ROW_H = 44;
+// ドロップダウンを開いた時に表示する一覧の高さ（3行分）。今後フォント数を増やしても
+// 一覧はこの高さのまま内側でスクロールするだけなので、増加分の影響を受けない
+const FONT_LIST_H = FONT_ROW_H * 3;
+
+/** フォント選択用のドロップダウン。開くと縦スクロールの一覧になり、指を離した位置に
+ *  最も近い行へ自動的にスナップして選択が切り替わる（1件ずつタップしなくても、
+ *  スクロールしながら見た目を確認するだけで選べる）。フォント数が今後増えても
+ *  一覧の高さは変えず、内側でスクロールするだけで対応できる。
+ *  注意: react-native-webの`ScrollView`はonMomentumScrollEnd/onScrollEndDragを
+ *  Web上では一切発火しない（ネイティブ専用の実装のため）。そのため「スクロールが
+ *  止まった」判定はonScroll自体を自前でデバウンスして検出する（Web・ネイティブ両対応）*/
+function FontDropdown({ value, onChange }: { value: string; onChange: (fontId: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const current = getFontPreset(value);
+  const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 閉じた後に、閉じる直前のスクロール位置由来の切り替えが遅れて反映されないよう、
+  // 保留中のタイマーを破棄する
+  React.useEffect(() => {
+    if (!open && settleTimer.current) {
+      clearTimeout(settleTimer.current);
+      settleTimer.current = null;
+    }
+  }, [open]);
+
+  const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const y = e.nativeEvent.contentOffset.y;
+    if (settleTimer.current) clearTimeout(settleTimer.current);
+    settleTimer.current = setTimeout(() => {
+      const index = Math.round(y / FONT_ROW_H);
+      const clamped = Math.max(0, Math.min(FONT_PRESETS.length - 1, index));
+      const preset = FONT_PRESETS[clamped];
+      onChange(preset.id);
+    }, 120);
+  };
+
+  return (
+    <View>
+      <TouchableOpacity testID="font-dropdown-trigger" style={styles.fontDropdownTrigger} onPress={() => setOpen((o) => !o)} activeOpacity={0.8}>
+        <Text testID="font-dropdown-trigger-label" style={[styles.fontDropdownTriggerText, { fontFamily: current.family }]} numberOfLines={1}>
+          {current.label}
+        </Text>
+        <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={16} color={COLORS.textMuted} />
+      </TouchableOpacity>
+      {open && (
+        <View style={styles.fontDropdownList}>
+          {/* 現在中央に来ている行を示す目印（見た目のみ、操作は受け付けない） */}
+          <View style={styles.fontDropdownCenterMarker} pointerEvents="none" />
+          <ScrollView
+            testID="font-dropdown-scroll"
+            showsVerticalScrollIndicator={false}
+            snapToInterval={FONT_ROW_H}
+            decelerationRate="fast"
+            scrollEventThrottle={16}
+            contentContainerStyle={{ paddingVertical: (FONT_LIST_H - FONT_ROW_H) / 2 }}
+            onScroll={handleScroll}
+          >
+            {FONT_PRESETS.map((f) => (
+              <TouchableOpacity
+                key={f.id}
+                style={styles.fontDropdownRow}
+                onPress={() => { onChange(f.id); setOpen(false); }}
+              >
+                <Text
+                  style={[styles.fontDropdownRowText, { fontFamily: f.family }, f.id === value && styles.fontDropdownRowTextActive]}
+                  numberOfLines={1}
+                >
+                  {f.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+    </View>
+  );
+}
 
 interface Props {
   visible: boolean;
@@ -64,6 +145,7 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
   const textLayers = useCreativeEditorStore((s) => s.textLayers);
   const selectedId = useCreativeEditorStore((s) => s.selectedId);
   const loadTemplate = useCreativeEditorStore((s) => s.loadTemplate);
+  const setBackgroundLayer = useCreativeEditorStore((s) => s.setBackgroundLayer);
   const reset = useCreativeEditorStore((s) => s.reset);
   const selectItem = useCreativeEditorStore((s) => s.selectItem);
   const setActiveSlot = useCreativeEditorStore((s) => s.setActiveSlot);
@@ -117,9 +199,11 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
       });
       if (res.canceled || !res.assets[0]) return;
       const asset = res.assets[0];
-      // 背景モードだった場合は解除し、写真スロットへ戻す（文字・ステッカーは維持）
+      // 写真スロットがまだ無ければ作る（文字・ステッカー・背景は維持する。写真を
+      // 拡大率1.0未満に縮小すればスロット内に余白ができ、そこに背景が見えるため、
+      // 写真と背景は共存できる仕様にしている）
       if (photoSlots.length === 0) {
-        loadTemplate({ templateId: templateId || '', photoSlots: [FULL_BLEED_SLOT], layers: [], textLayers });
+        loadTemplate({ templateId: templateId || '', photoSlots: [FULL_BLEED_SLOT], layers, textLayers });
       }
       assignPhoto(PHOTO_SLOT_ID, asset.uri, asset.width || CANVAS_W, asset.height || CANVAS_H);
       setPanel('none');
@@ -132,29 +216,16 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
     }
   };
 
-  const applyBackground = (presetId: string) => {
+  // 写真スロット・写真の割当には触れない（setBackgroundLayerは背景レイヤーだけを
+  // 置き換える）。写真を拡大率1.0未満に縮小した時の余白に背景を表示したい、という
+  // 意図があるため、写真を追加済みでも背景をいつでも設定・変更できる
+  const selectBackground = (presetId: string) => {
     const bgLayer: TemplateLayer = {
       id: 'bg', kind: 'background', band: 'background', uri: '', bgPresetId: presetId,
       x: 0, y: 0, w: CANVAS_W, h: CANVAS_H,
     };
-    // 写真は使わないので写真スロットは空にする（文字・ステッカーは維持）
-    loadTemplate({ templateId: templateId || '', photoSlots: [], layers: [bgLayer], textLayers });
+    setBackgroundLayer(bgLayer);
     setPanel('none');
-  };
-
-  const selectBackground = (presetId: string) => {
-    const hasPhoto = photoAssignments.length > 0;
-    if (!hasPhoto) { applyBackground(presetId); return; }
-    // 写真が選ばれている状態で背景を選ぶと写真が失われるため、必ず確認する
-    const msg = '背景に変更すると、選択中の写真は使われなくなります。よろしいですか？';
-    if (Platform.OS === 'web') {
-      if (window.confirm(msg)) applyBackground(presetId);
-      return;
-    }
-    Alert.alert('確認', msg, [
-      { text: 'キャンセル', style: 'cancel' },
-      { text: '背景に変更', style: 'destructive', onPress: () => applyBackground(presetId) },
-    ]);
   };
 
   const selectedTextLayer = textLayers.find((t) => t.id === selectedId) as TextLayer | undefined;
@@ -316,17 +387,12 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
                   <Text style={styles.doneText}>完了</Text>
                 </TouchableOpacity>
               </View>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-                {FONT_PRESETS.map((f) => (
-                  <TouchableOpacity
-                    key={f.id}
-                    style={[styles.fontChip, selectedTextLayer.font === f.id && styles.chipActive]}
-                    onPress={() => updateTextLayer(selectedTextLayer.id, { font: f.id })}
-                  >
-                    <Text style={[styles.fontChipText, { fontFamily: f.family }, selectedTextLayer.font === f.id && styles.chipTextActive]}>{f.label}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
+              <View style={styles.fontDropdownWrap}>
+                <FontDropdown
+                  value={selectedTextLayer.font}
+                  onChange={(font) => updateTextLayer(selectedTextLayer.id, { font })}
+                />
+              </View>
               <View style={styles.colorAlignRow}>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
                   {TEXT_COLOR_OPTIONS.map((c) => (
@@ -461,10 +527,25 @@ const styles = StyleSheet.create({
   },
   doneText: { color: COLORS.primary, fontSize: 14, fontWeight: '700' },
   chipRow: { gap: SPACING.sm, paddingHorizontal: SPACING.md },
-  fontChip: { paddingVertical: 6, paddingHorizontal: SPACING.md, borderRadius: RADIUS.full, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.surface },
-  fontChipText: { color: COLORS.textMuted, fontSize: 12, fontWeight: '700' },
   chipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  chipTextActive: { color: '#fff' },
+  fontDropdownWrap: { paddingHorizontal: SPACING.md },
+  fontDropdownTrigger: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingVertical: 8, paddingHorizontal: SPACING.md, borderRadius: RADIUS.md,
+    borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.surface,
+  },
+  fontDropdownTriggerText: { flex: 1, color: COLORS.text, fontSize: 14, fontWeight: '700' },
+  fontDropdownList: {
+    height: FONT_LIST_H, marginTop: SPACING.xs, borderRadius: RADIUS.md,
+    borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.surface, overflow: 'hidden',
+  },
+  fontDropdownCenterMarker: {
+    position: 'absolute', left: 0, right: 0, top: (FONT_LIST_H - FONT_ROW_H) / 2, height: FONT_ROW_H,
+    borderTopWidth: 1, borderBottomWidth: 1, borderColor: COLORS.primary, backgroundColor: 'rgba(255,255,255,0.04)',
+  },
+  fontDropdownRow: { height: FONT_ROW_H, justifyContent: 'center', paddingHorizontal: SPACING.md },
+  fontDropdownRowText: { color: COLORS.textMuted, fontSize: 15 },
+  fontDropdownRowTextActive: { color: COLORS.text, fontWeight: '800' },
   colorAlignRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   swatch: { width: 26, height: 26, borderRadius: 13, borderWidth: 2, borderColor: COLORS.border },
   swatchActive: { borderColor: COLORS.primary },

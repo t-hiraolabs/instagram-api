@@ -43,6 +43,11 @@ interface CreativeEditorState {
   swapPhotoAssignments: (slotIdA: string, slotIdB: string) => void;
 
   updateLayer: (id: string, patch: Partial<TemplateLayer>) => void;
+  /** 背景（kind:'background'）レイヤーだけを置き換える・追加する・削除する（nullで削除）。
+   *  写真スロット・写真の割当・テキストは一切変更しない。写真を拡大率1.0未満に縮小して
+   *  スロット内に余白ができた時、その余白に背景を表示できるようにするため、写真と背景は
+   *  互いに独立して設定できる必要がある */
+  setBackgroundLayer: (bgLayer: TemplateLayer | null) => void;
 
   addTextLayer: (layer: TextLayer) => void;
   updateTextLayer: (id: string, patch: Partial<TextLayer>) => void;
@@ -108,6 +113,12 @@ export const useCreativeEditorStore = create<CreativeEditorState>((set, get) => 
 
   updateLayer: (id, patch) =>
     set((state) => ({ layers: state.layers.map((l) => (l.id === id ? { ...l, ...patch } : l)) })),
+  setBackgroundLayer: (bgLayer) =>
+    set((state) => ({
+      layers: bgLayer
+        ? [bgLayer, ...state.layers.filter((l) => l.kind !== 'background')]
+        : state.layers.filter((l) => l.kind !== 'background'),
+    })),
 
   addTextLayer: (layer) =>
     set((state) => ({ textLayers: [...state.textLayers, layer], selectedId: layer.id })),
