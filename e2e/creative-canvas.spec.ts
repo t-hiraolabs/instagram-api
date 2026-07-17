@@ -323,4 +323,66 @@ test.describe('CreativeCanvas', () => {
     expect(after1).not.toBe(before1);
     expect(afterTitle).toBe(beforeTitle);
   });
+
+  test('ピンチ中のわずかな指の角度のブレでは回転しない（回転の不感帯）', async ({ page }) => {
+    await page.goto('/?e2e=creativeCanvas');
+    await page.waitForTimeout(1000);
+
+    const box = await page.getByTestId('layer-title').boundingBox();
+    expect(box).not.toBeNull();
+    const cx = box!.x + box!.width / 2;
+    const cy = box!.y + box!.height / 2;
+
+    // サイズ変更のつもりで指を動かしても、完全に一直線に動かせるとは限らない。わずかな
+    // 角度のブレ（不感帯の角度未満）まで回転として反映すると、「拡大縮小しただけなのに
+    // 最初から角度が変わってしまう」と感じられてしまうため、小さなブレは無視されるべき
+    const client = await page.context().newCDPSession(page);
+    await dispatchTouch(client, 'touchStart', [{ x: cx - 15, y: cy }, { x: cx + 15, y: cy }]);
+    await page.waitForTimeout(100);
+    const steps = 10;
+    for (let i = 1; i <= steps; i++) {
+      const offset = 15 + (40 * i) / steps;
+      const yDrift = (2 * i) / steps; // 55px程度の半径に対して数度程度のわずかなブレ
+      await dispatchTouch(client, 'touchMove', [{ x: cx - offset, y: cy - yDrift }, { x: cx + offset, y: cy + yDrift }]);
+      await page.waitForTimeout(40);
+    }
+    await page.waitForTimeout(100);
+    await dispatchTouch(client, 'touchEnd', []);
+    await page.waitForTimeout(300);
+
+    const after = await page.getByTestId('e2e-offset-title').textContent();
+    const rotation = Number(after!.match(/rotation=(-?[\d.]+)/)![1]);
+    expect(rotation).toBe(0);
+  });
+
+  test('意図的に大きく指を回転させれば、不感帯を超えた分だけ滑らかに回転する', async ({ page }) => {
+    await page.goto('/?e2e=creativeCanvas');
+    await page.waitForTimeout(1000);
+
+    const box = await page.getByTestId('layer-title').boundingBox();
+    expect(box).not.toBeNull();
+    const cx = box!.x + box!.width / 2;
+    const cy = box!.y + box!.height / 2;
+
+    const client = await page.context().newCDPSession(page);
+    const radius = 15;
+    await dispatchTouch(client, 'touchStart', [{ x: cx - radius, y: cy }, { x: cx + radius, y: cy }]);
+    await page.waitForTimeout(100);
+    const steps = 20;
+    for (let i = 1; i <= steps; i++) {
+      const angle = (Math.PI / 4) * (i / steps); // 45度まで回転（半径は一定、拡大縮小は伴わない）
+      const dx = radius * Math.cos(angle), dy = radius * Math.sin(angle);
+      await dispatchTouch(client, 'touchMove', [{ x: cx - dx, y: cy - dy }, { x: cx + dx, y: cy + dy }]);
+      await page.waitForTimeout(30);
+    }
+    await page.waitForTimeout(100);
+    await dispatchTouch(client, 'touchEnd', []);
+    await page.waitForTimeout(300);
+
+    const after = await page.getByTestId('e2e-offset-title').textContent();
+    const rotation = Number(after!.match(/rotation=(-?[\d.]+)/)![1]);
+    // 不感帯（6度）の分だけ差し引かれた角度が反映される（45度回した場合は約39度）
+    expect(rotation).toBeGreaterThan(30);
+    expect(rotation).toBeLessThan(45);
+  });
 });
