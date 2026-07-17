@@ -11,6 +11,7 @@ import {
   ActivityIndicator, Platform, Alert, Modal, ScrollView, useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import ViewShot from 'react-native-view-shot';
@@ -93,6 +94,16 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
       if (status !== 'granted') { alertMsg('写真へのアクセスを許可してください', '権限エラー'); return; }
     }
     setPicking(true);
+    // Web版のImagePickerは、ファイル選択ダイアログをキャンセルするとPromiseが
+    // 解決されないまま残ることがある（既知の制約）。ウィンドウがフォーカスを
+    // 取り戻してもファイルが来なければ、スピナーだけは強制的に止める
+    // （実際の選択結果を待つ処理自体はそのまま継続するので、遅れて選択が
+    // 完了しても問題なく反映される）。
+    let clearSpinnerTimer: ReturnType<typeof setTimeout> | undefined;
+    const onWindowFocus = () => {
+      clearSpinnerTimer = setTimeout(() => setPicking(false), 800);
+    };
+    if (Platform.OS === 'web') window.addEventListener('focus', onWindowFocus);
     try {
       const res = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -107,6 +118,10 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
       assignPhoto(PHOTO_SLOT_ID, asset.uri, asset.width || CANVAS_W, asset.height || CANVAS_H);
       setPanel('none');
     } finally {
+      if (Platform.OS === 'web') {
+        window.removeEventListener('focus', onWindowFocus);
+        if (clearSpinnerTimer) clearTimeout(clearSpinnerTimer);
+      }
       setPicking(false);
     }
   };
@@ -211,6 +226,10 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={close}>
+      {/* React NativeのModalはネイティブでは別ルートとして描画されるため、その中で
+          react-native-gesture-handlerのジェスチャー（ピンチ・回転等）を確実に動かすには
+          GestureHandlerRootViewをModalの中に別途置く必要がある */}
+      <GestureHandlerRootView style={{ flex: 1 }}>
       <View style={[styles.modal, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
         <View style={styles.header}>
           <TouchableOpacity onPress={close}><Ionicons name="close" size={26} color={COLORS.text} /></TouchableOpacity>
@@ -358,6 +377,7 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
           </TouchableOpacity>
         </View>
       </View>
+      </GestureHandlerRootView>
     </Modal>
   );
 }
