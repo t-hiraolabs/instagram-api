@@ -111,7 +111,7 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
     }
   };
 
-  const selectBackground = (presetId: string) => {
+  const applyBackground = (presetId: string) => {
     const bgLayer: TemplateLayer = {
       id: 'bg', kind: 'background', band: 'background', uri: '', bgPresetId: presetId,
       x: 0, y: 0, w: CANVAS_W, h: CANVAS_H,
@@ -119,6 +119,21 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
     // 写真は使わないので写真スロットは空にする（文字・ステッカーは維持）
     loadTemplate({ templateId: templateId || '', photoSlots: [], layers: [bgLayer], textLayers });
     setPanel('none');
+  };
+
+  const selectBackground = (presetId: string) => {
+    const hasPhoto = photoAssignments.length > 0;
+    if (!hasPhoto) { applyBackground(presetId); return; }
+    // 写真が選ばれている状態で背景を選ぶと写真が失われるため、必ず確認する
+    const msg = '背景に変更すると、選択中の写真は使われなくなります。よろしいですか？';
+    if (Platform.OS === 'web') {
+      if (window.confirm(msg)) applyBackground(presetId);
+      return;
+    }
+    Alert.alert('確認', msg, [
+      { text: 'キャンセル', style: 'cancel' },
+      { text: '背景に変更', style: 'destructive', onPress: () => applyBackground(presetId) },
+    ]);
   };
 
   const selectedTextLayer = textLayers.find((t) => t.id === selectedId) as TextLayer | undefined;
@@ -182,18 +197,17 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
     }
   };
 
-  // --- レイアウト計算: 縦スクロール無しで1画面に収まるよう、残り高さからキャンバス幅を逆算する ---
+  // --- レイアウト計算: 縦スクロール無しで1画面に収まるよう、残り高さからキャンバス幅を逆算する。
+  // プロパティパネル・ステッカー/背景ストリップはキャンバスの上に重ねて表示する（サイズを
+  // 変えない）ため、この計算にパネルの有無は影響させない（常に同じ高さを確保しておく）。
   const TOPBAR_H = 48;
   const TOOLBAR_H = 56;
   const FINISH_H = 64;
-  const TEXT_PANEL_H = 132;
-  const STRIP_PANEL_H = 96;
-  const reservedH = insets.top + insets.bottom + TOPBAR_H + TOOLBAR_H + FINISH_H
-    + (selectedTextLayer ? TEXT_PANEL_H : panel !== 'none' ? STRIP_PANEL_H : 0)
-    + SPACING.md * 2;
+  const reservedH = insets.top + insets.bottom + TOPBAR_H + TOOLBAR_H + FINISH_H + SPACING.md * 2;
   const availH = Math.max(200, winH - reservedH);
   const canvasWByHeight = availH * (CANVAS_W / CANVAS_H);
   const canvasW = Math.min(winW - SPACING.lg * 2, canvasWByHeight);
+  const overlayActive = !!selectedTextLayer || panel !== 'none';
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={close}>
@@ -220,106 +234,115 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
               onTextChange={(id, patch) => updateTextLayer(id, patch)}
             />
           </ViewShot>
-        </View>
 
-        {/* 選択中の文字・ステッカーのプロパティ（別モーダルではなく同一画面内に表示） */}
-        {selectedTextLayer && (
-          <View style={styles.textPanel}>
-            <View style={styles.textPanelTopRow}>
-              <TextInput
-                style={styles.textInput}
-                value={selectedTextLayer.text}
-                onChangeText={(text) => updateTextLayer(selectedTextLayer.id, { text })}
-                placeholder="文字を入力"
-                placeholderTextColor={COLORS.textMuted}
-              />
-              <TouchableOpacity onPress={() => { removeTextLayer(selectedTextLayer.id); }} hitSlop={8}>
-                <Ionicons name="trash-outline" size={20} color={COLORS.error} />
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => selectItem(null)} hitSlop={8}>
-                <Text style={styles.doneText}>完了</Text>
-              </TouchableOpacity>
-            </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-              {FONT_PRESETS.map((f) => (
-                <TouchableOpacity
-                  key={f.id}
-                  style={[styles.fontChip, selectedTextLayer.font === f.id && styles.chipActive]}
-                  onPress={() => updateTextLayer(selectedTextLayer.id, { font: f.id })}
-                >
-                  <Text style={[styles.fontChipText, { fontFamily: f.family }, selectedTextLayer.font === f.id && styles.chipTextActive]}>{f.label}</Text>
+          {/* パネル表示中はキャンバスのサイズを変えず、少し暗くしてその上にパネルを重ねる */}
+          {overlayActive && <View style={styles.dimOverlay} pointerEvents="none" />}
+
+          {/* 選択中の文字・ステッカーのプロパティ（別モーダルではなく同一画面内、キャンバスの上に重ねて表示） */}
+          {selectedTextLayer && (
+            <View style={[styles.textPanel, styles.overlayPanel]}>
+              <View style={styles.textPanelTopRow}>
+                <TextInput
+                  style={styles.textInput}
+                  value={selectedTextLayer.text}
+                  onChangeText={(text) => updateTextLayer(selectedTextLayer.id, { text })}
+                  placeholder="文字を入力"
+                  placeholderTextColor={COLORS.textMuted}
+                />
+                <TouchableOpacity onPress={() => { removeTextLayer(selectedTextLayer.id); }} hitSlop={8}>
+                  <Ionicons name="trash-outline" size={20} color={COLORS.error} />
                 </TouchableOpacity>
-              ))}
-            </ScrollView>
-            <View style={styles.colorAlignRow}>
+                <TouchableOpacity onPress={() => selectItem(null)} hitSlop={8}>
+                  <Text style={styles.doneText}>完了</Text>
+                </TouchableOpacity>
+              </View>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-                {TEXT_COLOR_OPTIONS.map((c) => (
+                {FONT_PRESETS.map((f) => (
                   <TouchableOpacity
-                    key={c}
-                    style={[styles.swatch, { backgroundColor: c }, selectedTextLayer.color === c && styles.swatchActive]}
-                    onPress={() => updateTextLayer(selectedTextLayer.id, { color: c })}
-                  />
-                ))}
-              </ScrollView>
-              <View style={styles.alignRow}>
-                {ALIGN_OPTIONS.map((a) => (
-                  <TouchableOpacity
-                    key={a.key}
-                    style={[styles.alignBtn, (selectedTextLayer.align ?? 'left') === a.key && styles.chipActive]}
-                    onPress={() => updateTextLayer(selectedTextLayer.id, { align: a.key })}
+                    key={f.id}
+                    style={[styles.fontChip, selectedTextLayer.font === f.id && styles.chipActive]}
+                    onPress={() => updateTextLayer(selectedTextLayer.id, { font: f.id })}
                   >
-                    <Ionicons name={a.icon} size={16} color={(selectedTextLayer.align ?? 'left') === a.key ? '#fff' : COLORS.textMuted} />
+                    <Text style={[styles.fontChipText, { fontFamily: f.family }, selectedTextLayer.font === f.id && styles.chipTextActive]}>{f.label}</Text>
                   </TouchableOpacity>
                 ))}
+              </ScrollView>
+              <View style={styles.colorAlignRow}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+                  {TEXT_COLOR_OPTIONS.map((c) => (
+                    <TouchableOpacity
+                      key={c}
+                      style={[styles.swatch, { backgroundColor: c }, selectedTextLayer.color === c && styles.swatchActive]}
+                      onPress={() => updateTextLayer(selectedTextLayer.id, { color: c })}
+                    />
+                  ))}
+                </ScrollView>
+                <View style={styles.alignRow}>
+                  {ALIGN_OPTIONS.map((a) => (
+                    <TouchableOpacity
+                      key={a.key}
+                      style={[styles.alignBtn, (selectedTextLayer.align ?? 'left') === a.key && styles.chipActive]}
+                      onPress={() => updateTextLayer(selectedTextLayer.id, { align: a.key })}
+                    >
+                      <Ionicons name={a.icon} size={16} color={(selectedTextLayer.align ?? 'left') === a.key ? '#fff' : COLORS.textMuted} />
+                    </TouchableOpacity>
+                  ))}
+                </View>
               </View>
             </View>
-          </View>
-        )}
+          )}
 
-        {/* 背景プリセット・ステッカーのインライン選択パネル（別モーダルにしない） */}
-        {!selectedTextLayer && panel === 'background' && (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.stripPanel} contentContainerStyle={styles.stripContent}>
-            {BACKGROUND_PRESETS.map((preset) => (
-              <TouchableOpacity key={preset.id} style={styles.bgSwatchItem} onPress={() => selectBackground(preset.id)} activeOpacity={0.85}>
-                <View style={styles.bgSwatch}>
-                  <BackgroundPresetSvg preset={preset} width={44} height={78} />
-                </View>
-                <Text style={styles.bgSwatchLabel} numberOfLines={1}>{preset.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        )}
-        {!selectedTextLayer && panel === 'sticker' && (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.stripPanel} contentContainerStyle={styles.stripContent}>
-            {STICKER_CATEGORIES.flatMap((cat) => cat.emojis).map((emoji, i) => (
-              <TouchableOpacity key={`${emoji}_${i}`} style={styles.stickerItem} onPress={() => handleAddSticker(emoji)} activeOpacity={0.7}>
-                <Text style={styles.stickerEmoji}>{emoji}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        )}
+          {/* 背景プリセット・ステッカーのインライン選択パネル（別モーダルにせず、キャンバスの上に重ねて表示） */}
+          {!selectedTextLayer && panel === 'background' && (
+            <View style={[styles.stripPanel, styles.overlayPanel]}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.stripContent}>
+                {BACKGROUND_PRESETS.map((preset) => (
+                  <TouchableOpacity key={preset.id} style={styles.bgSwatchItem} onPress={() => selectBackground(preset.id)} activeOpacity={0.85}>
+                    <View style={styles.bgSwatch}>
+                      <BackgroundPresetSvg preset={preset} width={44} height={78} />
+                    </View>
+                    <Text style={styles.bgSwatchLabel} numberOfLines={1}>{preset.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          )}
+          {!selectedTextLayer && panel === 'sticker' && (
+            <View style={[styles.stripPanel, styles.overlayPanel]}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.stripContent}>
+                {STICKER_CATEGORIES.flatMap((cat) => cat.emojis).map((emoji, i) => (
+                  <TouchableOpacity key={`${emoji}_${i}`} style={styles.stickerItem} onPress={() => handleAddSticker(emoji)} activeOpacity={0.7}>
+                    <Text style={styles.stickerEmoji}>{emoji}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          )}
+        </View>
 
-        {/* アイコンツールバー（常時表示） */}
-        {!selectedTextLayer && (
-          <View style={styles.toolbar}>
-            <TouchableOpacity style={styles.toolBtn} onPress={pickPhoto} disabled={picking}>
-              {picking ? <ActivityIndicator size="small" color={COLORS.text} /> : <Ionicons name="image-outline" size={22} color={COLORS.text} />}
-              <Text style={styles.toolBtnText}>写真</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.toolBtn} onPress={() => setPanel((p) => (p === 'background' ? 'none' : 'background'))}>
-              <Ionicons name="color-palette-outline" size={22} color={panel === 'background' ? COLORS.primary : COLORS.text} />
-              <Text style={[styles.toolBtnText, panel === 'background' && styles.toolBtnTextActive]}>背景</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.toolBtn} onPress={handleAddTextLayer}>
-              <Ionicons name="text-outline" size={22} color={COLORS.text} />
-              <Text style={styles.toolBtnText}>文字</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.toolBtn} onPress={() => setPanel((p) => (p === 'sticker' ? 'none' : 'sticker'))}>
-              <Ionicons name="happy-outline" size={22} color={panel === 'sticker' ? COLORS.primary : COLORS.text} />
-              <Text style={[styles.toolBtnText, panel === 'sticker' && styles.toolBtnTextActive]}>ステッカー</Text>
-            </TouchableOpacity>
-          </View>
-        )}
+        {/* アイコンツールバー（常時同じ高さを確保。文字選択中はキャンバスサイズを変えないため空のまま） */}
+        <View style={styles.toolbar}>
+          {!selectedTextLayer && (
+            <>
+              <TouchableOpacity style={styles.toolBtn} onPress={pickPhoto} disabled={picking}>
+                {picking ? <ActivityIndicator size="small" color={COLORS.text} /> : <Ionicons name="image-outline" size={22} color={COLORS.text} />}
+                <Text style={styles.toolBtnText}>写真</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.toolBtn} onPress={() => setPanel((p) => (p === 'background' ? 'none' : 'background'))}>
+                <Ionicons name="color-palette-outline" size={22} color={panel === 'background' ? COLORS.primary : COLORS.text} />
+                <Text style={[styles.toolBtnText, panel === 'background' && styles.toolBtnTextActive]}>背景</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.toolBtn} onPress={handleAddTextLayer}>
+                <Ionicons name="text-outline" size={22} color={COLORS.text} />
+                <Text style={styles.toolBtnText}>文字</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.toolBtn} onPress={() => setPanel((p) => (p === 'sticker' ? 'none' : 'sticker'))}>
+                <Ionicons name="happy-outline" size={22} color={panel === 'sticker' ? COLORS.primary : COLORS.text} />
+                <Text style={[styles.toolBtnText, panel === 'sticker' && styles.toolBtnTextActive]}>ステッカー</Text>
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
 
         <View style={styles.finishRow}>
           <TouchableOpacity style={styles.saveBtn} onPress={handleSaveDraft} disabled={saving} activeOpacity={0.85}>
@@ -343,7 +366,13 @@ const styles = StyleSheet.create({
   modal: { flex: 1, backgroundColor: COLORS.background },
   header: { height: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: SPACING.md, borderBottomWidth: 1, borderBottomColor: COLORS.border },
   title: { color: COLORS.text, fontSize: 15, fontWeight: '800' },
-  canvasWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  canvasWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', position: 'relative' },
+  dimOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.45)' },
+  overlayPanel: {
+    position: 'absolute', left: 0, right: 0, bottom: 0,
+    backgroundColor: COLORS.surfaceElevated, borderTopLeftRadius: RADIUS.lg, borderTopRightRadius: RADIUS.lg,
+    borderWidth: 1, borderColor: COLORS.border, borderBottomWidth: 0,
+  },
   toolbar: {
     height: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around',
     borderTopWidth: 1, borderTopColor: COLORS.border,
@@ -351,14 +380,14 @@ const styles = StyleSheet.create({
   toolBtn: { alignItems: 'center', gap: 2 },
   toolBtnText: { color: COLORS.textSecondary, fontSize: 11, fontWeight: '600' },
   toolBtnTextActive: { color: COLORS.primary },
-  stripPanel: { height: 96, borderTopWidth: 1, borderTopColor: COLORS.border },
+  stripPanel: { height: 96, justifyContent: 'center' },
   stripContent: { alignItems: 'center', gap: SPACING.sm, paddingHorizontal: SPACING.md },
   bgSwatchItem: { alignItems: 'center', gap: 4 },
   bgSwatch: { width: 44, height: 78, borderRadius: RADIUS.sm, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border },
   bgSwatchLabel: { color: COLORS.textMuted, fontSize: 9, maxWidth: 50, textAlign: 'center' },
   stickerItem: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: RADIUS.md, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border },
   stickerEmoji: { fontSize: 24 },
-  textPanel: { minHeight: 132, borderTopWidth: 1, borderTopColor: COLORS.border, paddingVertical: SPACING.sm, gap: SPACING.xs },
+  textPanel: { minHeight: 132, paddingVertical: SPACING.sm, gap: SPACING.xs },
   textPanelTopRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, paddingHorizontal: SPACING.md },
   textInput: {
     flex: 1, borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.md,
