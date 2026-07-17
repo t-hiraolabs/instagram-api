@@ -208,21 +208,27 @@ test.describe('CreativeCanvas', () => {
     await page.goto('/?e2e=creativeCanvas');
     await page.waitForTimeout(1000);
 
+    // photo_3はスロットと写真の比率が完全に一致しており、offsetが常に(0,0)に
+    // クランプされる（=ジェスチャーが実際に効いたかどうかをこの値だけでは判定できない）
+    // ため、検証対象には使わない。photo_1（実際にオフセットが動く）とtitle（クランプの
+    // 一切ないテキスト、x/yがそのまま反映される）の組み合わせで検証する。
+    const before = await page.getByTestId('e2e-offset-title').textContent();
+
     const box1 = await page.getByTestId('layer-photo_1').boundingBox();
-    const box3 = await page.getByTestId('layer-photo_3').boundingBox();
+    const boxTitle = await page.getByTestId('layer-title').boundingBox();
     expect(box1).not.toBeNull();
-    expect(box3).not.toBeNull();
+    expect(boxTitle).not.toBeNull();
     const c1 = { x: box1!.x + box1!.width / 2, y: box1!.y + box1!.height / 2 };
-    const c3 = { x: box3!.x + box3!.width / 2, y: box3!.y + box3!.height / 2 };
+    const cTitle = { x: boxTitle!.x + boxTitle!.width / 2, y: boxTitle!.y + boxTitle!.height / 2 };
 
     const client = await page.context().newCDPSession(page);
-    await dispatchTouch(client, 'touchStart', [c1, c3]);
+    await dispatchTouch(client, 'touchStart', [c1, cTitle]);
     await page.waitForTimeout(100);
     const steps = 8;
     for (let i = 1; i <= steps; i++) {
       await dispatchTouch(client, 'touchMove', [
         { x: c1.x + (80 * i) / steps, y: c1.y },
-        { x: c3.x - (80 * i) / steps, y: c3.y },
+        { x: cTitle.x - (80 * i) / steps, y: cTitle.y },
       ]);
       await page.waitForTimeout(40);
     }
@@ -231,12 +237,11 @@ test.describe('CreativeCanvas', () => {
     await page.waitForTimeout(300);
 
     const after1 = await page.getByTestId('e2e-offset-photo_1').textContent();
-    const after3 = await page.getByTestId('e2e-offset-photo_3').textContent();
-    const moved1 = !after1!.match(/x=0\.0 y=0\.0/);
-    const moved3 = !after3!.match(/x=0\.0 y=0\.0/);
+    const afterTitle = await page.getByTestId('e2e-offset-title').textContent();
     // 排他ロック導入前は、2本指で別々の要素に触れると両方が同時に反応してしまっていた。
-    // 導入後はどちらか一方だけが反応し、もう片方は初期位置のまま変化しない
-    expect(moved1 !== moved3).toBe(true);
+    // 導入後はどちらか一方だけが反応し、もう片方（title）は初期位置のまま完全に不変
+    expect(after1).not.toMatch(/x=0\.0 y=0\.0/);
+    expect(afterTitle).toBe(before);
   });
 
   test('1本目の指がテキストに触れていれば、2本目の指は離れた場所でもピンチとして拡大できる', async ({ page }) => {
@@ -280,27 +285,30 @@ test.describe('CreativeCanvas', () => {
     await page.goto('/?e2e=creativeCanvas');
     await page.waitForTimeout(1000);
 
+    // photo_3はoffsetが常に(0,0)にクランプされ「動いたかどうか」をこの値だけでは
+    // 判定できないため、検証対象にはtitle（クランプの一切ないテキスト）を使う
     const box1 = await page.getByTestId('layer-photo_1').boundingBox();
-    const box3 = await page.getByTestId('layer-photo_3').boundingBox();
+    const boxTitle = await page.getByTestId('layer-title').boundingBox();
     expect(box1).not.toBeNull();
-    expect(box3).not.toBeNull();
+    expect(boxTitle).not.toBeNull();
     const c1 = { x: box1!.x + box1!.width / 2, y: box1!.y + box1!.height / 2 };
-    const c3 = { x: box3!.x + box3!.width / 2, y: box3!.y + box3!.height / 2 };
+    const cTitle = { x: boxTitle!.x + boxTitle!.width / 2, y: boxTitle!.y + boxTitle!.height / 2 };
 
-    const before3 = await page.getByTestId('e2e-offset-photo_3').textContent();
+    const before1 = await page.getByTestId('e2e-offset-photo_1').textContent();
+    const beforeTitle = await page.getByTestId('e2e-offset-title').textContent();
 
     // 先にphoto_1へ1本指で触れ（操作対象として確定させ）、少し間を置いてから
-    // 別のphoto_3へ2本目の指を触れさせる。photo_3は一切反応してはならない
+    // 別のtitleへ2本目の指を触れさせる。titleは一切反応してはならない
     const client = await page.context().newCDPSession(page);
     await dispatchTouch(client, 'touchStart', [c1]);
     await page.waitForTimeout(150);
-    await dispatchTouch(client, 'touchStart', [c1, c3]);
+    await dispatchTouch(client, 'touchStart', [c1, cTitle]);
     await page.waitForTimeout(100);
     const steps = 8;
     for (let i = 1; i <= steps; i++) {
       await dispatchTouch(client, 'touchMove', [
         { x: c1.x + (60 * i) / steps, y: c1.y + (40 * i) / steps },
-        { x: c3.x - (60 * i) / steps, y: c3.y - (40 * i) / steps },
+        { x: cTitle.x - (60 * i) / steps, y: cTitle.y - (40 * i) / steps },
       ]);
       await page.waitForTimeout(40);
     }
@@ -308,7 +316,11 @@ test.describe('CreativeCanvas', () => {
     await dispatchTouch(client, 'touchEnd', []);
     await page.waitForTimeout(300);
 
-    const after3 = await page.getByTestId('e2e-offset-photo_3').textContent();
-    expect(after3).toBe(before3); // 後から触れた別要素（photo_3）は一切変化しない
+    const after1 = await page.getByTestId('e2e-offset-photo_1').textContent();
+    const afterTitle = await page.getByTestId('e2e-offset-title').textContent();
+    // 先に触れていたphoto_1は正しく動く（ロックのせいで自分の正当な操作まで
+    // 失われてしまう不具合の再発防止）。後から触れた別要素（title）は一切変化しない
+    expect(after1).not.toBe(before1);
+    expect(afterTitle).toBe(beforeTitle);
   });
 });

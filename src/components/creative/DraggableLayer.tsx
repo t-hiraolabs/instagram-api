@@ -117,12 +117,29 @@ export default function DraggableLayer({
   const baseRotation = useSharedValue(rotation);
   // きりのいい位置・倍率にスナップしている間だけtrueにし、見えやすい枠線を表示する
   const isSnapped = useSharedValue(false);
+  // このジェスチャーセッションの間、自分がロックの持ち主として確定したかどうかの
+  // スナップショット。activeOwner.valueを都度読み直すのではなく、開始時点で一度だけ
+  // 判定してここへ控える：終了時（onTouchesUp）にactiveOwnerをクリアする処理と、
+  // 同じタッチイベントに対するonEnd（確定処理）の実行順序は保証されないため、onEnd
+  // の中でactiveOwner.valueを読み直すと既にnullへクリアされていて、本来コミットする
+  // べき値が失われることがあった（自分が正当な持ち主だったのに動きが確定しない
+  // 不具合の原因）。開始時点のスナップショットを使うことでこの競合を避ける。
+  const isActiveSession = useSharedValue(false);
 
   // 指がこの要素に触れた瞬間に呼ぶ：既に「別の」要素がロックを持っていればこの要素への
   // タッチ自体を失敗させ、そちらの要素だけが反応し続けるようにする（2本指でそれぞれ別の
   // 要素を同時に操作できてしまう不具合の対策）。ロックが空いていれば自分が獲得し、
   // 同時にactiveRefsへ自分のshared value参照を登録する（ピンチ・回転はキャンバス
   // レベルのジェスチャーがこれを見て、この要素を直接操作できるようにするため）。
+  // manager.fail()は「ジェスチャーが既にBEGAN/ACTIVE状態に達している場合」にしか
+  // 効果がない（react-native-gesture-handlerの実装上、UNDETERMINED状態での
+  // fail()呼び出しは実質no-op）。onTouchesDown発火時点ではまだUNDETERMINEDの
+  // ことがほとんどのため、ここでfail()を呼んでもネイティブ側のジェスチャー認識
+  // 自体は止まらず、後続のonBegin/onUpdateがそのまま実行されてしまう
+  // （＝ロックを取れなかった要素が実際には動いてしまう不具合の原因だった）。
+  // そのため、ここでは「ロックの持ち主を記録する」ことだけを行い、実際に値を
+  // 変更する処理（onBegin/onUpdate/onEnd）側で毎回activeOwner.value===idを
+  // 確認してから初めて反映する、という二重の防御にしている。
   const acquireLock = (manager: { fail: () => void }) => {
     'worklet';
     if (activeOwner.value !== null && activeOwner.value !== id) {
@@ -167,11 +184,14 @@ export default function DraggableLayer({
     .onTouchesUp((e) => releaseLockIfEmpty(e.numberOfTouches))
     .onTouchesCancelled((e) => releaseLockIfEmpty(e.numberOfTouches))
     .onBegin(() => {
+      isActiveSession.value = activeOwner.value === id;
+      if (!isActiveSession.value) return;
       baseX.value = translateX.value;
       baseY.value = translateY.value;
       runOnJS(onSelect)();
     })
     .onUpdate((e) => {
+      if (!isActiveSession.value) return;
       const zone = POSITION_SNAP_SCREEN_PX / displayScale;
       let nx = baseX.value + e.translationX / displayScale;
       let ny = baseY.value + e.translationY / displayScale;
@@ -182,16 +202,26 @@ export default function DraggableLayer({
       translateY.value = ny;
       isSnapped.value = snapped;
     })
-    .onEnd(() => { isSnapped.value = false; runOnJS(commit)(); });
+    .onEnd(() => {
+      if (!isActiveSession.value) return;
+      isSnapped.value = false;
+      runOnJS(commit)();
+    });
 
   const tap = Gesture.Tap()
     .enabled(!locked)
     .hitSlop(HIT_SLOP)
     .simultaneousWithExternalGesture(...canvasGestures)
-    .onTouchesDown((_e, manager) => acquireLock(manager))
+    .onTouchesDown((_e, manager) => {
+      acquireLock(manager);
+      isActiveSession.value = activeOwner.value === id;
+    })
     .onTouchesUp((e) => releaseLockIfEmpty(e.numberOfTouches))
     .onTouchesCancelled((e) => releaseLockIfEmpty(e.numberOfTouches))
-    .onEnd(() => runOnJS(onSelect)());
+    .onEnd(() => {
+      if (!isActiveSession.value) return;
+      runOnJS(onSelect)();
+    });
 
   const composed = Gesture.Simultaneous(pan, tap);
 
