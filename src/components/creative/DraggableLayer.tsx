@@ -253,10 +253,12 @@ export default function DraggableLayer({
       isSnapped.value = false;
       if (guideV) guideV.value = false;
       if (guideH) guideH.value = false;
-      if (dragNotified.value) {
-        dragNotified.value = false;
-        if (onDragStateChange) runOnJS(onDragStateChange)(false);
-      }
+      // ここではdragNotified.valueをfalseへ戻さない：同じ指を離す瞬間にtap側の
+      // onEndも同時に発火するが、2つのジェスチャーのonEnd同士の実行順序は保証
+      // されないため、ここでリセットしてしまうとtap側が「動いていない」と
+      // 誤判定し、移動して離した直後にプロパティが開いてしまう不具合の原因になる。
+      // 次のセッション開始時（pan.onBegin）で改めてfalseにリセットすれば十分
+      if (dragNotified.value && onDragStateChange) runOnJS(onDragStateChange)(false);
       runOnJS(commit)();
     });
 
@@ -273,7 +275,11 @@ export default function DraggableLayer({
     .onEnd(() => {
       if (!isActiveSession.value) return;
       runOnJS(onSelect)();
-      if (onTap) runOnJS(onTap)();
+      // RNGHのTapジェスチャー自身の移動量しきい値には頼らず、実際にpan側で
+      // 動きを検出したセッションかどうか（dragNotified）で厳密に判定する
+      // （タップ用ジェスチャーの判定だけでは、移動を伴うドラッグ操作の直後にも
+      // 稀にonEndが発火し、意図せずプロパティが開いてしまうことがあったため）
+      if (onTap && !dragNotified.value) runOnJS(onTap)();
     });
 
   const composed = Gesture.Simultaneous(pan, tap);
