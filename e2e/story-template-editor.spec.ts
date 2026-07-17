@@ -136,3 +136,89 @@ test.describe('StoryTemplateEditor テキストのプロパティ表示', () => 
     await expect(page.getByTestId('story-editor-text-preview')).toBeVisible();
   });
 });
+
+test.describe('StoryTemplateEditor 写真と背景の共存', () => {
+  test('写真を追加した後でも背景を設定でき、写真は使われ続ける', async ({ page }) => {
+    await page.goto('/?e2e=storyTemplateEditor');
+    await page.waitForTimeout(1000);
+
+    // expo-image-pickerの実際のファイル選択ダイアログはPlaywrightから自動化できないため、
+    // E2EStoryTemplateEditorScreen.tsxがwindowへ公開しているデバッグ用フックで代用する
+    await page.evaluate(() => (window as any).__e2eAssignPhoto());
+    await page.waitForTimeout(300);
+
+    const hasImgBefore = await page.evaluate(() => {
+      const el = document.querySelector('[data-testid="layer-photo_1"]');
+      return !!el?.querySelector('img');
+    });
+    expect(hasImgBefore).toBe(true);
+
+    await page.getByText('背景').click();
+    await page.waitForTimeout(300);
+    await page.getByText('インク').click();
+    await page.waitForTimeout(300);
+
+    // 写真は消えずそのまま使われ続け、背景レイヤーも追加で描画される
+    const hasImgAfter = await page.evaluate(() => {
+      const el = document.querySelector('[data-testid="layer-photo_1"]');
+      return !!el?.querySelector('img');
+    });
+    expect(hasImgAfter).toBe(true);
+    await expect(page.locator('[data-testid="layer-bg"]')).toHaveCount(1);
+  });
+});
+
+test.describe('StoryTemplateEditor フォントのドロップダウン', () => {
+  test('タップすると開き、フォント一覧が表示される', async ({ page }) => {
+    await page.goto('/?e2e=storyTemplateEditor');
+    await page.waitForTimeout(1000);
+
+    await page.getByTestId('story-editor-add-text-btn').click();
+    await page.waitForTimeout(500);
+
+    await expect(page.getByTestId('font-dropdown-scroll')).toHaveCount(0);
+    await page.getByTestId('font-dropdown-trigger').click();
+    await page.waitForTimeout(200);
+    await expect(page.getByTestId('font-dropdown-scroll')).toBeVisible();
+  });
+
+  test('一覧をスクロールすると、指を離さなくても自動的にフォントが切り替わる', async ({ page }) => {
+    await page.goto('/?e2e=storyTemplateEditor');
+    await page.waitForTimeout(1000);
+
+    await page.getByTestId('story-editor-add-text-btn').click();
+    await page.waitForTimeout(500);
+    await expect(page.getByTestId('font-dropdown-trigger-label')).toHaveText('ゴシック（極太）');
+
+    await page.getByTestId('font-dropdown-trigger').click();
+    await page.waitForTimeout(200);
+
+    // react-native-webのScrollViewは自前でscrollイベントをリッスンしているため、
+    // scrollTopを直接動かしてscrollイベントを発火させ、その後の切り替え（自前の
+    // デバウンス判定）を待つ
+    await page.evaluate(() => {
+      const el = document.querySelector('[data-testid="font-dropdown-scroll"]') as HTMLElement;
+      el.scrollTop = 44 * 3;
+      el.dispatchEvent(new Event('scroll', { bubbles: true }));
+    });
+    await page.waitForTimeout(400);
+
+    await expect(page.getByTestId('font-dropdown-trigger-label')).toHaveText('装飾セリフ');
+  });
+
+  test('行を直接タップしても選択され、一覧が閉じる', async ({ page }) => {
+    await page.goto('/?e2e=storyTemplateEditor');
+    await page.waitForTimeout(1000);
+
+    await page.getByTestId('story-editor-add-text-btn').click();
+    await page.waitForTimeout(500);
+    await page.getByTestId('font-dropdown-trigger').click();
+    await page.waitForTimeout(200);
+
+    await page.locator('[data-testid="font-dropdown-scroll"] >> text="明朝（上品）"').click();
+    await page.waitForTimeout(200);
+
+    await expect(page.getByTestId('font-dropdown-trigger-label')).toHaveText('明朝（上品）');
+    await expect(page.getByTestId('font-dropdown-scroll')).toHaveCount(0);
+  });
+});
