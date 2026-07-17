@@ -120,7 +120,7 @@ test.describe('CreativeCanvas', () => {
     expect(finalScale).toBeLessThan(0.9);
   });
 
-  test('スナップ中は写真スロットの枠線が見えやすい色になり、離すと選択枠の色に戻る', async ({ page }) => {
+  test('スナップ中は写真スロットの枠線が見えやすい色になり、離すと非表示に戻る', async ({ page }) => {
     await page.goto('/?e2e=creativeCanvas');
     await page.waitForTimeout(1000);
 
@@ -137,7 +137,8 @@ test.describe('CreativeCanvas', () => {
       });
     }
 
-    // まずスナップ範囲外まで大きくズームアウトする（選択状態にもなる）
+    // まずスナップ範囲外まで大きくズームアウトする（選択状態にもなる。写真は選択中でも
+    // 青い枠線を表示しない仕様のため、スナップしていない間は枠線なし＝透明のまま）
     await dispatchTouch(client, 'touchStart', [{ x: cx - 30, y: cy }, { x: cx + 30, y: cy }]);
     await page.waitForTimeout(100);
     for (let i = 1; i <= 8; i++) {
@@ -148,7 +149,7 @@ test.describe('CreativeCanvas', () => {
     await page.waitForTimeout(100);
     await dispatchTouch(client, 'touchEnd', []);
     await page.waitForTimeout(300);
-    expect(await borderColor()).toBe('rgb(74, 144, 217)'); // 選択枠の色（スナップしていない）
+    expect(await borderColor()).toBe('rgba(0, 0, 0, 0)'); // 選択中でも枠線は表示しない（スナップしていない）
 
     // scale=1（もはや下限ではなく、あくまでスナップ先の1つ）を通過するくらいまで、
     // 細かいステップでゆっくり縮小し、スナップ色になる瞬間があることを確認する
@@ -168,7 +169,7 @@ test.describe('CreativeCanvas', () => {
 
     await dispatchTouch(client, 'touchEnd', []);
     await page.waitForTimeout(300);
-    expect(await borderColor()).toBe('rgb(74, 144, 217)'); // 離すと選択枠の色に戻る
+    expect(await borderColor()).toBe('rgba(0, 0, 0, 0)'); // 離すと枠線は再び非表示に戻る
   });
 
   test('未選択の小さいテキストでも指2本のピンチで拡大できる', async ({ page }) => {
@@ -369,8 +370,10 @@ test.describe('CreativeCanvas', () => {
     await dispatchTouch(client, 'touchStart', [{ x: cx - radius, y: cy }, { x: cx + radius, y: cy }]);
     await page.waitForTimeout(100);
     const steps = 20;
+    const targetAngleDeg = 70; // 不感帯（15度）にもカーディナルスナップ（90度）にも
+    // 十分な余裕を持たせた角度まで回転させる（半径は一定、拡大縮小は伴わない）
     for (let i = 1; i <= steps; i++) {
-      const angle = (Math.PI / 4) * (i / steps); // 45度まで回転（半径は一定、拡大縮小は伴わない）
+      const angle = ((targetAngleDeg * Math.PI) / 180) * (i / steps);
       const dx = radius * Math.cos(angle), dy = radius * Math.sin(angle);
       await dispatchTouch(client, 'touchMove', [{ x: cx - dx, y: cy - dy }, { x: cx + dx, y: cy + dy }]);
       await page.waitForTimeout(30);
@@ -381,8 +384,139 @@ test.describe('CreativeCanvas', () => {
 
     const after = await page.getByTestId('e2e-offset-title').textContent();
     const rotation = Number(after!.match(/rotation=(-?[\d.]+)/)![1]);
-    // 不感帯（6度）の分だけ差し引かれた角度が反映される（45度回した場合は約39度）
-    expect(rotation).toBeGreaterThan(30);
-    expect(rotation).toBeLessThan(45);
+    // 不感帯（15度）の分だけ差し引かれた角度が反映される（70度回した場合は約55度）
+    expect(rotation).toBeGreaterThan(45);
+    expect(rotation).toBeLessThan(65);
+  });
+
+  test('写真スロットも指2本の回転操作で角度を変えられる', async ({ page }) => {
+    await page.goto('/?e2e=creativeCanvas');
+    await page.waitForTimeout(1000);
+
+    const box = await page.getByTestId('layer-photo_1').boundingBox();
+    expect(box).not.toBeNull();
+    const cx = box!.x + box!.width / 2;
+    const cy = box!.y + box!.height / 2;
+
+    const client = await page.context().newCDPSession(page);
+    const radius = 15;
+    await dispatchTouch(client, 'touchStart', [{ x: cx - radius, y: cy }, { x: cx + radius, y: cy }]);
+    await page.waitForTimeout(100);
+    const steps = 20;
+    const targetAngleDeg = 70;
+    for (let i = 1; i <= steps; i++) {
+      const angle = ((targetAngleDeg * Math.PI) / 180) * (i / steps);
+      const dx = radius * Math.cos(angle), dy = radius * Math.sin(angle);
+      await dispatchTouch(client, 'touchMove', [{ x: cx - dx, y: cy - dy }, { x: cx + dx, y: cy + dy }]);
+      await page.waitForTimeout(30);
+    }
+    await page.waitForTimeout(100);
+    await dispatchTouch(client, 'touchEnd', []);
+    await page.waitForTimeout(300);
+
+    const after = await page.getByTestId('e2e-offset-photo_1').textContent();
+    const rotation = Number(after!.match(/rotation=(-?[\d.]+)/)![1]);
+    // 写真は回転を無効化していた旧実装では常に0のまま。不感帯（15度）を差し引いた
+    // 角度（70度回した場合は約55度）が反映されることを確認する
+    expect(rotation).toBeGreaterThan(45);
+    expect(rotation).toBeLessThan(65);
+  });
+
+  test('回転が90度（カーディナル角）に近づくと一瞬止まり、ちょうど90度にスナップする', async ({ page }) => {
+    await page.goto('/?e2e=creativeCanvas');
+    await page.waitForTimeout(1000);
+
+    const box = await page.getByTestId('layer-title').boundingBox();
+    expect(box).not.toBeNull();
+    const cx = box!.x + box!.width / 2;
+    const cy = box!.y + box!.height / 2;
+
+    const client = await page.context().newCDPSession(page);
+    const radius = 15;
+
+    async function borderColor() {
+      return page.evaluate(() => {
+        const el = document.querySelector('[data-testid="layer-title"]') as HTMLElement | null;
+        return el ? getComputedStyle(el).borderTopColor : null;
+      });
+    }
+
+    // 0度は不感帯の間ずっと「まだ0度のまま」になるため、それ自体がカーディナル角と
+    // 判定されて開始直後にガイドが出てしまう（意図しない誤検出）。そのため、判定は
+    // 0度のゾーンを抜けた後（30度以降）からだけ行い、90度への接近だけを見る。
+    // 1本の連続したジェスチャーの途中で、枠線がスナップ色に変わった瞬間を検出し、
+    // その場で指を離して確定させる（ちょうど90度で止まるはず）
+    await dispatchTouch(client, 'touchStart', [{ x: cx - radius, y: cy }, { x: cx + radius, y: cy }]);
+    await page.waitForTimeout(100);
+    const steps = 60;
+    const targetAngleDeg = 115; // 不感帯15度を引いた約100度、90度スナップ範囲を確実に通過する
+    let sawSnapColor = false;
+    for (let i = 1; i <= steps; i++) {
+      const angleDeg = (targetAngleDeg * i) / steps;
+      const angle = (angleDeg * Math.PI) / 180;
+      const dx = radius * Math.cos(angle), dy = radius * Math.sin(angle);
+      await dispatchTouch(client, 'touchMove', [{ x: cx - dx, y: cy - dy }, { x: cx + dx, y: cy + dy }]);
+      await page.waitForTimeout(25);
+      if (angleDeg >= 30 && (await borderColor()) === 'rgb(0, 229, 255)') { sawSnapColor = true; break; }
+    }
+    expect(sawSnapColor).toBe(true);
+    await dispatchTouch(client, 'touchEnd', []);
+    await page.waitForTimeout(300);
+
+    const after = await page.getByTestId('e2e-offset-title').textContent();
+    const rotation = Number(after!.match(/rotation=(-?[\d.]+)/)![1]);
+    expect(rotation).toBeCloseTo(90, 1);
+  });
+
+  test('要素をキャンバス中央へドラッグすると中央線で一瞬止まり、ぴったり整列する', async ({ page }) => {
+    await page.goto('/?e2e=creativeCanvas');
+    await page.waitForTimeout(1500); // onLayoutでの実寸測定が安定するまで待つ
+
+    const box = await page.getByTestId('layer-title').boundingBox();
+    expect(box).not.toBeNull();
+    const cx = box!.x + box!.width / 2;
+    const cy = box!.y + box!.height / 2;
+
+    const bgBox = await page.getByTestId('layer-bg').boundingBox();
+    expect(bgBox).not.toBeNull();
+    const targetX = bgBox!.x + bgBox!.width / 2;
+    const targetY = bgBox!.y + bgBox!.height / 2;
+
+    async function guideLineVisible() {
+      return page.evaluate(() => {
+        const guides = Array.from(document.querySelectorAll('div')).filter((el) => {
+          const s = getComputedStyle(el);
+          return s.backgroundColor === 'rgb(0, 229, 255)' && s.width === '1px';
+        });
+        return guides.some((g) => getComputedStyle(g).opacity === '1');
+      });
+    }
+
+    const client = await page.context().newCDPSession(page);
+    await dispatchTouch(client, 'touchStart', [{ x: cx, y: cy }]);
+    await page.waitForTimeout(100);
+    const steps = 60;
+    // CDPの合成タッチイベントは計算通りの座標にきっちり届かないことがあるため、
+    // わざと少し行き過ぎる位置まで動かして確実にスナップ範囲を通過させ、キャンバス
+    // 全体を貫く中央ガイド線が見えた瞬間に指を離す（ぴったり中央に着地させる方式）
+    const OVERSHOOT = 1.3;
+    let sawGuide = false;
+    for (let i = 1; i <= steps; i++) {
+      const x = cx + ((targetX - cx) * OVERSHOOT * i) / steps;
+      const y = cy + ((targetY - cy) * OVERSHOOT * i) / steps;
+      await dispatchTouch(client, 'touchMove', [{ x, y }]);
+      await page.waitForTimeout(25);
+      if (await guideLineVisible()) { sawGuide = true; break; }
+    }
+    expect(sawGuide).toBe(true);
+    await dispatchTouch(client, 'touchEnd', []);
+    await page.waitForTimeout(300);
+
+    const after = await page.getByTestId('e2e-offset-title').textContent();
+    const x = Number(after!.match(/x=(-?[\d.]+)/)![1]);
+    // テキストの実寸(onLayoutで測定した値)から算出される、キャンバス水平中央に
+    // ぴったり整列する位置に近い値になっている（初期位置x=200から明確に移動している）
+    expect(x).toBeGreaterThan(460);
+    expect(x).toBeLessThan(500);
   });
 });

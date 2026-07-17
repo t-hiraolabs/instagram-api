@@ -6,10 +6,10 @@
 // このコンポーネント内では常に静止画として描画する（エンドユーザーは動かせない）。
 // 動かせるのはphotoSlots（位置・拡大率）とtextLayers（位置・拡大率・回転）のみ。
 import React from 'react';
-import { View, Image, Text, Dimensions, StyleSheet } from 'react-native';
-import { useSharedValue, runOnJS } from 'react-native-reanimated';
+import { View, Image, Text, Dimensions, StyleSheet, LayoutChangeEvent } from 'react-native';
+import Animated, { useSharedValue, useAnimatedStyle, runOnJS, SharedValue } from 'react-native-reanimated';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import DraggableLayer, { ActiveLayerRefs } from './DraggableLayer';
+import DraggableLayer, { ActiveLayerRefs, GUIDE_COLOR } from './DraggableLayer';
 import DraggablePhotoSlot from './DraggablePhotoSlot';
 import BackgroundPresetSvg from './BackgroundPresetSvg';
 import { CANVAS_W, CANVAS_H, PhotoSlot, TemplateLayer, TextLayer, resolveLayerBand } from '../../types/creativeTemplate';
@@ -29,8 +29,11 @@ const SCALE_SNAP_ZONE = 0.04;
 // 「サイズを変えただけなのに最初から角度が変わってしまう」と感じられてしまうため、
 // この角度（度）未満の変化は無視し、指の開始位置を基準として回転が「効いていない」
 // 状態を保つ。超えた場合も、しきい値の分だけ角度が急に飛ばないよう差し引いてから
-// 反映する（超えた瞬間になめらかに回転が始まるようにするため）。
-const ROTATION_DEADZONE_DEG = 6;
+// 反映する（超えた瞬間になめらかに回転が始まるようにするため）。指をはっきり大きく
+// 横に動かした場合だけ回転が始まるよう、やや大きめの値にしている。
+const ROTATION_DEADZONE_DEG = 15;
+// 0/90/180/270度（水平・垂直）に近づいたら一瞬止まる（スナップする）許容量
+const ROTATION_SNAP_ZONE_DEG = 4;
 
 const screenW = Dimensions.get('window').width;
 export const DISPLAY_W = Math.min(screenW - 64, 300);
@@ -71,7 +74,9 @@ function StaticLayerImage({ layer, displayScale }: { layer: TemplateLayer; displ
   );
 }
 
-function TextContent({ layer, displayScale }: { layer: TextLayer; displayScale: number }) {
+function TextContent({
+  layer, displayScale, onMeasured,
+}: { layer: TextLayer; displayScale: number; onMeasured?: (width: number, height: number) => void }) {
   const preset = getFontPreset(layer.font);
   return (
     <Text
@@ -86,9 +91,36 @@ function TextContent({ layer, displayScale }: { layer: TextLayer; displayScale: 
         letterSpacing: (layer.letterSpacing ?? 0) * displayScale,
       }}
       numberOfLines={layer.maxLines ?? 3}
+      // テキストは内容によって実寸が変わるため、中央整列ガイドの判定に使う実寸を
+      // 描画結果から測って呼び出し側へ伝える（論理px換算するためdisplayScaleで割る）
+      onLayout={(e: LayoutChangeEvent) => {
+        const { width, height } = e.nativeEvent.layout;
+        onMeasured?.(width / displayScale, height / displayScale);
+      }}
     >
       {layer.text}
     </Text>
+  );
+}
+
+/** キャンバス中央への整列ガイド線（水平・垂直）。guideV/guideHがtrueの間だけ表示する */
+function CenterGuideLine({ axis, guide, canvasWidth, canvasHeight }: {
+  axis: 'v' | 'h'; guide: SharedValue<boolean>; canvasWidth: number; canvasHeight: number;
+}) {
+  const style = useAnimatedStyle(() => ({ opacity: guide.value ? 1 : 0 }));
+  if (axis === 'v') {
+    return (
+      <Animated.View
+        pointerEvents="none"
+        style={[styles.guideLineV, { left: canvasWidth / 2, height: canvasHeight }, style]}
+      />
+    );
+  }
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[styles.guideLineH, { top: canvasHeight / 2, width: canvasWidth }, style]}
+    />
   );
 }
 
@@ -104,7 +136,7 @@ interface Props {
   locked?: boolean;
   selectedId?: string | null;
   onSelectSlot?: (slotId: string) => void;
-  onSlotChange?: (slotId: string, patch: { offsetX: number; offsetY: number; scale: number }) => void;
+  onSlotChange?: (slotId: string, patch: { offsetX: number; offsetY: number; scale: number; rotation: number }) => void;
   onPickPhoto?: (slotId: string) => void;
   onSelectText?: (id: string) => void;
   onTextChange?: (id: string, patch: { x: number; y: number; scale: number; rotation: number }) => void;
@@ -131,6 +163,13 @@ export default function CreativeCanvas({
   // 最後の確定（commit）が失われることがあった。onBegin時点（まだ誰にもクリアされて
   // いない安全なタイミング）でこちらへ複製しておき、onUpdate/onEndは常にこちらを使う
   const sessionRefs = useSharedValue<ActiveLayerRefs | null>(null);
+  // キャンバス中央への整列ガイド線（縦線・横線）の表示状態。移動でキャンバス中央に
+  // 揃った時と、回転で水平・垂直（0/90/180/270度）に揃った時の両方で使う
+  const guideV = useSharedValue(false);
+  const guideH = useSharedValue(false);
+  // テキストレイヤーは内容によって実寸が変わるため、onLayoutで測った実寸をここに控えて
+  // おき、中央整列ガイドの判定に使う（写真はimgW/imgHから計算できるため不要）
+  const [textSizes, setTextSizes] = React.useState<Record<string, { width: number; height: number }>>({});
 
   // ピンチ・回転操作が終わった時にReact state側へ確定する。対象がphotoSlotかtextLayer
   // かでpatchの形が異なる（写真はoffsetX/offsetY、テキストはx/y/rotationそのまま）ため、
@@ -140,7 +179,7 @@ export default function CreativeCanvas({
     if (slot) {
       const assignment = photoAssignments.find((a) => a.slotId === targetId);
       if (!assignment) return;
-      onSlotChange?.(targetId, clampPhotoOffset(slot, assignment, x, y, scale));
+      onSlotChange?.(targetId, clampPhotoOffset(slot, assignment, x, y, scale, rotation));
       return;
     }
     onTextChange?.(targetId, { x, y, scale, rotation });
@@ -196,10 +235,37 @@ export default function CreativeCanvas({
       let applied = 0;
       if (deltaDeg > ROTATION_DEADZONE_DEG) applied = deltaDeg - ROTATION_DEADZONE_DEG;
       else if (deltaDeg < -ROTATION_DEADZONE_DEG) applied = deltaDeg + ROTATION_DEADZONE_DEG;
-      refs.savedRotation.value = refs.baseRotation.value + applied;
+      let rotation = refs.baseRotation.value + applied;
+      // 0/90/180/270度（水平・垂直）に近づいたら一瞬止まり、整列ガイド線を表示する
+      const normalized = ((rotation % 360) + 360) % 360;
+      const cardinals = [0, 90, 180, 270];
+      let snappedCardinal: number | null = null;
+      let bestDist = ROTATION_SNAP_ZONE_DEG;
+      let bestDiff = 0;
+      for (let i = 0; i < cardinals.length; i++) {
+        let diff = normalized - cardinals[i];
+        if (diff > 180) diff -= 360;
+        if (diff < -180) diff += 360;
+        const d = Math.abs(diff);
+        if (d < bestDist) { bestDist = d; snappedCardinal = cardinals[i]; bestDiff = diff; }
+      }
+      if (snappedCardinal !== null) {
+        rotation -= bestDiff;
+        refs.isSnapped.value = true;
+        const isHorizontal = snappedCardinal % 180 === 0; // 0/180度＝水平、90/270度＝垂直
+        guideH.value = isHorizontal;
+        guideV.value = !isHorizontal;
+      } else {
+        refs.isSnapped.value = false;
+        guideH.value = false;
+        guideV.value = false;
+      }
+      refs.savedRotation.value = rotation;
     })
     .onEnd(() => {
       const refs = sessionRefs.value;
+      guideV.value = false;
+      guideH.value = false;
       if (!refs || !refs.rotatable) return;
       runOnJS(onCommitActive)(refs.id, refs.translateX.value, refs.translateY.value, refs.savedScale.value, refs.savedRotation.value);
     });
@@ -234,6 +300,8 @@ export default function CreativeCanvas({
             locked={locked}
             activeOwner={activeOwner}
             activeRefs={activeRefs}
+            guideV={guideV}
+            guideH={guideH}
             canvasGestures={canvasGestures}
             onSelect={() => onSelectSlot?.(slot.id)}
             onChange={(patch) => onSlotChange?.(slot.id, patch)}
@@ -254,15 +322,30 @@ export default function CreativeCanvas({
             displayScale={displayScale}
             selected={!locked && selectedId === t.id}
             locked={locked}
+            width={textSizes[t.id]?.width}
+            height={textSizes[t.id]?.height}
+            guideV={guideV}
+            guideH={guideH}
             activeOwner={activeOwner}
             activeRefs={activeRefs}
             canvasGestures={canvasGestures}
             onSelect={() => onSelectText?.(t.id)}
             onChange={(patch) => onTextChange?.(t.id, patch)}
           >
-            <TextContent layer={t} displayScale={displayScale} />
+            <TextContent
+              layer={t}
+              displayScale={displayScale}
+              onMeasured={(w, h) => setTextSizes((prev) => {
+                const cur = prev[t.id];
+                if (cur && Math.abs(cur.width - w) < 0.5 && Math.abs(cur.height - h) < 0.5) return prev;
+                return { ...prev, [t.id]: { width: w, height: h } };
+              })}
+            />
           </DraggableLayer>
         ))}
+        {/* キャンバス中央への整列ガイド線（移動・回転どちらのスナップでも使う） */}
+        <CenterGuideLine axis="v" guide={guideV} canvasWidth={width} canvasHeight={height} />
+        <CenterGuideLine axis="h" guide={guideH} canvasWidth={width} canvasHeight={height} />
       </View>
     </GestureDetector>
   );
@@ -277,4 +360,6 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     alignSelf: 'center',
   },
+  guideLineV: { position: 'absolute', top: 0, width: 1, backgroundColor: GUIDE_COLOR },
+  guideLineH: { position: 'absolute', left: 0, height: 1, backgroundColor: GUIDE_COLOR },
 });

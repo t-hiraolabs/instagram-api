@@ -17,10 +17,13 @@ export function photoSlotGeometry(slot: PhotoSlot, assignment: PhotoAssignment) 
   return { imgW, imgH, centerX, centerY };
 }
 
-/** DraggableLayerが渡してくる論理座標（x, y, scale）を、スロット内に収まるoffsetX/offsetY/scaleへ変換する */
+/** DraggableLayerが渡してくる論理座標（x, y, scale, rotation）を、スロット内に収まる
+ *  offsetX/offsetY/scale/rotationへ変換する。回転角度自体はクランプ不要でそのまま通す
+ *  （offset/scaleのクランプは軸に沿った矩形を前提にした近似のため、回転中は多少の
+ *  誤差が生じうるが、位置・拡大率の基本的な制御としては十分機能する） */
 export function clampPhotoOffset(
-  slot: PhotoSlot, assignment: PhotoAssignment, x: number, y: number, rawScale: number,
-): { offsetX: number; offsetY: number; scale: number } {
+  slot: PhotoSlot, assignment: PhotoAssignment, x: number, y: number, rawScale: number, rotation: number,
+): { offsetX: number; offsetY: number; scale: number; rotation: number } {
   const { imgW, imgH, centerX, centerY } = photoSlotGeometry(slot, assignment);
   const scale = Math.max(MIN_PHOTO_SCALE, Math.min(4, rawScale));
   // 画像の端がスロットの端より内側に入らないよう、現在のscaleに応じてoffsetをクランプする
@@ -29,5 +32,5 @@ export function clampPhotoOffset(
   const boundY = Math.max(0, (imgH * scale - slot.h) / 2);
   const offsetX = Math.max(-boundX, Math.min(boundX, x - centerX));
   const offsetY = Math.max(-boundY, Math.min(boundY, y - centerY));
-  return { offsetX, offsetY, scale };
+  return { offsetX, offsetY, scale, rotation };
 }
