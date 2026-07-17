@@ -15,6 +15,8 @@ export interface PhotoAssignment {
   offsetY: number;
   /** スロットをcoverする最小倍率を1.0とした追加倍率 */
   scale: number;
+  /** 写真自身の中心を軸にした回転角度（度） */
+  rotation: number;
   naturalW: number;
   naturalH: number;
 }
@@ -37,7 +39,7 @@ interface CreativeEditorState {
   setActiveSlot: (slotId: string | null) => void;
 
   assignPhoto: (slotId: string, uri: string, naturalW: number, naturalH: number) => void;
-  updatePhotoAssignment: (slotId: string, patch: Partial<Pick<PhotoAssignment, 'offsetX' | 'offsetY' | 'scale'>>) => void;
+  updatePhotoAssignment: (slotId: string, patch: Partial<Pick<PhotoAssignment, 'offsetX' | 'offsetY' | 'scale' | 'rotation'>>) => void;
   swapPhotoAssignments: (slotIdA: string, slotIdB: string) => void;
 
   updateLayer: (id: string, patch: Partial<TemplateLayer>) => void;
@@ -80,7 +82,7 @@ export const useCreativeEditorStore = create<CreativeEditorState>((set, get) => 
   assignPhoto: (slotId, uri, naturalW, naturalH) =>
     set((state) => {
       const existing = state.photoAssignments.find((a) => a.slotId === slotId);
-      const next: PhotoAssignment = { slotId, uri, offsetX: 0, offsetY: 0, scale: 1, naturalW, naturalH };
+      const next: PhotoAssignment = { slotId, uri, offsetX: 0, offsetY: 0, scale: 1, rotation: 0, naturalW, naturalH };
       return {
         photoAssignments: existing
           ? state.photoAssignments.map((a) => (a.slotId === slotId ? next : a))
