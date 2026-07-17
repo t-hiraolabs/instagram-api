@@ -6,7 +6,17 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import CreativeCanvas from '../../components/creative/CreativeCanvas';
 import { PhotoAssignment } from '../../store/creativeEditorStore';
+import { TextLayer } from '../../types/creativeTemplate';
 import { FIXTURE_3SLOT, FIXTURE_PHOTO_URIS } from '../../e2e/fixtures';
+
+// どのphotoSlotとも重ならない、キャンバス下部の余白（y:1280〜1920）に置く小さいテキスト。
+// 表示上小さい要素（未選択のテキスト・ステッカー等）を指2本でピンチ拡大できることの
+// 回帰テスト、および排他ロック（2本指でそれぞれ別要素に触れても片方しか反応しない）の
+// 回帰テストに使う。
+const E2E_TEXT_LAYER: TextLayer = {
+  id: 'title', text: 'テスト', x: 200, y: 1500, font: 'gothic', color: '#FFFFFF',
+  size: 40, scale: 1, rotation: 0, visible: true,
+};
 
 export default function E2ECreativeCanvasScreen() {
   // photo_1は意図的にスロットよりワイドな比率（1600x640）にし、cover-fit後も左右に
@@ -18,10 +28,14 @@ export default function E2ECreativeCanvasScreen() {
     { slotId: 'photo_2', uri: FIXTURE_PHOTO_URIS.photo2, offsetX: 0, offsetY: 0, scale: 1, naturalW: 540, naturalH: 640 },
     { slotId: 'photo_3', uri: FIXTURE_PHOTO_URIS.photo3, offsetX: 0, offsetY: 0, scale: 1, naturalW: 540, naturalH: 640 },
   ]);
+  const [textLayer, setTextLayer] = useState<TextLayer>(E2E_TEXT_LAYER);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const handleSlotChange = (slotId: string, patch: { offsetX: number; offsetY: number; scale: number }) => {
     setAssignments((prev) => prev.map((a) => (a.slotId === slotId ? { ...a, ...patch } : a)));
+  };
+  const handleTextChange = (id: string, patch: { x: number; y: number; scale: number; rotation: number }) => {
+    setTextLayer((prev) => (prev.id === id ? { ...prev, ...patch } : prev));
   };
 
   return (
@@ -32,15 +46,20 @@ export default function E2ECreativeCanvasScreen() {
             {a.slotId}: x={a.offsetX.toFixed(1)} y={a.offsetY.toFixed(1)} scale={a.scale.toFixed(2)}
           </Text>
         ))}
+        <Text testID="e2e-offset-title">
+          title: scale={textLayer.scale.toFixed(2)}
+        </Text>
       </View>
       <CreativeCanvas
         photoSlots={FIXTURE_3SLOT.photoSlots}
         layers={FIXTURE_3SLOT.layers}
-        textLayers={FIXTURE_3SLOT.textLayers}
+        textLayers={[textLayer]}
         photoAssignments={assignments}
         selectedId={selectedId}
         onSelectSlot={setSelectedId}
         onSlotChange={handleSlotChange}
+        onSelectText={setSelectedId}
+        onTextChange={handleTextChange}
       />
     </View>
   );

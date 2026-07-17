@@ -7,6 +7,7 @@
 // 動かせるのはphotoSlots（位置・拡大率）とtextLayers（位置・拡大率・回転）のみ。
 import React from 'react';
 import { View, Image, Text, Dimensions, StyleSheet } from 'react-native';
+import { useSharedValue } from 'react-native-reanimated';
 import DraggableLayer from './DraggableLayer';
 import DraggablePhotoSlot from './DraggablePhotoSlot';
 import BackgroundPresetSvg from './BackgroundPresetSvg';
@@ -102,6 +103,9 @@ export default function CreativeCanvas({
   const width = displayWidth ?? DISPLAY_W;
   const displayScale = width / CANVAS_W;
   const height = CANVAS_H * displayScale;
+  // このキャンバス上の全photoSlots/textLayersで共有するロック。ある要素を指で操作している
+  // 間、別の指が他の要素に触れても反応しないようにする排他制御に使う（DraggableLayer参照）
+  const activeOwner = useSharedValue<string | null>(null);
 
   const backgroundLayers = sortByZIndex(layers.filter((l) => resolveLayerBand(l) === 'background'));
   const decorBehind = sortByZIndex(layers.filter((l) => resolveLayerBand(l) === 'decorBehind'));
@@ -125,6 +129,7 @@ export default function CreativeCanvas({
           displayScale={displayScale}
           selected={!locked && selectedId === slot.id}
           locked={locked}
+          activeOwner={activeOwner}
           onSelect={() => onSelectSlot?.(slot.id)}
           onChange={(patch) => onSlotChange?.(slot.id, patch)}
           onPickPhoto={() => onPickPhoto?.(slot.id)}
@@ -138,10 +143,12 @@ export default function CreativeCanvas({
       {visibleTextLayers.map((t) => (
         <DraggableLayer
           key={t.id}
+          testID={`layer-${t.id}`}
           x={t.x} y={t.y} scale={t.scale} rotation={t.rotation}
           displayScale={displayScale}
           selected={!locked && selectedId === t.id}
           locked={locked}
+          activeOwner={activeOwner}
           onSelect={() => onSelectText?.(t.id)}
           onChange={(patch) => onTextChange?.(t.id, patch)}
         >

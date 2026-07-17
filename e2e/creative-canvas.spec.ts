@@ -17,11 +17,11 @@ test.describe('CreativeCanvas', () => {
       return nodes.map((n) => n.getAttribute('data-testid'));
     });
 
-    // fixtureはbg→decor_behind→photo_1/2/3→decor_front→frameの順で定義されている
+    // fixtureはbg→decor_behind→photo_1/2/3→decor_front→frame→text(title)の順で定義されている
     expect(order).toEqual([
       'layer-bg', 'layer-decor_behind',
       'layer-photo_1', 'layer-photo_2', 'layer-photo_3',
-      'layer-decor_front', 'layer-frame',
+      'layer-decor_front', 'layer-frame', 'layer-title',
     ]);
   });
 
@@ -169,5 +169,73 @@ test.describe('CreativeCanvas', () => {
     await dispatchTouch(client, 'touchEnd', []);
     await page.waitForTimeout(300);
     expect(await borderColor()).toBe('rgb(74, 144, 217)'); // 離すと選択枠の色に戻る
+  });
+
+  test('未選択の小さいテキストでも指2本のピンチで拡大できる', async ({ page }) => {
+    await page.goto('/?e2e=creativeCanvas');
+    await page.waitForTimeout(1000);
+
+    const box = await page.getByTestId('layer-title').boundingBox();
+    expect(box).not.toBeNull();
+    const cx = box!.x + box!.width / 2;
+    const cy = box!.y + box!.height / 2;
+
+    const before = await page.getByTestId('e2e-offset-title').textContent();
+    expect(before).toMatch(/scale=1\.00/);
+
+    // タップで選択する前の、初期サイズの小さい状態からいきなりピンチで拡大する
+    // （選択中だけhitSlopを広げていた旧実装では、未選択の小さい要素に指2本を
+    // 置くこと自体が難しく拡大操作を開始できなかった）
+    const client = await page.context().newCDPSession(page);
+    await dispatchTouch(client, 'touchStart', [{ x: cx - 15, y: cy }, { x: cx + 15, y: cy }]);
+    await page.waitForTimeout(100);
+    const steps = 10;
+    for (let i = 1; i <= steps; i++) {
+      const offset = 15 + ((70 - 15) * i) / steps;
+      await dispatchTouch(client, 'touchMove', [{ x: cx - offset, y: cy }, { x: cx + offset, y: cy }]);
+      await page.waitForTimeout(40);
+    }
+    await page.waitForTimeout(100);
+    await dispatchTouch(client, 'touchEnd', []);
+    await page.waitForTimeout(300);
+
+    const after = await page.getByTestId('e2e-offset-title').textContent();
+    const scale = Number(after!.match(/scale=([\d.]+)/)![1]);
+    expect(scale).toBeGreaterThan(1.3);
+  });
+
+  test('2本指でそれぞれ別の要素に同時に触れても、片方だけが反応する（排他ロック）', async ({ page }) => {
+    await page.goto('/?e2e=creativeCanvas');
+    await page.waitForTimeout(1000);
+
+    const box1 = await page.getByTestId('layer-photo_1').boundingBox();
+    const box3 = await page.getByTestId('layer-photo_3').boundingBox();
+    expect(box1).not.toBeNull();
+    expect(box3).not.toBeNull();
+    const c1 = { x: box1!.x + box1!.width / 2, y: box1!.y + box1!.height / 2 };
+    const c3 = { x: box3!.x + box3!.width / 2, y: box3!.y + box3!.height / 2 };
+
+    const client = await page.context().newCDPSession(page);
+    await dispatchTouch(client, 'touchStart', [c1, c3]);
+    await page.waitForTimeout(100);
+    const steps = 8;
+    for (let i = 1; i <= steps; i++) {
+      await dispatchTouch(client, 'touchMove', [
+        { x: c1.x + (80 * i) / steps, y: c1.y },
+        { x: c3.x - (80 * i) / steps, y: c3.y },
+      ]);
+      await page.waitForTimeout(40);
+    }
+    await page.waitForTimeout(100);
+    await dispatchTouch(client, 'touchEnd', []);
+    await page.waitForTimeout(300);
+
+    const after1 = await page.getByTestId('e2e-offset-photo_1').textContent();
+    const after3 = await page.getByTestId('e2e-offset-photo_3').textContent();
+    const moved1 = !after1!.match(/x=0\.0 y=0\.0/);
+    const moved3 = !after3!.match(/x=0\.0 y=0\.0/);
+    // 排他ロック導入前は、2本指で別々の要素に触れると両方が同時に反応してしまっていた。
+    // 導入後はどちらか一方だけが反応し、もう片方は初期位置のまま変化しない
+    expect(moved1 !== moved3).toBe(true);
   });
 });
