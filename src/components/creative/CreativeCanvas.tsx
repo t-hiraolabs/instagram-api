@@ -7,15 +7,23 @@
 // 動かせるのはphotoSlots（位置・拡大率）とtextLayers（位置・拡大率・回転）のみ。
 import React from 'react';
 import { View, Image, Text, Dimensions, StyleSheet } from 'react-native';
-import { useSharedValue } from 'react-native-reanimated';
-import DraggableLayer from './DraggableLayer';
+import { useSharedValue, runOnJS } from 'react-native-reanimated';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import DraggableLayer, { ActiveLayerRefs } from './DraggableLayer';
 import DraggablePhotoSlot from './DraggablePhotoSlot';
 import BackgroundPresetSvg from './BackgroundPresetSvg';
 import { CANVAS_W, CANVAS_H, PhotoSlot, TemplateLayer, TextLayer, resolveLayerBand } from '../../types/creativeTemplate';
 import { PhotoAssignment } from '../../store/creativeEditorStore';
 import { getFontPreset } from '../../utils/fontPresets';
 import { getBackgroundPreset } from '../../utils/backgroundPresets';
+import { clampPhotoOffset } from '../../utils/photoSlotMath';
+import { snapValueWithHit } from '../../utils/snap';
 import { COLORS } from '../../utils/theme';
+
+// 倍率がスナップ先とみなされる許容量（比率そのもの。0.04 = 4%以内）。DraggableLayerの
+// 位置スナップ許容量と対になる値だが、ピンチ・回転はこのファイル側のキャンバス全体
+// ジェスチャーで扱うため、ここに置く（詳細はDraggableLayer.tsx冒頭のコメント参照）。
+const SCALE_SNAP_ZONE = 0.04;
 
 const screenW = Dimensions.get('window').width;
 export const DISPLAY_W = Math.min(screenW - 64, 300);
@@ -106,6 +114,89 @@ export default function CreativeCanvas({
   // このキャンバス上の全photoSlots/textLayersで共有するロック。ある要素を指で操作している
   // 間、別の指が他の要素に触れても反応しないようにする排他制御に使う（DraggableLayer参照）
   const activeOwner = useSharedValue<string | null>(null);
+  // activeOwnerと対になる、現在の操作対象要素のshared value参照。下記のキャンバス全体の
+  // ピンチ・回転ジェスチャーが、これを介して対象要素のscale/rotationを直接更新する
+  const activeRefs = useSharedValue<ActiveLayerRefs | null>(null);
+  // ピンチ・回転ジェスチャー自身が今回のセッションで対象にしているshared value参照の
+  // スナップショット。2本指を同時に離すと、対象要素側のpan/tapのonTouchesUpが
+  // activeRefsをnullに戻す処理と、このジェスチャー自身のonEndが同じフレームで
+  // 競合することがあり、onEndの中でactiveRefs.valueを読み直すと既にnullになっていて
+  // 最後の確定（commit）が失われることがあった。onBegin時点（まだ誰にもクリアされて
+  // いない安全なタイミング）でこちらへ複製しておき、onUpdate/onEndは常にこちらを使う
+  const sessionRefs = useSharedValue<ActiveLayerRefs | null>(null);
+
+  // ピンチ・回転操作が終わった時にReact state側へ確定する。対象がphotoSlotかtextLayer
+  // かでpatchの形が異なる（写真はoffsetX/offsetY、テキストはx/y/rotationそのまま）ため、
+  // ここで振り分ける
+  const onCommitActive = (targetId: string, x: number, y: number, scale: number, rotation: number) => {
+    const slot = photoSlots.find((s) => s.id === targetId);
+    if (slot) {
+      const assignment = photoAssignments.find((a) => a.slotId === targetId);
+      if (!assignment) return;
+      onSlotChange?.(targetId, clampPhotoOffset(slot, assignment, x, y, scale));
+      return;
+    }
+    onTextChange?.(targetId, { x, y, scale, rotation });
+  };
+
+  // ピンチ・回転は要素ごとではなく、キャンバス全体を覆うこの1つのジェスチャーで受け止める
+  // （react-native-gesture-handlerのWeb実装は、新しいタッチを「そのView自身の実際のDOM
+  // 矩形内かどうか」だけで捕捉するかを決めており、hitSlopは新規タッチの捕捉範囲を広げない
+  // ため、要素側のhitSlopをどれだけ広げても「小さい要素に1本指で触れていれば、もう1本の
+  // 指はどこに触れてもよい」という挙動は実現できない。詳細はDraggableLayer.tsx参照）。
+  // activeRefsに登録されている「今の操作対象要素」がある時だけ、そのshared valueを
+  // 直接更新する。対象がなければ何もしない（キャンバスの空きスペースでのピンチは無効）
+  const canvasPinch = Gesture.Pinch()
+    .enabled(!locked)
+    .onBegin(() => {
+      const refs = activeRefs.value;
+      sessionRefs.value = refs;
+      if (!refs) return;
+      refs.baseScale.value = refs.savedScale.value;
+    })
+    .onUpdate((e) => {
+      const refs = sessionRefs.value;
+      if (!refs) return;
+      let s = Math.min(refs.maxScale, Math.max(refs.minScale, refs.baseScale.value * e.scale));
+      let snapped = false;
+      if (refs.snapScale) {
+        const r = snapValueWithHit(s, refs.snapScale, SCALE_SNAP_ZONE);
+        s = r.value;
+        if (r.hit !== null) snapped = true;
+      }
+      refs.savedScale.value = s;
+      refs.isSnapped.value = snapped;
+    })
+    .onEnd(() => {
+      const refs = sessionRefs.value;
+      if (!refs) return;
+      refs.isSnapped.value = false;
+      runOnJS(onCommitActive)(refs.id, refs.translateX.value, refs.translateY.value, refs.savedScale.value, refs.savedRotation.value);
+    });
+
+  const canvasRotate = Gesture.Rotation()
+    .enabled(!locked)
+    .onBegin(() => {
+      const refs = activeRefs.value;
+      sessionRefs.value = refs;
+      if (!refs || !refs.rotatable) return;
+      refs.baseRotation.value = refs.savedRotation.value;
+    })
+    .onUpdate((e) => {
+      const refs = sessionRefs.value;
+      if (!refs || !refs.rotatable) return;
+      refs.savedRotation.value = refs.baseRotation.value + (e.rotation * 180) / Math.PI;
+    })
+    .onEnd(() => {
+      const refs = sessionRefs.value;
+      if (!refs || !refs.rotatable) return;
+      runOnJS(onCommitActive)(refs.id, refs.translateX.value, refs.translateY.value, refs.savedScale.value, refs.savedRotation.value);
+    });
+
+  const canvasGesture = Gesture.Simultaneous(canvasPinch, canvasRotate);
+  // 各要素のpan/tapに「このジェスチャーとは同時に認識してよい」と伝えるための配列
+  // （simultaneousWithExternalGestureに渡す。詳細はDraggableLayer.tsx参照）
+  const canvasGestures = [canvasPinch, canvasRotate];
 
   const backgroundLayers = sortByZIndex(layers.filter((l) => resolveLayerBand(l) === 'background'));
   const decorBehind = sortByZIndex(layers.filter((l) => resolveLayerBand(l) === 'decorBehind'));
@@ -114,48 +205,55 @@ export default function CreativeCanvas({
   const visibleTextLayers = sortByZIndex(textLayers.filter((t) => t.visible !== false));
 
   return (
-    <View ref={canvasRef} style={[styles.canvas, { width, height }]} collapsable={false}>
-      {/* 1. background */}
-      {backgroundLayers.map((l) => <StaticLayerImage key={l.id} layer={l} displayScale={displayScale} />)}
-      {/* 2. decorBehind（写真背面の装飾） */}
-      {decorBehind.map((l) => <StaticLayerImage key={l.id} layer={l} displayScale={displayScale} />)}
-      {/* 3. photoSlots */}
-      {photoSlots.map((slot) => (
-        <DraggablePhotoSlot
-          key={slot.id}
-          testID={`layer-${slot.id}`}
-          slot={slot}
-          assignment={photoAssignments.find((a) => a.slotId === slot.id)}
-          displayScale={displayScale}
-          selected={!locked && selectedId === slot.id}
-          locked={locked}
-          activeOwner={activeOwner}
-          onSelect={() => onSelectSlot?.(slot.id)}
-          onChange={(patch) => onSlotChange?.(slot.id, patch)}
-          onPickPhoto={() => onPickPhoto?.(slot.id)}
-        />
-      ))}
-      {/* 4. decorFront（写真前面の装飾） */}
-      {decorFront.map((l) => <StaticLayerImage key={l.id} layer={l} displayScale={displayScale} />)}
-      {/* 5. frame */}
-      {frameLayers.map((l) => <StaticLayerImage key={l.id} layer={l} displayScale={displayScale} />)}
-      {/* 6. text */}
-      {visibleTextLayers.map((t) => (
-        <DraggableLayer
-          key={t.id}
-          testID={`layer-${t.id}`}
-          x={t.x} y={t.y} scale={t.scale} rotation={t.rotation}
-          displayScale={displayScale}
-          selected={!locked && selectedId === t.id}
-          locked={locked}
-          activeOwner={activeOwner}
-          onSelect={() => onSelectText?.(t.id)}
-          onChange={(patch) => onTextChange?.(t.id, patch)}
-        >
-          <TextContent layer={t} displayScale={displayScale} />
-        </DraggableLayer>
-      ))}
-    </View>
+    <GestureDetector gesture={canvasGesture}>
+      <View ref={canvasRef} style={[styles.canvas, { width, height }]} collapsable={false}>
+        {/* 1. background */}
+        {backgroundLayers.map((l) => <StaticLayerImage key={l.id} layer={l} displayScale={displayScale} />)}
+        {/* 2. decorBehind（写真背面の装飾） */}
+        {decorBehind.map((l) => <StaticLayerImage key={l.id} layer={l} displayScale={displayScale} />)}
+        {/* 3. photoSlots */}
+        {photoSlots.map((slot) => (
+          <DraggablePhotoSlot
+            key={slot.id}
+            testID={`layer-${slot.id}`}
+            slot={slot}
+            assignment={photoAssignments.find((a) => a.slotId === slot.id)}
+            displayScale={displayScale}
+            selected={!locked && selectedId === slot.id}
+            locked={locked}
+            activeOwner={activeOwner}
+            activeRefs={activeRefs}
+            canvasGestures={canvasGestures}
+            onSelect={() => onSelectSlot?.(slot.id)}
+            onChange={(patch) => onSlotChange?.(slot.id, patch)}
+            onPickPhoto={() => onPickPhoto?.(slot.id)}
+          />
+        ))}
+        {/* 4. decorFront（写真前面の装飾） */}
+        {decorFront.map((l) => <StaticLayerImage key={l.id} layer={l} displayScale={displayScale} />)}
+        {/* 5. frame */}
+        {frameLayers.map((l) => <StaticLayerImage key={l.id} layer={l} displayScale={displayScale} />)}
+        {/* 6. text */}
+        {visibleTextLayers.map((t) => (
+          <DraggableLayer
+            key={t.id}
+            id={t.id}
+            testID={`layer-${t.id}`}
+            x={t.x} y={t.y} scale={t.scale} rotation={t.rotation}
+            displayScale={displayScale}
+            selected={!locked && selectedId === t.id}
+            locked={locked}
+            activeOwner={activeOwner}
+            activeRefs={activeRefs}
+            canvasGestures={canvasGestures}
+            onSelect={() => onSelectText?.(t.id)}
+            onChange={(patch) => onTextChange?.(t.id, patch)}
+          >
+            <TextContent layer={t} displayScale={displayScale} />
+          </DraggableLayer>
+        ))}
+      </View>
+    </GestureDetector>
   );
 }
 

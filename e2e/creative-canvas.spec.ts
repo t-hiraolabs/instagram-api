@@ -238,4 +238,77 @@ test.describe('CreativeCanvas', () => {
     // 導入後はどちらか一方だけが反応し、もう片方は初期位置のまま変化しない
     expect(moved1 !== moved3).toBe(true);
   });
+
+  test('1本目の指がテキストに触れていれば、2本目の指は離れた場所でもピンチとして拡大できる', async ({ page }) => {
+    await page.goto('/?e2e=creativeCanvas');
+    await page.waitForTimeout(1000);
+
+    const box = await page.getByTestId('layer-title').boundingBox();
+    expect(box).not.toBeNull();
+    const cx = box!.x + box!.width / 2;
+    const cy = box!.y + box!.height / 2;
+
+    const before = await page.getByTestId('e2e-offset-title').textContent();
+    expect(before).toMatch(/scale=1\.00/);
+
+    // 1本目の指をテキストの上に置いたまま、2本目の指はテキストから150px以上離れた
+    // 場所から触れ始め、さらに離していく（react-native-gesture-handlerのWeb実装は
+    // 新規タッチの捕捉を要素自身の実際のDOM矩形でしか判定しないため、要素側の
+    // hitSlopをどれだけ広げても2本目の指の開始位置までは判定領域を広げられない。
+    // そのためピンチ・回転はCreativeCanvas側のキャンバス全体を覆う1つのジェスチャーで
+    // 受け止め、「今の操作対象要素」がある時だけそれを直接操作する設計にしている）
+    const client = await page.context().newCDPSession(page);
+    await dispatchTouch(client, 'touchStart', [{ x: cx, y: cy }]);
+    await page.waitForTimeout(150);
+    await dispatchTouch(client, 'touchStart', [{ x: cx, y: cy }, { x: cx + 150, y: cy }]);
+    await page.waitForTimeout(100);
+    const steps = 10;
+    for (let i = 1; i <= steps; i++) {
+      await dispatchTouch(client, 'touchMove', [{ x: cx, y: cy }, { x: cx + 150 + (i * 15), y: cy }]);
+      await page.waitForTimeout(40);
+    }
+    await page.waitForTimeout(100);
+    await dispatchTouch(client, 'touchEnd', []);
+    await page.waitForTimeout(300);
+
+    const after = await page.getByTestId('e2e-offset-title').textContent();
+    const scale = Number(after!.match(/scale=([\d.]+)/)![1]);
+    expect(scale).toBeGreaterThan(1.2);
+  });
+
+  test('時間差で別の要素に触れた場合も、先に触れていた要素だけが反応する', async ({ page }) => {
+    await page.goto('/?e2e=creativeCanvas');
+    await page.waitForTimeout(1000);
+
+    const box1 = await page.getByTestId('layer-photo_1').boundingBox();
+    const box3 = await page.getByTestId('layer-photo_3').boundingBox();
+    expect(box1).not.toBeNull();
+    expect(box3).not.toBeNull();
+    const c1 = { x: box1!.x + box1!.width / 2, y: box1!.y + box1!.height / 2 };
+    const c3 = { x: box3!.x + box3!.width / 2, y: box3!.y + box3!.height / 2 };
+
+    const before3 = await page.getByTestId('e2e-offset-photo_3').textContent();
+
+    // 先にphoto_1へ1本指で触れ（操作対象として確定させ）、少し間を置いてから
+    // 別のphoto_3へ2本目の指を触れさせる。photo_3は一切反応してはならない
+    const client = await page.context().newCDPSession(page);
+    await dispatchTouch(client, 'touchStart', [c1]);
+    await page.waitForTimeout(150);
+    await dispatchTouch(client, 'touchStart', [c1, c3]);
+    await page.waitForTimeout(100);
+    const steps = 8;
+    for (let i = 1; i <= steps; i++) {
+      await dispatchTouch(client, 'touchMove', [
+        { x: c1.x + (60 * i) / steps, y: c1.y + (40 * i) / steps },
+        { x: c3.x - (60 * i) / steps, y: c3.y - (40 * i) / steps },
+      ]);
+      await page.waitForTimeout(40);
+    }
+    await page.waitForTimeout(100);
+    await dispatchTouch(client, 'touchEnd', []);
+    await page.waitForTimeout(300);
+
+    const after3 = await page.getByTestId('e2e-offset-photo_3').textContent();
+    expect(after3).toBe(before3); // 後から触れた別要素（photo_3）は一切変化しない
+  });
 });
