@@ -124,6 +124,10 @@ test.describe('StoryTemplateEditor テキストのプロパティ表示', () => 
     await page.waitForTimeout(300);
     await expect(page.getByTestId('story-editor-text-panel')).toHaveCount(0);
 
+    // 移動して離した直後（選択状態は続くがプロパティは非表示）でも、
+    // ツールバーの文字追加・ステッカー追加などのアイコンは操作できるままのはず
+    await expect(page.getByTestId('story-editor-add-text-btn')).toBeVisible();
+
     // 動いた後の新しい位置を改めてタップして離す（移動を伴わない）
     const movedBox = await layer.boundingBox();
     expect(movedBox).not.toBeNull();
@@ -458,3 +462,4 @@ test.describe('StoryTemplateEditor 写真の追加は「写真」アイコンか
     expect(hasImage).toBe(true);
   });
 });
+

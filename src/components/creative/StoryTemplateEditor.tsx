@@ -17,8 +17,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import ViewShot from 'react-native-view-shot';
 import { COLORS, SPACING, RADIUS } from '../../utils/theme';
-import { saveStoryDraft } from '../../services/storyStudioService';
-import { useCreativeEditorStore, serializeCreativeEditor } from '../../store/creativeEditorStore';
+import { useCreativeEditorStore } from '../../store/creativeEditorStore';
 import { TextLayer, TemplateLayer, CANVAS_W, CANVAS_H } from '../../types/creativeTemplate';
 import { FONT_PRESETS, getFontPreset } from '../../utils/fontPresets';
 import { BACKGROUND_PRESETS } from '../../utils/backgroundPresets';
@@ -300,22 +299,6 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
   const isBackgroundMode = photoSlots.length === 0 && layers.some((l) => l.kind === 'background');
   const canFinish = isBackgroundMode || (photoSlots.length > 0 && filledCount === photoSlots.length);
 
-  const handleSaveDraft = async () => {
-    // 完了を押さないまま（選択したテキストが空文字のまま）保存された場合の取りこぼしを
-    // 防ぐ。removeTextLayerでのstore更新は非同期なため、ここではその場でフィルタする
-    const cleanedTextLayers = textLayers.filter((t) => t.label || t.text.trim());
-    setSaving(true);
-    try {
-      await saveStoryDraft({ templateId: templateId || undefined, layersJson: serializeCreativeEditor({ photoSlots, layers, textLayers: cleanedTextLayers }) });
-      alertMsg('下書きに保存しました');
-      close();
-    } catch (e) {
-      alertMsg(e instanceof Error ? e.message : '保存に失敗しました');
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const handlePublish = async () => {
     setSaving(true);
     try {
@@ -549,8 +532,12 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
             </View>
           )}
 
-          {/* 背景プリセット・ステッカーのインライン選択パネル（別モーダルにせず、キャンバスの上に重ねて表示） */}
-          {!selectedTextLayer && panel === 'background' && (
+          {/* 背景プリセット・ステッカーのインライン選択パネル（別モーダルにせず、キャンバスの上に重ねて表示）。
+              !selectedTextLayerではなく!showTextPropsで判定する: 移動して指を離した直後は
+              選択状態自体は続くがプロパティは非表示になる（state定義側のコメント参照）ため、
+              !selectedTextLayerのままだと移動直後にこれらのパネルもツールバーもずっと
+              出せなくなってしまう */}
+          {!showTextProps && panel === 'background' && (
             <View style={[styles.stripPanel, styles.overlayPanel]}>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.stripContent}>
                 {BACKGROUND_PRESETS.map((preset) => (
@@ -564,7 +551,7 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
               </ScrollView>
             </View>
           )}
-          {!selectedTextLayer && panel === 'sticker' && (
+          {!showTextProps && panel === 'sticker' && (
             <View style={[styles.stripPanel, styles.overlayPanel]}>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.stripContent}>
                 {STICKER_CATEGORIES.flatMap((cat) => cat.emojis).map((emoji, i) => (
@@ -577,9 +564,11 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
           )}
         </View>
 
-        {/* アイコンツールバー（常時同じ高さを確保。文字選択中はキャンバスサイズを変えないため空のまま） */}
+        {/* アイコンツールバー（常時同じ高さを確保。プロパティパネル表示中はキャンバスサイズを
+            変えないため空のまま。移動して指を離した直後（選択は続くがプロパティは非表示）は
+            ここにアイコンを出す必要があるため、!selectedTextLayerではなく!showTextPropsで判定する） */}
         <View style={styles.toolbar}>
-          {!selectedTextLayer && (
+          {!showTextProps && (
             <>
               <TouchableOpacity style={styles.toolBtn} onPress={pickPhoto} disabled={picking}>
                 {picking ? <ActivityIndicator size="small" color={COLORS.text} /> : <Ionicons name="image-outline" size={22} color={COLORS.text} />}
@@ -602,9 +591,9 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
         </View>
 
         <View style={styles.finishRow}>
-          <TouchableOpacity style={styles.saveBtn} onPress={handleSaveDraft} disabled={saving} activeOpacity={0.85}>
-            {saving ? <ActivityIndicator color={COLORS.text} /> : <Text style={styles.saveBtnText}>保存</Text>}
-          </TouchableOpacity>
+          {/* 下書き保存・端末へのダウンロードは、投稿するを押した後の画面
+              （ScheduleScreen.tsxの投稿方法選択画面）側に用意されている。
+              ここでは編集を終えて次の画面へ進む「投稿する」のみを置く */}
           <TouchableOpacity
             style={[styles.publishBtn, !canFinish && styles.publishBtnDisabled]}
             onPress={handlePublish}
@@ -683,11 +672,6 @@ const styles = StyleSheet.create({
     height: 64, flexDirection: 'row', gap: SPACING.sm, paddingHorizontal: SPACING.md, alignItems: 'center',
     borderTopWidth: 1, borderTopColor: COLORS.border,
   },
-  saveBtn: {
-    flex: 1, alignItems: 'center', paddingVertical: SPACING.sm, borderRadius: RADIUS.full,
-    borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.surface,
-  },
-  saveBtnText: { color: COLORS.text, fontWeight: '800', fontSize: 14 },
   publishBtn: { flex: 1, alignItems: 'center', paddingVertical: SPACING.sm, borderRadius: RADIUS.full, backgroundColor: COLORS.primary },
   publishBtnDisabled: { opacity: 0.4 },
   publishBtnText: { color: '#fff', fontWeight: '800', fontSize: 14 },

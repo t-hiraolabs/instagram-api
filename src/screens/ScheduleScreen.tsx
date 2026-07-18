@@ -15,6 +15,7 @@ import {
   Dimensions,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import * as MediaLibrary from 'expo-media-library';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
@@ -235,6 +236,7 @@ export default function ScheduleScreen() {
   const [editDuplicateSource, setEditDuplicateSource] = useState<ScheduledPost | null>(null);
   const [editPublishDraft, setEditPublishDraft] = useState(false);
   const [savingDraft, setSavingDraft] = useState(false);
+  const [downloadingImage, setDownloadingImage] = useState(false);
   const [editCaption, setEditCaption] = useState('');
   const [editHashtags, setEditHashtags] = useState('');
   const [editDate, setEditDate] = useState('');
@@ -870,6 +872,37 @@ export default function ScheduleScreen() {
       alertMsg(msg, '保存できませんでした');
     } finally {
       setSavingDraft(false);
+    }
+  };
+
+  // アプリの予約投稿を使わず、自分で手動でInstagramへ投稿したい人向けに、完成画像を
+  // その場で端末へ保存できるようにする。imagePreviewは各作成フロー（ストーリー作成・
+  // コラージュ・写真の切り抜き等）がonFinish/onDone等で直接渡してきた画像そのもの
+  // （Web版はdata:image/png;base64,...のデータURI、ネイティブ版はローカルの一時ファイル
+  // URI）が入っているため、追加のダウンロード処理を挟まずそのまま使える
+  const handleDownloadImage = async () => {
+    const uri = imagePreview || imageUrl;
+    if (!uri) return;
+    setDownloadingImage(true);
+    try {
+      if (Platform.OS === 'web') {
+        const a = document.createElement('a');
+        a.href = uri;
+        a.download = `post_${Date.now()}.png`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      } else {
+        const { status } = await MediaLibrary.requestPermissionsAsync();
+        if (status !== 'granted') {
+          alertMsg('写真ライブラリへの保存を許可してください', '権限エラー');
+          return;
+        }
+        await MediaLibrary.saveToLibraryAsync(uri);
+        alertMsg('写真ライブラリに保存しました', '保存しました');
+      }
+    } finally {
+      setDownloadingImage(false);
     }
   };
 
@@ -2066,6 +2099,29 @@ export default function ScheduleScreen() {
                 <Text style={styles.publishNowHint}>
                   ※ 日時を決めずに保存。「下書き」から後で予約できます
                 </Text>
+
+                {/* ④ 手動投稿する人向けのダウンロード */}
+                {!!(imagePreview || imageUrl) && (
+                  <>
+                    <Text style={styles.orDivider}>または、自分で手動投稿する</Text>
+                    <TouchableOpacity
+                      testID="schedule-download-btn"
+                      style={[styles.draftSaveBtn, downloadingImage && styles.publishNowBtnDisabled]}
+                      onPress={handleDownloadImage}
+                      disabled={downloadingImage}
+                      activeOpacity={0.85}
+                    >
+                      {downloadingImage ? (
+                        <ActivityIndicator color={COLORS.primary} />
+                      ) : (
+                        <Text style={styles.draftSaveText}>画像をダウンロード</Text>
+                      )}
+                    </TouchableOpacity>
+                    <Text style={styles.publishNowHint}>
+                      ※ 画像を端末に保存して、Instagramアプリから自分で投稿できます
+                    </Text>
+                  </>
+                )}
               </>
             )}
           </ScrollView>
