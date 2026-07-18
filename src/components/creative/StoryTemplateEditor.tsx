@@ -380,6 +380,13 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
       hideSub.remove();
     };
   }, []);
+  // keyboardHeightは画面の本当の下端からの高さだが、パネル自体はcanvasWrapの下端
+  // （その下にツールバー・投稿バー・下端セーフエリア分の余白がすでにある）に
+  // bottom:0で重ねているため、keyboardHeightをそのまま使うとその余白の分だけ
+  // 余計に持ち上がり、キーボードよりかなり上に浮いて見えてしまう。すでに空いている
+  // その分を差し引いた「実際にキーボードがcanvasWrapへ食い込む量」だけ持ち上げる
+  const belowCanvasH = TOOLBAR_H + FINISH_H + insets.bottom;
+  const panelKeyboardOffset = Math.max(0, keyboardHeight - belowCanvasH);
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={close}>
@@ -481,7 +488,7 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
 
           {/* 選択中の文字・ステッカーのプロパティ（別モーダルではなく同一画面内、キャンバスの上に重ねて表示） */}
           {showTextProps && selectedTextLayer && (
-            <View testID="story-editor-text-panel" style={[styles.textPanel, styles.overlayPanel, { bottom: keyboardHeight }]}>
+            <View testID="story-editor-text-panel" style={[styles.textPanel, styles.overlayPanel, { bottom: panelKeyboardOffset }]}>
               <View style={styles.textPanelTopRow}>
                 {/* 文字内容の編集は上部プレビュー側の入力欄で直接行う（ここには重複させない） */}
                 <View style={{ flex: 1 }} />
