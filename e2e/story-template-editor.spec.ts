@@ -463,3 +463,95 @@ test.describe('StoryTemplateEditor 写真の追加は「写真」アイコンか
   });
 });
 
+test.describe('StoryTemplateEditor 編集中カーソルの初期位置', () => {
+  test('既存テキストを選択し直すと、カーソルは先頭ではなく末尾に置かれる', async ({ page }) => {
+    await page.goto('/?e2e=storyTemplateEditor');
+    await page.waitForTimeout(1000);
+
+    await page.getByTestId('story-editor-add-text-btn').click();
+    await page.waitForTimeout(500);
+    await page.getByTestId('story-editor-text-preview-input').fill('こんにちは');
+    await page.getByText('完了').click();
+    await page.waitForTimeout(300);
+
+    const layer = page.locator('[data-testid^="layer-text_"]');
+    await layer.click();
+    await page.waitForTimeout(400);
+
+    const sel = await page.evaluate(() => {
+      const el = document.querySelector('[data-testid="story-editor-text-preview-input"]') as HTMLTextAreaElement | null;
+      return el ? { start: el.selectionStart, end: el.selectionEnd, len: el.value.length } : null;
+    });
+    expect(sel).not.toBeNull();
+    expect(sel!.start).toBe(sel!.len);
+    expect(sel!.end).toBe(sel!.len);
+  });
+});
+
+test.describe('StoryTemplateEditor 他の場所をタップした時に閉じる', () => {
+  test('背景パネルを開いた状態でキャンバスの他の場所をタップすると閉じる', async ({ page }) => {
+    await page.goto('/?e2e=storyTemplateEditor');
+    await page.waitForTimeout(1000);
+
+    await page.getByText('背景').click();
+    await page.waitForTimeout(300);
+    await expect(page.locator('text=インク').first()).toBeVisible();
+
+    const placeholder = page.locator('[data-testid="layer-photo_1"]');
+    const box = await placeholder.boundingBox();
+    expect(box).not.toBeNull();
+    await page.mouse.click(box!.x + 10, box!.y + box!.height * 0.55);
+    await page.waitForTimeout(300);
+
+    await expect(page.locator('text=インク').first()).toHaveCount(0);
+  });
+
+  test('テキスト編集中にキャンバスの他の場所をタップすると、プロパティ・プレビューが閉じる', async ({ page }) => {
+    await page.goto('/?e2e=storyTemplateEditor');
+    await page.waitForTimeout(1000);
+
+    await page.getByTestId('story-editor-add-text-btn').click();
+    await page.waitForTimeout(500);
+    await page.getByTestId('story-editor-text-preview-input').fill('テスト');
+    await page.waitForTimeout(300);
+
+    const placeholder = page.locator('[data-testid="layer-photo_1"]');
+    const box = await placeholder.boundingBox();
+    expect(box).not.toBeNull();
+    await page.mouse.click(box!.x + 10, box!.y + box!.height * 0.55);
+    await page.waitForTimeout(300);
+
+    await expect(page.getByTestId('story-editor-text-panel')).toHaveCount(0);
+    await expect(page.getByTestId('story-editor-text-preview')).toHaveCount(0);
+  });
+
+  test('（回帰）選択中のテキスト自身を再タップした場合は、閉じずに入力欄へフォーカスが当たる', async ({ page }) => {
+    await page.goto('/?e2e=storyTemplateEditor');
+    await page.waitForTimeout(1000);
+
+    await page.getByTestId('story-editor-add-text-btn').click();
+    await page.waitForTimeout(500);
+    await page.getByTestId('story-editor-text-preview-input').fill('テスト');
+    await page.getByText('完了').click();
+    await page.waitForTimeout(300);
+
+    const layer = page.locator('[data-testid^="layer-text_"]');
+    const box = await layer.boundingBox();
+    expect(box).not.toBeNull();
+    const cx = box!.x + box!.width / 2;
+    const cy = box!.y + box!.height / 2;
+    const client = await page.context().newCDPSession(page);
+    await dispatchTouch(client, 'touchStart', [{ x: cx, y: cy }]);
+    await page.waitForTimeout(50);
+    await dispatchTouch(client, 'touchEnd', []);
+    await page.waitForTimeout(300);
+
+    await expect(page.getByTestId('story-editor-text-panel')).toBeVisible();
+    const focused = await page.evaluate(() => {
+      const el = document.querySelector('[data-testid="story-editor-text-preview-input"]');
+      return document.activeElement === el;
+    });
+    expect(focused).toBe(true);
+  });
+});
+
