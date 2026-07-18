@@ -8,7 +8,7 @@
 import React, { useRef, useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  ActivityIndicator, Platform, Alert, Modal, ScrollView, useWindowDimensions,
+  ActivityIndicator, Platform, Alert, Modal, ScrollView, Dimensions,
   NativeSyntheticEvent, NativeScrollEvent,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -106,8 +106,27 @@ interface Props {
   onFinish: (dataUrl: string) => void;
 }
 
+// useWindowDimensions()（'window'）は、ソフトキーボード表示中はキーボード分だけ
+// 縮んだ高さを返すプラットフォームがあり、これをキャンバス表示サイズの計算に使うと
+// 文字入力中（キーボード表示中）にキャンバス・中央プレビューの文字サイズまでもが
+// 一緒に縮んでしまう不具合の原因になる。ネイティブでは'screen'（物理画面全体の
+// サイズ）を使えばキーボードの表示状態に左右されない。ただしWeb版のreact-native-web
+// では'screen'はブラウザのビューポートではなくOS側のモニター解像度を返してしまい、
+// 逆に大きく崩れるため、Webでは従来通り'window'（ビューポート）を使う
+function useStableScreenSize() {
+  const initial = Platform.OS === 'web' ? Dimensions.get('window') : Dimensions.get('screen');
+  const [size, setSize] = useState(initial);
+  React.useEffect(() => {
+    const sub = Dimensions.addEventListener('change', ({ window, screen }) => {
+      setSize(Platform.OS === 'web' ? window : screen);
+    });
+    return () => sub.remove();
+  }, []);
+  return size;
+}
+
 export default function StoryTemplateEditor({ visible, onClose, onFinish }: Props) {
-  const { width: winW, height: winH } = useWindowDimensions();
+  const { width: winW, height: winH } = useStableScreenSize();
   const insets = useSafeAreaInsets();
 
   const [panel, setPanel] = useState<Panel>('none');
