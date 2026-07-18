@@ -555,3 +555,29 @@ test.describe('StoryTemplateEditor 他の場所をタップした時に閉じる
   });
 });
 
+test.describe('StoryTemplateEditor 1文字目入力時のプレビューの見切れ', () => {
+  test('空文字から1文字目を入力した直後も、入力欄はフォントサイズに応じた最小サイズを下回らない', async ({ page }) => {
+    await page.goto('/?e2e=storyTemplateEditor');
+    await page.waitForTimeout(1000);
+    await page.getByTestId('story-editor-add-text-btn').click();
+    await page.waitForTimeout(500);
+
+    const input = page.getByTestId('story-editor-text-preview-input');
+    await input.type('あ', { delay: 0 });
+
+    // 計測（previewInputSize）の反映を待たず、直後の状態を確認する。
+    // min-width/min-heightがフォントサイズに応じた下限を確保しているため、
+    // 計測が追いつく前の一瞬でも文字が入りきらないほど小さい箱にはならないはず
+    const box = await input.evaluate((el) => {
+      const cs = getComputedStyle(el);
+      return {
+        width: el.getBoundingClientRect().width,
+        height: el.getBoundingClientRect().height,
+        fontSize: parseFloat(cs.fontSize),
+      };
+    });
+    expect(box.width).toBeGreaterThanOrEqual(box.fontSize);
+    expect(box.height).toBeGreaterThanOrEqual(box.fontSize);
+  });
+});
+
