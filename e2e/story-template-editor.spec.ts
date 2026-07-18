@@ -279,7 +279,50 @@ test.describe('StoryTemplateEditor 上部プレビューでの文字編集', () 
     await page.getByTestId('story-editor-add-text-btn').click();
     await page.waitForTimeout(500);
 
-    // 「文字を入力」というプレースホルダーを持つ入力欄は、上部プレビューの1つだけ
-    await expect(page.locator('[placeholder="文字を入力"]')).toHaveCount(1);
+    // 文字内容を編集できる入力欄は、上部プレビューの1つだけ
+    await expect(page.getByTestId('story-editor-text-preview-input')).toHaveCount(1);
+    await expect(page.getByTestId('story-editor-text-panel').locator('textarea, input[type="text"]')).toHaveCount(0);
+  });
+
+  test('文字を追加した直後は自動的に入力欄にフォーカスが当たる（キーボードが開く）', async ({ page }) => {
+    await page.goto('/?e2e=storyTemplateEditor');
+    await page.waitForTimeout(1000);
+
+    await page.getByTestId('story-editor-add-text-btn').click();
+    await page.waitForTimeout(500);
+
+    const focused = await page.evaluate(() => {
+      const el = document.querySelector('[data-testid="story-editor-text-preview-input"]');
+      return document.activeElement === el;
+    });
+    expect(focused).toBe(true);
+  });
+
+  test('既存のテキストをタップして選択し直した時も、自動的に入力欄にフォーカスが当たる', async ({ page }) => {
+    await page.goto('/?e2e=storyTemplateEditor');
+    await page.waitForTimeout(1000);
+
+    await page.getByTestId('story-editor-add-text-btn').click();
+    await page.waitForTimeout(500);
+    await page.getByText('完了').click();
+    await page.waitForTimeout(300);
+
+    const layer = page.locator('[data-testid^="layer-text_"]');
+    const box = await layer.boundingBox();
+    expect(box).not.toBeNull();
+    const cx = box!.x + box!.width / 2;
+    const cy = box!.y + box!.height / 2;
+
+    const client = await page.context().newCDPSession(page);
+    await dispatchTouch(client, 'touchStart', [{ x: cx, y: cy }]);
+    await page.waitForTimeout(50);
+    await dispatchTouch(client, 'touchEnd', []);
+    await page.waitForTimeout(300);
+
+    const focused = await page.evaluate(() => {
+      const el = document.querySelector('[data-testid="story-editor-text-preview-input"]');
+      return document.activeElement === el;
+    });
+    expect(focused).toBe(true);
   });
 });
