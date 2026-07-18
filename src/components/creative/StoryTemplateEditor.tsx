@@ -8,7 +8,7 @@
 import React, { useRef, useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  ActivityIndicator, Platform, Alert, Modal, ScrollView, Dimensions,
+  ActivityIndicator, Platform, Alert, Modal, ScrollView, useWindowDimensions,
   NativeSyntheticEvent, NativeScrollEvent,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -106,28 +106,21 @@ interface Props {
   onFinish: (dataUrl: string) => void;
 }
 
-// useWindowDimensions()（'window'）は、ソフトキーボード表示中はキーボード分だけ
-// 縮んだ高さを返すプラットフォームがあり、これをキャンバス表示サイズの計算に使うと
-// 文字入力中（キーボード表示中）にキャンバス・中央プレビューの文字サイズまでもが
-// 一緒に縮んでしまう不具合の原因になる。ネイティブでは'screen'（物理画面全体の
-// サイズ）を使えばキーボードの表示状態に左右されない。ただしWeb版のreact-native-web
-// では'screen'はブラウザのビューポートではなくOS側のモニター解像度を返してしまい、
-// 逆に大きく崩れるため、Webでは従来通り'window'（ビューポート）を使う
-function useStableScreenSize() {
-  const initial = Platform.OS === 'web' ? Dimensions.get('window') : Dimensions.get('screen');
-  const [size, setSize] = useState(initial);
-  React.useEffect(() => {
-    const sub = Dimensions.addEventListener('change', ({ window, screen }) => {
-      setSize(Platform.OS === 'web' ? window : screen);
-    });
-    return () => sub.remove();
-  }, []);
-  return size;
-}
-
 export default function StoryTemplateEditor({ visible, onClose, onFinish }: Props) {
-  const { width: winW, height: winH } = useStableScreenSize();
-  const insets = useSafeAreaInsets();
+  // useWindowDimensions()は、ソフトキーボード表示中はキーボード分だけ縮んだ高さを
+  // 返すプラットフォームがあり、これをキャンバス表示サイズの計算に使うと、文字入力中
+  // （キーボード表示中）にキャンバス・上部プレビューの文字サイズまでもが一緒に縮んで
+  // しまう不具合の原因になっていた。iOSの`Modal`（pageSheet）自体がキーボード表示に
+  // 応じてレイアウトを調整する場合もあり、原因を1つに断定できないため、「変化する値を
+  // 追いかけて正しく計算し直す」のではなく、モーダルを開いた瞬間（下のvisible &&
+  // !startedの分岐）の値を一度だけ捕まえ、そのセッション中は（原因が何であれ）
+  // 二度と再計算しないようにする
+  const liveWin = useWindowDimensions();
+  const liveInsets = useSafeAreaInsets();
+  const [frozenWin, setFrozenWin] = useState(liveWin);
+  const [frozenInsets, setFrozenInsets] = useState(liveInsets);
+  const { width: winW, height: winH } = frozenWin;
+  const insets = frozenInsets;
 
   const [panel, setPanel] = useState<Panel>('none');
   const [saving, setSaving] = useState(false);
@@ -173,6 +166,8 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
   // 作成と同じく、ギャラリー選択などの別ステップを挟まない）。
   if (visible && !started) {
     loadTemplate({ templateId: '', photoSlots: [FULL_BLEED_SLOT], layers: [], textLayers: [] });
+    setFrozenWin(liveWin);
+    setFrozenInsets(liveInsets);
     setStarted(true);
   }
 
