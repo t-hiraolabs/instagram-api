@@ -77,6 +77,7 @@ function FontDropdown({ value, onChange }: { value: string; onChange: (fontId: s
             scrollEventThrottle={16}
             contentContainerStyle={{ paddingVertical: (FONT_LIST_H - FONT_ROW_H) / 2 }}
             onScroll={handleScroll}
+            keyboardShouldPersistTaps="always"
           >
             {FONT_PRESETS.map((f) => (
               <TouchableOpacity
@@ -234,6 +235,18 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
   const selectedTextLayer = textLayers.find((t) => t.id === selectedId) as TextLayer | undefined;
   React.useEffect(() => { setPreviewInputSize(null); }, [selectedTextLayer?.id]);
 
+  // テキストをタップしてプロパティ・上部プレビューを開いた時、Instagram同様に
+  // 文字入力キーボードも一緒に開く（フォント・色などはキーボードを開いたまま
+  // 操作できる。各ScrollViewのkeyboardShouldPersistTapsも参照）
+  const previewInputRef = useRef<TextInput>(null);
+  React.useEffect(() => {
+    if (!selectedTextLayer || !showProps) return;
+    // Modalの表示アニメーション中にfocus()を呼んでも効かないことがあるため、
+    // 描画が落ち着くのを少し待ってからfocusする
+    const t = setTimeout(() => previewInputRef.current?.focus(), 50);
+    return () => clearTimeout(t);
+  }, [showProps, selectedTextLayer?.id]);
+
   const handleAddTextLayer = () => {
     const layer: TextLayer = {
       id: `text_${Date.now()}`, text: '新しいテキスト',
@@ -388,6 +401,7 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
                 </Text>
               </View>
               <TextInput
+                ref={previewInputRef}
                 testID="story-editor-text-preview-input"
                 style={[
                   styles.previewText,
@@ -407,8 +421,6 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
                 value={selectedTextLayer.text}
                 onChangeText={(text) => updateTextLayer(selectedTextLayer.id, { text })}
                 multiline
-                placeholder="文字を入力"
-                placeholderTextColor={COLORS.textMuted}
               />
             </View>
           )}
@@ -433,7 +445,7 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
                 />
               </View>
               <View style={styles.colorAlignRow}>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow} keyboardShouldPersistTaps="always">
                   {TEXT_COLOR_OPTIONS.map((c) => (
                     <TouchableOpacity
                       key={c}
