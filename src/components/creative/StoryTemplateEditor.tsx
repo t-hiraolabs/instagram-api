@@ -251,7 +251,7 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
 
   const handleAddTextLayer = () => {
     const layer: TextLayer = {
-      id: `text_${Date.now()}`, text: '新しいテキスト',
+      id: `text_${Date.now()}`, text: '',
       x: 120, y: 860, font: 'gothic', color: '#FFFFFF', size: 64, align: 'left',
       scale: 1, rotation: 0, visible: true,
     };
@@ -259,6 +259,21 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
     setPanel('none');
     setShowProps(true);
   };
+
+  // 何も入力しないまま選択が外れた（別の要素をタップした、完了を押した等）テキストは
+  // 追加しなかったことにする。ステッカーはlabelを持つテキストレイヤーとして表現している
+  // ため、文字が空でも消さないよう区別する
+  const removeIfEmptyText = (id: string) => {
+    const layer = textLayers.find((t) => t.id === id) as TextLayer | undefined;
+    if (layer && !layer.label && !layer.text.trim()) removeTextLayer(id);
+  };
+  const prevSelectedIdRef = useRef<string | null>(null);
+  React.useEffect(() => {
+    const prevId = prevSelectedIdRef.current;
+    prevSelectedIdRef.current = selectedId;
+    if (prevId && prevId !== selectedId) removeIfEmptyText(prevId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId]);
 
   const handleAddSticker = (emoji: string) => {
     const layer: TextLayer = {
@@ -286,9 +301,12 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
   const canFinish = isBackgroundMode || (photoSlots.length > 0 && filledCount === photoSlots.length);
 
   const handleSaveDraft = async () => {
+    // 完了を押さないまま（選択したテキストが空文字のまま）保存された場合の取りこぼしを
+    // 防ぐ。removeTextLayerでのstore更新は非同期なため、ここではその場でフィルタする
+    const cleanedTextLayers = textLayers.filter((t) => t.label || t.text.trim());
     setSaving(true);
     try {
-      await saveStoryDraft({ templateId: templateId || undefined, layersJson: serializeCreativeEditor({ photoSlots, layers, textLayers }) });
+      await saveStoryDraft({ templateId: templateId || undefined, layersJson: serializeCreativeEditor({ photoSlots, layers, textLayers: cleanedTextLayers }) });
       alertMsg('下書きに保存しました');
       close();
     } catch (e) {
@@ -412,7 +430,8 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
               selectedId={selectedId}
               onSelectSlot={setActiveSlot}
               onSlotChange={(slotId, patch) => updatePhotoAssignment(slotId, patch)}
-              onPickPhoto={pickPhoto}
+              // 写真の追加はツールバーの「写真」アイコンからのみ行う（プレビュー全体を
+              // タップしても追加されないようにする）ため、ここではonPickPhotoを渡さない
               onSelectText={selectItem}
               onTextChange={(id, patch) => updateTextLayer(id, patch)}
               onTextTap={() => setShowProps(true)}
