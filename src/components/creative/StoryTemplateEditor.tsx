@@ -243,9 +243,21 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
   // なるため、遅延を挟まずuseLayoutEffectで、タップ操作によるレンダー直後・
   // ブラウザが描画する前に同期的にfocus()を呼ぶ
   const previewInputRef = useRef<TextInput>(null);
+  // タブを開いている間・テキスト編集中に他の場所をタップしたら閉じる判定で、
+  // 「他の場所」から除外する対象（下のuseEffect参照）
+  const textPanelRef = useRef<View>(null);
+  const stripPanelRef = useRef<View>(null);
+  // フォーカスした瞬間、カーソルを文末に置く（既定では先頭になってしまい、
+  // 追記したい時に毎回カーソルを文末へ動かす手間が発生していたため）。
+  // selectionは一度だけ設定し、その後は更新しない（更新し続けると入力中の
+  // カーソル移動そのものを打ち消してしまうため、依存配列にselectedTextLayer.text
+  // を含めない）
+  const [previewSelection, setPreviewSelection] = useState<{ start: number; end: number } | undefined>(undefined);
   React.useLayoutEffect(() => {
     if (!selectedTextLayer || !showProps) return;
+    setPreviewSelection({ start: selectedTextLayer.text.length, end: selectedTextLayer.text.length });
     previewInputRef.current?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showProps, selectedTextLayer?.id]);
 
   const handleAddTextLayer = () => {
@@ -344,6 +356,32 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
     document.addEventListener('mousedown', handleMouseDown, true);
     return () => document.removeEventListener('mousedown', handleMouseDown, true);
   }, [showTextProps]);
+
+  // タブ（背景・ステッカーの一覧パネル）を開いている間、またはテキストの
+  // プロパティ・上部プレビューを表示している間に、それら以外の場所をタップしたら
+  // 閉じる（背景/ステッカーパネルはpanelを'none'に、テキストは完了ボタンと同じ扱いで
+  // 選択解除する）。ただし、今まさに選択中のテキスト自身（キャンバス上の実物）への
+  // タップは除外する: そこだけは再タップでキーボードを開き直す既存の挙動
+  // （上のフォーカス維持の仕組み参照）を壊さないようにするため
+  React.useEffect(() => {
+    if (!overlayActive || Platform.OS !== 'web') return;
+    const handleMouseDown = (e: MouseEvent) => {
+      const target = e.target as Node | null;
+      if (!target) return;
+      const input = previewInputRef.current as unknown as HTMLElement | null;
+      const textPanelEl = textPanelRef.current as unknown as HTMLElement | null;
+      const stripPanelEl = stripPanelRef.current as unknown as HTMLElement | null;
+      const selectedEl = selectedId ? document.querySelector(`[data-testid="layer-${selectedId}"]`) : null;
+      if (input?.contains(target)) return;
+      if (textPanelEl?.contains(target)) return;
+      if (stripPanelEl?.contains(target)) return;
+      if (selectedEl?.contains(target)) return;
+      if (panel !== 'none') setPanel('none');
+      if (showTextProps) { selectItem(null); setShowProps(false); }
+    };
+    document.addEventListener('mousedown', handleMouseDown, true);
+    return () => document.removeEventListener('mousedown', handleMouseDown, true);
+  }, [overlayActive, panel, showTextProps, selectedId]);
   const previewDisplayScale = canvasW / CANVAS_W;
   const previewFontSize = selectedTextLayer
     ? Math.min(72, Math.max(20, selectedTextLayer.size * previewDisplayScale * 2.2))
@@ -483,6 +521,7 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
                 ]}
                 value={selectedTextLayer.text}
                 onChangeText={(text) => updateTextLayer(selectedTextLayer.id, { text })}
+                selection={previewSelection}
                 multiline
               />
             </View>
@@ -490,7 +529,7 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
 
           {/* 選択中の文字・ステッカーのプロパティ（別モーダルではなく同一画面内、キャンバスの上に重ねて表示） */}
           {showTextProps && selectedTextLayer && (
-            <View testID="story-editor-text-panel" style={[styles.textPanel, styles.overlayPanel, { bottom: panelKeyboardOffset }]}>
+            <View ref={textPanelRef} testID="story-editor-text-panel" style={[styles.textPanel, styles.overlayPanel, { bottom: panelKeyboardOffset }]}>
               <View style={styles.textPanelTopRow}>
                 {/* 文字内容の編集は上部プレビュー側の入力欄で直接行う（ここには重複させない） */}
                 <View style={{ flex: 1 }} />
@@ -538,7 +577,7 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
               !selectedTextLayerのままだと移動直後にこれらのパネルもツールバーもずっと
               出せなくなってしまう */}
           {!showTextProps && panel === 'background' && (
-            <View style={[styles.stripPanel, styles.overlayPanel]}>
+            <View ref={stripPanelRef} style={[styles.stripPanel, styles.overlayPanel]}>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.stripContent}>
                 {BACKGROUND_PRESETS.map((preset) => (
                   <TouchableOpacity key={preset.id} style={styles.bgSwatchItem} onPress={() => selectBackground(preset.id)} activeOpacity={0.85}>
@@ -552,7 +591,7 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
             </View>
           )}
           {!showTextProps && panel === 'sticker' && (
-            <View style={[styles.stripPanel, styles.overlayPanel]}>
+            <View ref={stripPanelRef} style={[styles.stripPanel, styles.overlayPanel]}>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.stripContent}>
                 {STICKER_CATEGORIES.flatMap((cat) => cat.emojis).map((emoji, i) => (
                   <TouchableOpacity key={`${emoji}_${i}`} style={styles.stickerItem} onPress={() => handleAddSticker(emoji)} activeOpacity={0.7}>
