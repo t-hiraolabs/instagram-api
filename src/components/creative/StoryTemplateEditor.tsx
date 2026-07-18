@@ -237,14 +237,16 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
 
   // テキストをタップしてプロパティ・上部プレビューを開いた時、Instagram同様に
   // 文字入力キーボードも一緒に開く（フォント・色などはキーボードを開いたまま
-  // 操作できる。各ScrollViewのkeyboardShouldPersistTapsも参照）
+  // 操作できる。各ScrollViewのkeyboardShouldPersistTapsも参照）。
+  // 注意: Safari（iOS）は、ユーザーの操作イベントと同期していないfocus()呼び出しでは
+  // ソフトキーボードを表示しない（「信頼できるユーザー操作」由来である間だけ許可する
+  // 仕組みのため）。setTimeoutで遅延させるとこの猶予から外れてキーボードが開かなく
+  // なるため、遅延を挟まずuseLayoutEffectで、タップ操作によるレンダー直後・
+  // ブラウザが描画する前に同期的にfocus()を呼ぶ
   const previewInputRef = useRef<TextInput>(null);
-  React.useEffect(() => {
+  React.useLayoutEffect(() => {
     if (!selectedTextLayer || !showProps) return;
-    // Modalの表示アニメーション中にfocus()を呼んでも効かないことがあるため、
-    // 描画が落ち着くのを少し待ってからfocusする
-    const t = setTimeout(() => previewInputRef.current?.focus(), 50);
-    return () => clearTimeout(t);
+    previewInputRef.current?.focus();
   }, [showProps, selectedTextLayer?.id]);
 
   const handleAddTextLayer = () => {
@@ -322,6 +324,25 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
   // （showPropsの管理はstate定義側のコメント参照）
   const showTextProps = !!selectedTextLayer && showProps;
   const overlayActive = showTextProps || panel !== 'none';
+
+  // 上部プレビューの入力欄はキャンバス上のテキストの裏にpointerEvents="box-none"で
+  // 重ねている（ドラッグ操作を奪わないため）。そのため、そのテキストを再タップした時、
+  // ブラウザは入力欄以外の場所へのmousedownとして扱い、標準動作で入力欄のフォーカスを
+  // 解除してしまう（リッチテキストエディタのツールバーボタンでも起きる既知の挙動と同じ）。
+  // キーボードを開いたまま維持したいので、入力欄がフォーカスされている間は、入力欄自身
+  // 以外へのmousedownによるフォーカス解除だけを止める
+  React.useEffect(() => {
+    if (!showTextProps || Platform.OS !== 'web') return;
+    const handleMouseDown = (e: MouseEvent) => {
+      const input = previewInputRef.current as unknown as HTMLElement | null;
+      if (!input || document.activeElement !== input) return;
+      const target = e.target as Node | null;
+      if (target && input.contains(target)) return;
+      e.preventDefault();
+    };
+    document.addEventListener('mousedown', handleMouseDown, true);
+    return () => document.removeEventListener('mousedown', handleMouseDown, true);
+  }, [showTextProps]);
   const previewDisplayScale = canvasW / CANVAS_W;
   const previewFontSize = selectedTextLayer
     ? Math.min(72, Math.max(20, selectedTextLayer.size * previewDisplayScale * 2.2))
