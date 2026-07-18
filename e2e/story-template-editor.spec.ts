@@ -40,6 +40,8 @@ test.describe('StoryTemplateEditor テキストのプロパティ表示', () => 
 
     await page.getByTestId('story-editor-add-text-btn').click();
     await page.waitForTimeout(500);
+    // 空のまま完了すると追加されない仕様のため、再選択の対象として文字を入力しておく
+    await page.getByTestId('story-editor-text-preview-input').fill('テスト');
     await page.getByText('完了').click();
     await page.waitForTimeout(300);
     await expect(page.getByTestId('story-editor-text-panel')).toHaveCount(0);
@@ -121,6 +123,10 @@ test.describe('StoryTemplateEditor テキストのプロパティ表示', () => 
     await dispatchTouch(client, 'touchEnd', []);
     await page.waitForTimeout(300);
     await expect(page.getByTestId('story-editor-text-panel')).toHaveCount(0);
+
+    // 移動して離した直後（選択状態は続くがプロパティは非表示）でも、
+    // ツールバーの文字追加・ステッカー追加などのアイコンは操作できるままのはず
+    await expect(page.getByTestId('story-editor-add-text-btn')).toBeVisible();
 
     // 動いた後の新しい位置を改めてタップして離す（移動を伴わない）
     const movedBox = await layer.boundingBox();
@@ -304,6 +310,8 @@ test.describe('StoryTemplateEditor 上部プレビューでの文字編集', () 
 
     await page.getByTestId('story-editor-add-text-btn').click();
     await page.waitForTimeout(500);
+    // 空のまま完了すると追加されない仕様のため、再選択の対象として文字を入力しておく
+    await page.getByTestId('story-editor-text-preview-input').fill('テスト');
     await page.getByText('完了').click();
     await page.waitForTimeout(300);
 
@@ -389,3 +397,69 @@ test.describe('StoryTemplateEditor プロパティパネルとキーボードの
     expect(after!.y + after!.height).toBeCloseTo(innerHeight - 300, 0);
   });
 });
+
+test.describe('StoryTemplateEditor 空のテキストの扱い', () => {
+  test('文字を追加した直後、初期文字は入っていない', async ({ page }) => {
+    await page.goto('/?e2e=storyTemplateEditor');
+    await page.waitForTimeout(1000);
+
+    await page.getByTestId('story-editor-add-text-btn').click();
+    await page.waitForTimeout(500);
+
+    const value = await page.getByTestId('story-editor-text-preview-input').inputValue();
+    expect(value).toBe('');
+  });
+
+  test('何も入力せず「完了」を押すと、そのテキストは追加されない', async ({ page }) => {
+    await page.goto('/?e2e=storyTemplateEditor');
+    await page.waitForTimeout(1000);
+
+    await page.getByTestId('story-editor-add-text-btn').click();
+    await page.waitForTimeout(500);
+    await page.getByText('完了').click();
+    await page.waitForTimeout(300);
+
+    await expect(page.locator('[data-testid^="layer-text_"]')).toHaveCount(0);
+  });
+
+  test('文字を入力してから「完了」を押すと、そのテキストは残る', async ({ page }) => {
+    await page.goto('/?e2e=storyTemplateEditor');
+    await page.waitForTimeout(1000);
+
+    await page.getByTestId('story-editor-add-text-btn').click();
+    await page.waitForTimeout(500);
+    await page.getByTestId('story-editor-text-preview-input').fill('こんにちは');
+    await page.getByText('完了').click();
+    await page.waitForTimeout(300);
+
+    await expect(page.locator('[data-testid^="layer-text_"]')).toHaveCount(1);
+  });
+});
+
+test.describe('StoryTemplateEditor 写真の追加は「写真」アイコンからのみ', () => {
+  test('写真未設定のプレビュー部分をタップしても写真は追加されない', async ({ page }) => {
+    await page.goto('/?e2e=storyTemplateEditor');
+    await page.waitForTimeout(1000);
+
+    const placeholder = page.locator('[data-testid="layer-photo_1"]');
+    const box = await placeholder.boundingBox();
+    expect(box).not.toBeNull();
+    await placeholder.click({ position: { x: 10, y: 10 } });
+    await page.waitForTimeout(300);
+
+    const hasImage = await page.evaluate(() => !!document.querySelector('[data-testid="layer-photo_1"] img'));
+    expect(hasImage).toBe(false);
+  });
+
+  test('「写真」アイコンからは引き続き写真を追加できる（テスト用フックで代替）', async ({ page }) => {
+    await page.goto('/?e2e=storyTemplateEditor');
+    await page.waitForTimeout(1000);
+
+    await page.evaluate(() => (window as any).__e2eAssignPhoto());
+    await page.waitForTimeout(300);
+
+    const hasImage = await page.evaluate(() => !!document.querySelector('[data-testid="layer-photo_1"] img'));
+    expect(hasImage).toBe(true);
+  });
+});
+
