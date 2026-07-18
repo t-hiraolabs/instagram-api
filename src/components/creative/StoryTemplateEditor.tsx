@@ -357,6 +357,28 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
     return () => document.removeEventListener('mousedown', handleMouseDown, true);
   }, [showTextProps]);
 
+  // テキスト編集中（ソフトキーボード表示中）、モーダルの外側の背景ページが
+  // スワイプでスライド（スクロール）できてしまう不具合への対策。index.htmlで
+  // body{overflow:hidden}を設定していても、iOS Safari等ではキーボード表示中に
+  // レイアウトビューポートと実際に見えている範囲（visualViewport）がずれ、
+  // ページ全体がラバーバンド的にスライドしてしまうことがある。テキスト編集中だけ
+  // touch-action/overscroll-behaviorを厳しくし、編集が終わったら元に戻す
+  React.useEffect(() => {
+    if (!showTextProps || Platform.OS !== 'web' || typeof document === 'undefined') return;
+    const body = document.body;
+    const prevOverflow = body.style.overflow;
+    const prevOverscroll = (body.style as any).overscrollBehavior;
+    const prevTouchAction = body.style.touchAction;
+    body.style.overflow = 'hidden';
+    (body.style as any).overscrollBehavior = 'none';
+    body.style.touchAction = 'none';
+    return () => {
+      body.style.overflow = prevOverflow;
+      (body.style as any).overscrollBehavior = prevOverscroll;
+      body.style.touchAction = prevTouchAction;
+    };
+  }, [showTextProps]);
+
   // パネル・テキスト編集を開いた直後は、その原因となったタップ自体の「余韻」
   // （実機のタッチ→マウスイベント合成は、touchstart/touchendの後にmousedown/mouseup/click
   // が別タスクとして遅れて発火することがある）を、下のuseEffectが「別の場所への
@@ -401,7 +423,7 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
   }, [overlayActive, panel, showTextProps, selectedId]);
   const previewDisplayScale = canvasW / CANVAS_W;
   const previewFontSize = selectedTextLayer
-    ? Math.min(72, Math.max(20, selectedTextLayer.size * previewDisplayScale * 2.2))
+    ? Math.min(64, Math.max(18, selectedTextLayer.size * previewDisplayScale * 2.0))
     : 0;
   // previewInputSize（入力欄の実際の大きさ）は、別要素での計測onLayoutを経由するため
   // 描画が最低1コマ遅れる。1文字目に限らず、入力するたびに直前までの（1文字少ない）
@@ -414,12 +436,27 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
   // 使うだけなので、日本語の全角文字を想定してやや余裕を持たせた概算で十分）
   const previewMinSize = React.useMemo(() => {
     const text = selectedTextLayer?.text || '';
-    const lines = text.split('\n');
-    const longestLineLen = Math.max(1, ...lines.map((l) => l.length));
-    const approxCharWidth = previewFontSize * 1.05;
+    const rawLines = text.split('\n');
+    // 極太ウェイトのカスタムフォント読み込みが完了するまでの一瞬はフォールバック
+    // フォントで描画されることがあり、実際の文字幅がこの概算より広くなる場合が
+    // ある（Playwrightでのテストでも同じ内容・条件で時々だけ見切れる形で再現した）。
+    // 下限として使うだけなので、狭く見積もって見切れるよりは広めに見積もって
+    // 一瞬だけ余白ができる方が安全なため、余裕を大きめに取る
+    const approxCharWidth = previewFontSize * 1.3;
+    const maxAvailableWidth = canvasW - SPACING.lg * 2;
+    // 明示的な改行だけでなく、maxWidthによる自動折り返しも見込んで行数を概算する。
+    // そうしないと、1行が長くて実際には複数行に折り返される内容でも「\nの数」だけで
+    // 高さの下限を計算してしまい、折り返された分だけ高さが足りず見切れてしまう
+    let wrappedLineCount = 0;
+    let longestLineLen = 1;
+    for (const line of rawLines) {
+      longestLineLen = Math.max(longestLineLen, line.length);
+      const lineWidth = Math.max(1, line.length) * approxCharWidth;
+      wrappedLineCount += Math.max(1, Math.ceil(lineWidth / maxAvailableWidth));
+    }
     return {
-      minWidth: Math.min(canvasW - SPACING.lg * 2, Math.max(previewFontSize * 1.2, longestLineLen * approxCharWidth)),
-      minHeight: Math.max(previewFontSize * 1.35, lines.length * previewFontSize * 1.3),
+      minWidth: Math.min(maxAvailableWidth, Math.max(previewFontSize * 1.2, longestLineLen * approxCharWidth) + 8),
+      minHeight: Math.max(previewFontSize * 1.35, wrappedLineCount * previewFontSize * 1.5) + 8,
     };
   }, [selectedTextLayer?.text, previewFontSize, canvasW]);
 
@@ -699,7 +736,7 @@ const styles = StyleSheet.create({
     // （canvasW等）は変えず、表示位置だけをキャンバス上部に寄せる（中央に置くと
     // 大きな入力欄がキャンバス上の実際のテキストへのドラッグ操作を奪ってしまうため）
     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-    alignItems: 'center', justifyContent: 'flex-start', paddingHorizontal: SPACING.lg, paddingTop: SPACING.lg,
+    alignItems: 'center', justifyContent: 'flex-start', paddingHorizontal: SPACING.lg, paddingTop: SPACING.lg + SPACING.md,
   },
   previewText: { textAlign: 'center' },
   previewInput: { padding: 0, margin: 0, borderWidth: 0, backgroundColor: 'transparent' },
