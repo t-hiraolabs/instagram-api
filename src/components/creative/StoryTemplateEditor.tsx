@@ -518,6 +518,13 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
                   previewInputSize
                     ? { width: previewInputSize.width + 8, height: previewInputSize.height + 8 }
                     : null,
+                  // 文字を入力し始めた瞬間（空文字→1文字目）は、直前まで空文字用の
+                  // ごく小さい計測結果（previewInputSize）がまだ適用されたままの状態で
+                  // 新しい文字が描画されるコマが挟まり、大きなフォントサイズの文字が
+                  // 小さすぎる箱に収まらず一瞬見切れる／消えるように見える不具合が
+                  // あった。min-widthはCSS上widthより優先されるため、計測が追いつくまでの
+                  // 間も現在のフォントサイズ1文字分は必ず収まる下限を常に確保しておく
+                  { minWidth: previewFontSize * 1.2, minHeight: previewFontSize * 1.35 },
                 ]}
                 value={selectedTextLayer.text}
                 onChangeText={(text) => updateTextLayer(selectedTextLayer.id, { text })}
