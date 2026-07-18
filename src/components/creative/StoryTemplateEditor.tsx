@@ -8,7 +8,7 @@
 import React, { useRef, useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  ActivityIndicator, Platform, Alert, Modal, ScrollView, useWindowDimensions,
+  ActivityIndicator, Platform, Alert, Modal, ScrollView, useWindowDimensions, Keyboard,
   NativeSyntheticEvent, NativeScrollEvent,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -348,6 +348,39 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
     ? Math.min(72, Math.max(20, selectedTextLayer.size * previewDisplayScale * 2.2))
     : 0;
 
+  // プロパティパネル（フォント・色等）はキャンバスの下端にbottom:0で重ねているが、
+  // キャンバスの表示サイズ自体はモーダル起動時の値で固定している（上の注記参照）
+  // ため、キーボード表示時にレイアウトの再計算では追従しない。キーボードがその
+  // 固定レイアウトの下側にかぶさって隠してしまわないよう、キーボードの高さ分だけ
+  // パネルをその場で持ち上げる。WebはvisualViewportのresize、ネイティブは
+  // Keyboardイベントで高さを取得する（どちらも実際にキーボードが出ている間だけ
+  // 0より大きい値になる）
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  React.useEffect(() => {
+    if (Platform.OS === 'web') {
+      const vv = typeof window !== 'undefined' ? (window as any).visualViewport : null;
+      if (!vv) return;
+      const update = () => {
+        setKeyboardHeight(Math.max(0, window.innerHeight - vv.height - vv.offsetTop));
+      };
+      update();
+      vv.addEventListener('resize', update);
+      vv.addEventListener('scroll', update);
+      return () => {
+        vv.removeEventListener('resize', update);
+        vv.removeEventListener('scroll', update);
+      };
+    }
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, (e) => setKeyboardHeight(e.endCoordinates?.height ?? 0));
+    const hideSub = Keyboard.addListener(hideEvent, () => setKeyboardHeight(0));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={close}>
       {/* React NativeのModalはネイティブでは別ルートとして描画されるため、その中で
@@ -448,7 +481,7 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
 
           {/* 選択中の文字・ステッカーのプロパティ（別モーダルではなく同一画面内、キャンバスの上に重ねて表示） */}
           {showTextProps && selectedTextLayer && (
-            <View testID="story-editor-text-panel" style={[styles.textPanel, styles.overlayPanel]}>
+            <View testID="story-editor-text-panel" style={[styles.textPanel, styles.overlayPanel, { bottom: keyboardHeight }]}>
               <View style={styles.textPanelTopRow}>
                 {/* 文字内容の編集は上部プレビュー側の入力欄で直接行う（ここには重複させない） */}
                 <View style={{ flex: 1 }} />
