@@ -328,20 +328,21 @@ test.describe('StoryTemplateEditor 上部プレビューでの文字編集', () 
 });
 
 test.describe('StoryTemplateEditor プロパティパネルとキーボードの位置関係', () => {
-  test('ソフトキーボード表示中はプロパティパネルがキーボードの高さ分だけ持ち上がる', async ({ page }) => {
-    // window.visualViewportをテスト用の実装に差し替え、resizeイベントを
-    // 手動で発火できるようにする（実機のソフトキーボードはPlaywrightで
-    // 再現できないため、visualViewport.heightの縮小として模す）
-    await page.addInitScript(() => {
-      class FakeViewport extends EventTarget {
-        height = window.innerHeight;
-        width = window.innerWidth;
-        offsetTop = 0;
-        offsetLeft = 0;
-      }
-      (window as any).visualViewport = new FakeViewport();
-    });
+  // window.visualViewportをテスト用の実装に差し替え、resizeイベントを
+  // 手動で発火できるようにする（実機のソフトキーボードはPlaywrightで
+  // 再現できないため、visualViewport.heightの縮小として模す）
+  const installFakeViewport = (page: any) => page.addInitScript(() => {
+    class FakeViewport extends EventTarget {
+      height = window.innerHeight;
+      width = window.innerWidth;
+      offsetTop = 0;
+      offsetLeft = 0;
+    }
+    (window as any).visualViewport = new FakeViewport();
+  });
 
+  test('パネルの下にすでに空きがある程度の小さいキーボードでは動かない', async ({ page }) => {
+    await installFakeViewport(page);
     await page.goto('/?e2e=storyTemplateEditor');
     await page.waitForTimeout(1000);
     await page.getByTestId('story-editor-add-text-btn').click();
@@ -350,6 +351,30 @@ test.describe('StoryTemplateEditor プロパティパネルとキーボードの
     const panel = page.getByTestId('story-editor-text-panel');
     const before = await panel.boundingBox();
     expect(before).not.toBeNull();
+
+    // ツールバー・投稿バー分の余白（56+64=120px程度）より小さいキーボードは
+    // まだパネルにかぶらないので、パネルは動かないはず
+    await page.evaluate(() => {
+      const vv = (window as any).visualViewport;
+      vv.height = window.innerHeight - 50;
+      vv.dispatchEvent(new Event('resize'));
+    });
+    await page.waitForTimeout(300);
+
+    const after = await panel.boundingBox();
+    expect(after).not.toBeNull();
+    expect(after!.y).toBeCloseTo(before!.y, 0);
+  });
+
+  test('パネルの下の余白を超える大きさのキーボードでは、パネル下端がキーボード上端にちょうど揃う', async ({ page }) => {
+    await installFakeViewport(page);
+    await page.goto('/?e2e=storyTemplateEditor');
+    await page.waitForTimeout(1000);
+    await page.getByTestId('story-editor-add-text-btn').click();
+    await page.waitForTimeout(500);
+
+    const panel = page.getByTestId('story-editor-text-panel');
+    const innerHeight = await page.evaluate(() => window.innerHeight);
 
     await page.evaluate(() => {
       const vv = (window as any).visualViewport;
@@ -360,6 +385,7 @@ test.describe('StoryTemplateEditor プロパティパネルとキーボードの
 
     const after = await panel.boundingBox();
     expect(after).not.toBeNull();
-    expect(before!.y + before!.height - (after!.y + after!.height)).toBeCloseTo(300, 0);
+    // パネルより上に隙間ができず、ちょうどキーボードの上端に接するはず
+    expect(after!.y + after!.height).toBeCloseTo(innerHeight - 300, 0);
   });
 });
