@@ -168,6 +168,26 @@ test.describe('StoryTemplateEditor 写真と背景の共存', () => {
   });
 });
 
+test.describe('StoryTemplateEditor キャンバスサイズの固定', () => {
+  test('編集セッション中にウィンドウサイズが変わっても、キャンバス表示サイズは変化しない', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/?e2e=storyTemplateEditor');
+    await page.waitForTimeout(1000);
+
+    const before = await page.locator('[data-testid="layer-photo_1"]').boundingBox();
+    expect(before).not.toBeNull();
+
+    // 実機でソフトキーボードが表示された時にウィンドウの高さが縮む状況を模す
+    await page.setViewportSize({ width: 390, height: 500 });
+    await page.waitForTimeout(500);
+
+    const after = await page.locator('[data-testid="layer-photo_1"]').boundingBox();
+    expect(after).not.toBeNull();
+    expect(after!.width).toBeCloseTo(before!.width, 0);
+    expect(after!.height).toBeCloseTo(before!.height, 0);
+  });
+});
+
 test.describe('StoryTemplateEditor フォントのドロップダウン', () => {
   test('タップすると開き、フォント一覧が表示される', async ({ page }) => {
     await page.goto('/?e2e=storyTemplateEditor');
