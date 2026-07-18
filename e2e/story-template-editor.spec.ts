@@ -326,3 +326,40 @@ test.describe('StoryTemplateEditor 上部プレビューでの文字編集', () 
     expect(focused).toBe(true);
   });
 });
+
+test.describe('StoryTemplateEditor プロパティパネルとキーボードの位置関係', () => {
+  test('ソフトキーボード表示中はプロパティパネルがキーボードの高さ分だけ持ち上がる', async ({ page }) => {
+    // window.visualViewportをテスト用の実装に差し替え、resizeイベントを
+    // 手動で発火できるようにする（実機のソフトキーボードはPlaywrightで
+    // 再現できないため、visualViewport.heightの縮小として模す）
+    await page.addInitScript(() => {
+      class FakeViewport extends EventTarget {
+        height = window.innerHeight;
+        width = window.innerWidth;
+        offsetTop = 0;
+        offsetLeft = 0;
+      }
+      (window as any).visualViewport = new FakeViewport();
+    });
+
+    await page.goto('/?e2e=storyTemplateEditor');
+    await page.waitForTimeout(1000);
+    await page.getByTestId('story-editor-add-text-btn').click();
+    await page.waitForTimeout(500);
+
+    const panel = page.getByTestId('story-editor-text-panel');
+    const before = await panel.boundingBox();
+    expect(before).not.toBeNull();
+
+    await page.evaluate(() => {
+      const vv = (window as any).visualViewport;
+      vv.height = window.innerHeight - 300;
+      vv.dispatchEvent(new Event('resize'));
+    });
+    await page.waitForTimeout(300);
+
+    const after = await panel.boundingBox();
+    expect(after).not.toBeNull();
+    expect(before!.y + before!.height - (after!.y + after!.height)).toBeCloseTo(300, 0);
+  });
+});
