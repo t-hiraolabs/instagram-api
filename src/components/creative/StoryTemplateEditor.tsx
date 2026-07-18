@@ -357,6 +357,19 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
     return () => document.removeEventListener('mousedown', handleMouseDown, true);
   }, [showTextProps]);
 
+  // パネル・テキスト編集を開いた直後は、その原因となったタップ自体の「余韻」
+  // （実機のタッチ→マウスイベント合成は、touchstart/touchendの後にmousedown/mouseup/click
+  // が別タスクとして遅れて発火することがある）を、下のuseEffectが「別の場所への
+  // タップ」と誤認して即座に閉じてしまわないよう、直近に開いた時刻を記録しておく。
+  // overlayActiveがtrueのまま他の状態（panel種別やフォント変更等）だけが変わっても
+  // 再記録しないよう、false→trueの変化時だけ記録する
+  const overlayActivatedAtRef = useRef(0);
+  const prevOverlayActiveRef = useRef(false);
+  React.useEffect(() => {
+    if (overlayActive && !prevOverlayActiveRef.current) overlayActivatedAtRef.current = Date.now();
+    prevOverlayActiveRef.current = overlayActive;
+  }, [overlayActive]);
+
   // タブ（背景・ステッカーの一覧パネル）を開いている間、またはテキストの
   // プロパティ・上部プレビューを表示している間に、それら以外の場所をタップしたら
   // 閉じる（背景/ステッカーパネルはpanelを'none'に、テキストは完了ボタンと同じ扱いで
@@ -366,6 +379,10 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
   React.useEffect(() => {
     if (!overlayActive || Platform.OS !== 'web') return;
     const handleMouseDown = (e: MouseEvent) => {
+      // 開いた直後（同じ操作の遅れて届いたイベントである可能性が高い）は無視する。
+      // タッチ→マウスイベント合成の遅れは通常1フレーム程度なので、実際のユーザーが
+      // 続けて行う次のタップと混同しない程度に短く抑える
+      if (Date.now() - overlayActivatedAtRef.current < 150) return;
       const target = e.target as Node | null;
       if (!target) return;
       const input = previewInputRef.current as unknown as HTMLElement | null;
@@ -386,6 +403,25 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
   const previewFontSize = selectedTextLayer
     ? Math.min(72, Math.max(20, selectedTextLayer.size * previewDisplayScale * 2.2))
     : 0;
+  // previewInputSize（入力欄の実際の大きさ）は、別要素での計測onLayoutを経由するため
+  // 描画が最低1コマ遅れる。1文字目に限らず、入力するたびに直前までの（1文字少ない）
+  // 内容用の大きさがまだ適用されたままの状態で新しい文字が描画されるコマが必ず挟まり、
+  // その一瞬だけ新しい文字がまだ小さいままの箱に収まりきらず見切れる／消えて見える
+  // 不具合があった（前回のフォントサイズ基準の下限だけでは、2文字目以降・行が
+  // 増える場合には対応できていなかった）。ここでは実際の計測を待たず、現在の
+  // テキスト内容（文字数・行数）から下限をその場で概算し、計測が追いつくまでの
+  // 間も常に現在の内容が収まるだけの大きさを確保する（実測ではなく下限として
+  // 使うだけなので、日本語の全角文字を想定してやや余裕を持たせた概算で十分）
+  const previewMinSize = React.useMemo(() => {
+    const text = selectedTextLayer?.text || '';
+    const lines = text.split('\n');
+    const longestLineLen = Math.max(1, ...lines.map((l) => l.length));
+    const approxCharWidth = previewFontSize * 1.05;
+    return {
+      minWidth: Math.min(canvasW - SPACING.lg * 2, Math.max(previewFontSize * 1.2, longestLineLen * approxCharWidth)),
+      minHeight: Math.max(previewFontSize * 1.35, lines.length * previewFontSize * 1.3),
+    };
+  }, [selectedTextLayer?.text, previewFontSize, canvasW]);
 
   // プロパティパネル（フォント・色等）はキャンバスの下端にbottom:0で重ねているが、
   // キャンバスの表示サイズ自体はモーダル起動時の値で固定している（上の注記参照）
@@ -518,13 +554,10 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
                   previewInputSize
                     ? { width: previewInputSize.width + 8, height: previewInputSize.height + 8 }
                     : null,
-                  // 文字を入力し始めた瞬間（空文字→1文字目）は、直前まで空文字用の
-                  // ごく小さい計測結果（previewInputSize）がまだ適用されたままの状態で
-                  // 新しい文字が描画されるコマが挟まり、大きなフォントサイズの文字が
-                  // 小さすぎる箱に収まらず一瞬見切れる／消えるように見える不具合が
-                  // あった。min-widthはCSS上widthより優先されるため、計測が追いつくまでの
-                  // 間も現在のフォントサイズ1文字分は必ず収まる下限を常に確保しておく
-                  { minWidth: previewFontSize * 1.2, minHeight: previewFontSize * 1.35 },
+                  // min-widthはCSS上widthより優先されるため、計測（previewInputSize）が
+                  // 追いつくまでの間も、現在実際に入力されている内容が必ず収まる下限を
+                  // 確保しておく（previewMinSizeの定義側コメント参照）
+                  previewMinSize,
                 ]}
                 value={selectedTextLayer.text}
                 onChangeText={(text) => updateTextLayer(selectedTextLayer.id, { text })}
