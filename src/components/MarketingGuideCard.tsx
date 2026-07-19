@@ -88,6 +88,9 @@ export default function MarketingGuideCard({ onChatUsed }: Props) {
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
   const [plan, setPlan] = useState<Plan | null>(null);
+  // 「再試行」を押すたびに増やし、下のuseEffectを再実行させる（userId/accessTokenは
+  // 変わらないため、依存配列にこれを含めないと再試行のたびに同じ結果のまま止まってしまう）
+  const [retryCount, setRetryCount] = useState(0);
 
   // ガイドに対する質問チャット。その場限りのやり取りなので保存はしない
   // （アカウント切り替え・再分析のたびにリセットする）
@@ -192,9 +195,12 @@ export default function MarketingGuideCard({ onChatUsed }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [instagramCredentials?.userId, instagramCredentials?.accessToken]);
+  }, [instagramCredentials?.userId, instagramCredentials?.accessToken, retryCount]);
 
-  if (!instagramCredentials || failed) return null;
+  // 失敗時にカード自体を丸ごと消してしまうと、「分析中...」が一瞬出てすぐに何の説明も
+  // なく消えたように見えてしまう（実際には裏で分析に失敗しているだけ）。連携さえ
+  // されていればカード自体は出し続け、失敗時はその旨と再試行ボタンを表示する
+  if (!instagramCredentials) return null;
 
   return (
     <View style={styles.card}>
@@ -219,6 +225,17 @@ export default function MarketingGuideCard({ onChatUsed }: Props) {
         <View style={styles.loadingRow}>
           <ActivityIndicator color={COLORS.primary} size="small" />
           <Text style={styles.loadingText}>アカウントを分析しています...</Text>
+        </View>
+      ) : failed && !guide ? (
+        <View style={styles.errorRow}>
+          <Text style={styles.errorText}>分析に失敗しました。時間をおいて再度お試しください。</Text>
+          <TouchableOpacity
+            style={styles.retryBtn}
+            onPress={() => { setFailed(false); setRetryCount((c) => c + 1); }}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.retryBtnText}>再試行</Text>
+          </TouchableOpacity>
         </View>
       ) : guide && rank ? (
         <>
@@ -304,6 +321,17 @@ const styles = StyleSheet.create({
   gradeBadgeText: { color: '#0A0A0A', fontSize: 22, fontWeight: '900' },
   loadingRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, paddingVertical: SPACING.sm },
   loadingText: { color: COLORS.textMuted, fontSize: 12.5 },
+  errorRow: { paddingVertical: SPACING.sm, gap: SPACING.sm },
+  errorText: { color: COLORS.textMuted, fontSize: 12.5 },
+  retryBtn: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 6,
+    borderRadius: RADIUS.full,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+  },
+  retryBtnText: { color: COLORS.primary, fontSize: 12.5, fontWeight: '700' },
   rankBadge: {
     alignSelf: 'flex-start',
     backgroundColor: COLORS.primary + '1a',
