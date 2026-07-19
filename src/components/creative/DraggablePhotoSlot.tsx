@@ -55,6 +55,11 @@ export default function DraggablePhotoSlot({
   };
 
   if (!assignment) {
+    // 背景（layers内のkind:'background'）は写真スロットの背面（描画順序上はこのスロットより
+    // 手前だが、CreativeCanvas側でスロット自体をここに配置している）に置かれるため、
+    // 写真未設定のプレースホルダーが不透明だと背景を完全に覆い隠してしまう
+    // （「背景のみで投稿したい」場合に背景が全く見えない不具合の原因だった）。
+    // 背景が見えるよう透明にし、タップ対象のヒントとして枠線とアイコンだけ残す
     return (
       <TouchableOpacity testID={testID} style={[clipStyle, styles.placeholder]} onPress={onPickPhoto} activeOpacity={0.7}>
         <Ionicons name="image-outline" size={28 * displayScale} color={COLORS.textMuted} />
@@ -110,7 +115,7 @@ export default function DraggablePhotoSlot({
 
 const styles = StyleSheet.create({
   placeholder: {
-    backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, borderStyle: 'dashed',
+    borderWidth: 1, borderColor: COLORS.border, borderStyle: 'dashed',
     alignItems: 'center', justifyContent: 'center',
   },
 });
