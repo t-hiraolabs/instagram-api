@@ -174,6 +174,44 @@ test.describe('StoryTemplateEditor 写真と背景の共存', () => {
   });
 });
 
+test.describe('StoryTemplateEditor 背景のみでの投稿', () => {
+  test('写真を追加しなくても、背景を設定するだけで投稿ボタンが有効になる', async ({ page }) => {
+    await page.goto('/?e2e=storyTemplateEditor');
+    await page.waitForTimeout(1000);
+
+    // 写真未設定の状態では投稿ボタンは無効
+    await expect(page.getByTestId('story-editor-publish-btn')).toHaveAttribute('aria-disabled', 'true');
+
+    await page.getByText('背景').click();
+    await page.waitForTimeout(300);
+    await page.getByText('インク').click();
+    await page.waitForTimeout(300);
+
+    // 背景を設定した時点で、写真が無くても投稿できる
+    await expect(page.getByTestId('story-editor-publish-btn')).not.toHaveAttribute('aria-disabled', 'true');
+  });
+
+  test('背景を設定すると、写真未設定のプレースホルダー越しに背景が見える（不透明に覆われない）', async ({ page }) => {
+    await page.goto('/?e2e=storyTemplateEditor');
+    await page.waitForTimeout(1000);
+
+    await page.getByText('背景').click();
+    await page.waitForTimeout(300);
+    await page.getByText('インク').click();
+    await page.waitForTimeout(300);
+
+    await expect(page.locator('[data-testid="layer-bg"]')).toHaveCount(1);
+
+    // 写真スロットのプレースホルダー自体が不透明な背景色を持っていると、
+    // その裏にあるはずの背景レイヤーを完全に覆い隠してしまう
+    const placeholderBg = await page.evaluate(() => {
+      const el = document.querySelector('[data-testid="layer-photo_1"]') as HTMLElement | null;
+      return el ? getComputedStyle(el).backgroundColor : null;
+    });
+    expect(placeholderBg === 'rgba(0, 0, 0, 0)' || placeholderBg === 'transparent').toBe(true);
+  });
+});
+
 test.describe('StoryTemplateEditor キャンバスサイズの固定', () => {
   test('編集セッション中にウィンドウサイズが変わっても、キャンバス表示サイズは変化しない', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });

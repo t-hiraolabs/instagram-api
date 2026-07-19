@@ -308,8 +308,11 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
   };
 
   const filledCount = photoSlots.filter((s) => photoAssignments.some((a) => a.slotId === s.id)).length;
-  const isBackgroundMode = photoSlots.length === 0 && layers.some((l) => l.kind === 'background');
-  const canFinish = isBackgroundMode || (photoSlots.length > 0 && filledCount === photoSlots.length);
+  // 写真スロットは常に（空でも）1つ用意されているため、写真を1枚も入れず背景だけを
+  // 設定したい場合は「スロットが全て埋まっている」を満たせない。背景さえ設定されて
+  // いれば、写真スロットが未使用のままでも投稿を許可する
+  const hasBackground = layers.some((l) => l.kind === 'background');
+  const canFinish = hasBackground || (photoSlots.length > 0 && filledCount === photoSlots.length);
 
   const handlePublish = async () => {
     setSaving(true);
@@ -711,6 +714,7 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
               （ScheduleScreen.tsxの投稿方法選択画面）側に用意されている。
               ここでは編集を終えて次の画面へ進む「投稿する」のみを置く */}
           <TouchableOpacity
+            testID="story-editor-publish-btn"
             style={[styles.publishBtn, !canFinish && styles.publishBtnDisabled]}
             onPress={handlePublish}
             disabled={saving || !canFinish}
