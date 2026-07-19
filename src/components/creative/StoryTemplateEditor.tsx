@@ -320,7 +320,15 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
       const uri = await capture();
       if (!uri) return;
       onFinish(uri);
-      close();
+      // 「投稿する」から先の画面（投稿方法選択）で「キャンセル」を押すと、この編集内容の
+      // ままここへ戻ってこられるようにしたいため、close()（reset()して編集内容を破棄する）
+      // ではなくモーダルを閉じるだけにとどめる。写真・背景・文字は保持されたまま、
+      // 呼び出し側（ScheduleScreen）がstoryCreativeVisibleをtrueへ戻すだけで続きから
+      // 編集を再開できる。編集内容を実際に破棄するのは、ヘッダーの×（close）を
+      // 押した時、または呼び出し側が新しいセッションとして明示的に開き直した時のみ
+      setPanel('none');
+      setShowProps(false);
+      onClose();
     } finally {
       setSaving(false);
     }
