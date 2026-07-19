@@ -8,7 +8,6 @@ import HomeScreen from '../screens/HomeScreen';
 import ScheduleScreen from '../screens/ScheduleScreen';
 import AnalyticsScreen from '../screens/AnalyticsScreen';
 import ProfileScreen from '../screens/ProfileScreen';
-import AdminAssetsScreen from '../screens/AdminAssetsScreen';
 import E2ECreativeCanvasScreen from '../screens/__e2e__/E2ECreativeCanvasScreen';
 import E2ELayerPanelScreen from '../screens/__e2e__/E2ELayerPanelScreen';
 import E2EGalleryScreen from '../screens/__e2e__/E2EGalleryScreen';
@@ -141,7 +140,6 @@ export default function RootNavigator() {
     >
       <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName={getInitialRouteName()}>
         <Stack.Screen name="Main" component={TabNavigator} />
-        <Stack.Screen name="AdminAssets" component={AdminAssetsScreen} />
         <Stack.Screen name="E2ECreativeCanvas" component={E2ECreativeCanvasScreen} />
         <Stack.Screen name="E2ELayerPanel" component={E2ELayerPanelScreen} />
         <Stack.Screen name="E2EGallery" component={E2EGalleryScreen} />
