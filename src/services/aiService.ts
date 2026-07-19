@@ -109,7 +109,7 @@ interface GeneratedPost {
   suggestions: string[];
 }
 
-async function callClaude(prompt: string, systemPrompt: string, skipCount = false): Promise<string> {
+async function callClaude(prompt: string, systemPrompt: string, weeklyGuide = false): Promise<string> {
   try {
     const response = await axios.post(
       CLAUDE_API_URL,
@@ -118,7 +118,9 @@ async function callClaude(prompt: string, systemPrompt: string, skipCount = fals
         max_tokens: 1024,
         system: systemPrompt,
         messages: [{ role: 'user', content: prompt }],
-        ...(skipCount ? { skipCount: true } : {}),
+        // 週次のアカウント分析はブランド分析用の上限（brand_ai_used）を共有せず、
+        // 上限チェック無しで呼び出す（呼び出し元が既に週1回までに制限しているため）
+        ...(weeklyGuide ? { weeklyGuide: true } : {}),
       },
       {
         headers: await getAuthHeaders(),
@@ -413,8 +415,11 @@ ${input.topPostCaption ? `一番反応が良かった投稿の書き出し: 「$
   "tips": ["アドバイス1（1〜2文、具体的に）", "アドバイス2", "アドバイス3"]
 }`;
 
-  // ホーム画面で自動的に呼ばれる分析系の機能なので、投稿文生成用のAI利用回数は消費しない
-  // （analyzeBrandFromPostsと同じ扱い）
+  // 週1回までしか呼ばれない（MarketingGuideCard側のweekKeyキャッシュで担保）分析系の
+  // 機能なので、投稿文生成用のAI利用回数は消費せず、ブランド分析用の上限
+  // （brand_ai_used、フリーは累計3回・リセット無し）とも共有しない。以前はここが
+  // analyzeBrandFromPostsと同じ枠を共有しており、ブランド設定の自動生成を数回使った
+  // だけでこの週次分析まで恒久的に失敗するようになっていた
   const raw = await callClaude(prompt, systemPrompt, true);
   return extractJson<MarketingGuide>(raw);
 }

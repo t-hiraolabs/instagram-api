@@ -65,8 +65,14 @@ Deno.serve(async (req) => {
   }
   const skipCount = body.skipCount === true;
   const isChat = body.chat === true; // アシスタント会話（月間上限を%で管理）
+  // 週次のアカウント分析（マーケティングガイド）: ブランド分析等が使う
+  // brand_ai_used（フリーは累計3回・リセット無し）とは別枠。呼び出し元
+  // （generateMarketingGuide）が既に「1週間に1回まで」をキャッシュで担保しているため、
+  // ここではどの上限にもカウントせず素通しする
+  const weeklyGuide = body.weeklyGuide === true;
   delete body.skipCount; // Anthropicへは渡さない
   delete body.chat;
+  delete body.weeklyGuide;
 
   // --- プラン・使用回数を確認（service roleでprofilesを読み書き）---
   const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
@@ -147,6 +153,28 @@ Deno.serve(async (req) => {
         await admin.from('profiles').update({ chat_used: cUsed + 1, chat_period_start: cPeriodStart }).eq('id', user.id);
       }
       return new Response(data, { status: res.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    } catch (err) {
+      return json({ error: String(err) }, 500);
+    }
+  }
+
+  // === 週次のアカウント分析（マーケティングガイド）: 上限チェック無しで素通しする ===
+  if (weeklyGuide) {
+    try {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify(body),
+      });
+      const data = await res.text();
+      return new Response(data, {
+        status: res.status,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     } catch (err) {
       return json({ error: String(err) }, 500);
     }
