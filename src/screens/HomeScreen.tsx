@@ -92,8 +92,10 @@ export default function HomeScreen() {
     // ネタカードからは毎回新しい会話として送る（前の会話の続きにならないように）
     setChatForceNew(true);
     setChatFreeTrialEntry(false); // フリープランの無料お試しは、はじめてガイド経由のみ許可する
+    // 誤タップで即送信されてしまわないよう、自動送信はせず入力欄に文言を入れるだけに
+    // とどめる（送信するかどうか・内容を変えるかはユーザーが選べるようにする）
     setChatPrefillText(`「${idea}」について投稿を作りたいです。`);
-    setChatAutoSend(true);
+    setChatAutoSend(false);
     setChatVisible(true);
   };
 
