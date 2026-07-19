@@ -210,6 +210,24 @@ test.describe('StoryTemplateEditor 背景のみでの投稿', () => {
     });
     expect(placeholderBg === 'rgba(0, 0, 0, 0)' || placeholderBg === 'transparent').toBe(true);
   });
+
+  test('「投稿する」を押しても編集内容はリセットされない（投稿方法選択画面からキャンセルで戻れるようにするため）', async ({ page }) => {
+    await page.goto('/?e2e=storyTemplateEditor');
+    await page.waitForTimeout(1000);
+
+    await page.getByText('背景').click();
+    await page.waitForTimeout(300);
+    await page.getByText('インク').click();
+    await page.waitForTimeout(300);
+    await expect(page.locator('[data-testid="layer-bg"]')).toHaveCount(1);
+
+    await page.getByTestId('story-editor-publish-btn').click();
+    await page.waitForTimeout(500);
+
+    // 呼び出し側（ScheduleScreen）が投稿方法選択画面から「キャンセル」で戻す時、
+    // 同じ編集内容のまま再表示できるよう、「投稿する」を押しても背景は消えない
+    await expect(page.locator('[data-testid="layer-bg"]')).toHaveCount(1);
+  });
 });
 
 test.describe('StoryTemplateEditor キャンバスサイズの固定', () => {

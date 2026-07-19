@@ -257,6 +257,14 @@ export default function ScheduleScreen() {
   const [storyStudioVisible, setStoryStudioVisible] = useState(false);
   // 「ストーリー作成」（写真1枚を選んで文字を乗せるだけのシンプルな導線）
   const [storyCreativeVisible, setStoryCreativeVisible] = useState(false);
+  // 「ストーリー作成」を新しいセッションとして開き直す時だけ増やすkey。StoryTemplateEditorを
+  // 強制的に再マウントし、前回の編集内容（写真・背景・文字）を確実に空にリセットする。
+  // 「投稿する」を押した後の投稿方法選択画面から「キャンセル」で編集へ戻る時はこのkeyを
+  // 変えない（同じインスタンスのまま=前回の編集内容を保持したまま再表示させたいため）
+  const [storyCreativeSessionKey, setStoryCreativeSessionKey] = useState(0);
+  // 投稿方法選択画面（modalVisible）の「キャンセル」を押した時に、どこへ戻るか。
+  // 「ストーリー作成」の「投稿する」経由で来た場合だけ、破棄せず編集画面へ戻す
+  const [modalCancelTarget, setModalCancelTarget] = useState<'close' | 'storyCreative'>('close');
   // AI画像生成（チャット）
   const [imgChatVisible, setImgChatVisible] = useState(false);
   const openImageChatFlag = useAppStore((s) => s.openImageChat);
@@ -324,6 +332,7 @@ export default function ScheduleScreen() {
     setLocationId('');
     setTagsSectionOpen(false);
     setScheduleModalVisible(false);
+    setModalCancelTarget('close');
     setModalVisible(true);
   };
 
@@ -390,6 +399,7 @@ export default function ScheduleScreen() {
       setImagePreview(dataUrl);
       setImageUrl(publicUrl);
       setType('story');
+      setModalCancelTarget('close');
       setModalVisible(true);
     } catch (e) {
       alertMsg(e instanceof Error ? e.message : 'アップロードに失敗しました');
@@ -415,6 +425,7 @@ export default function ScheduleScreen() {
       setImagePreview(dataUrl);
       setImageUrl(publicUrl);
       setType('story');
+      setModalCancelTarget('close');
       setModalVisible(true);
     } catch (e) {
       alertMsg(e instanceof Error ? e.message : 'アップロードに失敗しました');
@@ -423,10 +434,13 @@ export default function ScheduleScreen() {
     }
   };
 
-  // 「ストーリー作成」統合フローを開く（作成モーダルは隠してz-index競合を防ぐ）
+  // 「ストーリー作成」統合フローを開く（作成モーダルは隠してz-index競合を防ぐ）。
+  // 新しいセッションとして必ず空の状態から始めるため、keyを増やしてStoryTemplateEditorを
+  // 再マウントする（前回の編集内容が残ったまま開いてしまわないようにするため）
   const openStoryCreative = async () => {
     if (!(await ensureLoggedIn('ストーリー作成にはログインが必要です'))) return;
     setModalVisible(false);
+    setStoryCreativeSessionKey((k) => k + 1);
     setStoryCreativeVisible(true);
   };
 
@@ -440,6 +454,8 @@ export default function ScheduleScreen() {
       setImagePreview(dataUrl);
       setImageUrl(publicUrl);
       setType('story');
+      // 投稿方法選択画面の「キャンセル」を押した時、破棄せずこの編集へ戻れるようにする
+      setModalCancelTarget('storyCreative');
       setModalVisible(true);
     } catch (e) {
       alertMsg(e instanceof Error ? e.message : 'アップロードに失敗しました');
@@ -1097,6 +1113,7 @@ export default function ScheduleScreen() {
       scheduleFromResult.current = false;
       setResultVisible(true);
     } else {
+      setModalCancelTarget('close');
       setModalVisible(true);
     }
   };
@@ -1468,8 +1485,12 @@ export default function ScheduleScreen() {
         onFinish={handleStoryStudioFinish}
       />
 
-      {/* 「ストーリー作成」: 写真を1枚選んで文字を乗せるだけのシンプルな編集フロー */}
+      {/* 「ストーリー作成」: 写真を1枚選んで文字を乗せるだけのシンプルな編集フロー。
+          keyはopenStoryCreativeで新しいセッションを開始する時だけ変える。「投稿する」を
+          押した後の投稿方法選択画面から「キャンセル」でここへ戻る時はkeyを変えない
+          （＝再マウントしない）ため、前回の編集内容（写真・背景・文字）がそのまま残る */}
       <StoryTemplateEditor
+        key={storyCreativeSessionKey}
         visible={storyCreativeVisible}
         onClose={() => setStoryCreativeVisible(false)}
         onFinish={handleStoryCreativeFinish}
@@ -1957,7 +1978,16 @@ export default function ScheduleScreen() {
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
           <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => setModalVisible(false)}>
+            <TouchableOpacity
+              testID="compose-cancel-btn"
+              onPress={() => {
+                setModalVisible(false);
+                // 「ストーリー作成」の「投稿する」経由で来た時だけ、破棄せず編集画面へ戻す
+                // （StoryTemplateEditor側はkeyを変えていないので、同じインスタンスが
+                // 前回の編集内容（写真・背景・文字）を保持したまま再表示される）
+                if (modalCancelTarget === 'storyCreative') setStoryCreativeVisible(true);
+              }}
+            >
               <Text style={styles.modalCancel}>キャンセル</Text>
             </TouchableOpacity>
             <Text style={styles.modalTitle}>投稿を作成</Text>
