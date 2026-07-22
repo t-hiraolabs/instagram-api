@@ -301,7 +301,7 @@ export default function ScheduleScreen() {
       const data = await getScheduledPosts(instagramCredentials?.userId);
       setPosts(data);
     } catch {
-      Alert.alert('エラー', 'Supabaseの設定を確認してください。');
+      alertMsg('Supabaseの設定を確認してください。');
     } finally {
       setLoading(false);
     }
