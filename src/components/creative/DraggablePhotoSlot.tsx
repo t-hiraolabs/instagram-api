@@ -91,6 +91,11 @@ export default function DraggablePhotoSlot({
         snapScale={[1]}
         width={imgW}
         height={imgH}
+        // このDraggableLayerのx/yはスロット自身の矩形内でのローカル座標（親のclipStyleが
+        // slot.x/slot.y分だけ既にずれた位置にある）。中央整列ガイドはキャンバス全体の中心を
+        // 基準に判定するため、スロットの絶対位置をここで伝えてローカル→絶対座標に補正する
+        canvasOffsetX={slot.x}
+        canvasOffsetY={slot.y}
         guideV={guideV}
         guideH={guideH}
         showSelectionBorder={false}

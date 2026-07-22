@@ -519,4 +519,61 @@ test.describe('CreativeCanvas', () => {
     expect(x).toBeGreaterThan(460);
     expect(x).toBeLessThan(500);
   });
+
+  test('キャンバス左上以外に置かれたスロット（photo_3）でも、中央整列ガイドが実際のキャンバス中央位置で表示される', async ({ page }) => {
+    // 回帰テスト: DraggablePhotoSlot内のDraggableLayerには、スロット自身の矩形内での
+    // ローカル座標（centerX/centerY基準）が渡される。中央整列ガイドの判定はキャンバス
+    // 全体の絶対座標（CANVAS_W/2, CANVAS_H/2）を基準にする必要があるが、以前は
+    // ローカル座標のままキャンバス絶対座標と比較していたため、スロットがキャンバス
+    // 左上（x:0,y:0）以外の位置にある場合（photo_3はx:540,y:640）にガイドの表示・
+    // 判定位置が実際の見た目の中央とずれてしまっていた（canvasOffsetX/Yで補正済み）。
+    await page.goto('/?e2e=creativeCanvas');
+    await page.waitForTimeout(1000);
+
+    const box = await page.getByTestId('layer-photo_3').boundingBox();
+    expect(box).not.toBeNull();
+    const cx = box!.x + box!.width / 2;
+    const cy = box!.y + box!.height / 2;
+
+    // layer-bgはキャンバス全面(0,0)-(1080,1920)を占めるので、その中心＝キャンバスの
+    // 真の絶対中央位置（スクリーン座標）の基準として使える
+    const bgBox = await page.getByTestId('layer-bg').boundingBox();
+    expect(bgBox).not.toBeNull();
+    const targetX = bgBox!.x + bgBox!.width / 2;
+    const targetY = bgBox!.y + bgBox!.height / 2;
+
+    async function guideLineVisible() {
+      return page.evaluate(() => {
+        const guides = Array.from(document.querySelectorAll('div')).filter((el) => {
+          const s = getComputedStyle(el);
+          return s.backgroundColor === 'rgb(0, 229, 255)' && s.width === '1px';
+        });
+        return guides.some((g) => getComputedStyle(g).opacity === '1');
+      });
+    }
+
+    const client = await page.context().newCDPSession(page);
+    await dispatchTouch(client, 'touchStart', [{ x: cx, y: cy }]);
+    await page.waitForTimeout(100);
+    const steps = 60;
+    const OVERSHOOT = 1.3;
+    let sawGuide = false;
+    let hitX = 0, hitY = 0;
+    for (let i = 1; i <= steps; i++) {
+      const x = cx + ((targetX - cx) * OVERSHOOT * i) / steps;
+      const y = cy + ((targetY - cy) * OVERSHOOT * i) / steps;
+      await dispatchTouch(client, 'touchMove', [{ x, y }]);
+      await page.waitForTimeout(25);
+      if (await guideLineVisible()) { sawGuide = true; hitX = x; hitY = y; break; }
+    }
+    await dispatchTouch(client, 'touchEnd', []);
+    await page.waitForTimeout(300);
+
+    // ガイドが表示された瞬間の指の位置が、実際のキャンバス絶対中央（bgBoxの中心）の
+    // すぐ近くになっているはず。修正前は判定がスロットのローカル座標基準だったため、
+    // photo_3（x:540のオフセット付き）ではこの位置に近づいてもガイドが正しく反応しなかった
+    expect(sawGuide).toBe(true);
+    expect(Math.abs(hitX - targetX)).toBeLessThan(15);
+    expect(Math.abs(hitY - targetY)).toBeLessThan(15);
+  });
 });
