@@ -889,6 +889,26 @@ export default function ProfileScreen() {
           </View>
 
           <View style={styles.modalBody}>
+            <View style={styles.brandTip}>
+              <Text style={styles.brandTipText}>
+                ブランド設定を入力するとAIが自動的に業種やブランドに合わせた投稿を生成します
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              style={styles.autoBrandBtn}
+              onPress={handleAutoBrand}
+              disabled={saving}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.autoBrandText}>
+                {saving ? '生成中...' : 'AIで投稿を分析して自動入力'}
+              </Text>
+            </TouchableOpacity>
+            <Text style={styles.resetBrandHint}>
+              ※ 連携中のInstagram投稿をAIが分析し、下の項目を自動入力します
+            </Text>
+
             <Text style={styles.fieldLabel}>ブランド名・店舗名</Text>
             <TextInput
               style={styles.input}
@@ -974,26 +994,6 @@ export default function ProfileScreen() {
                 trackColor={{ true: COLORS.primary, false: COLORS.border }}
               />
             </View>
-
-            <View style={styles.brandTip}>
-              <Text style={styles.brandTipText}>
-                ブランド設定を入力するとAIが自動的に業種やブランドに合わせた投稿を生成します
-              </Text>
-            </View>
-
-            <TouchableOpacity
-              style={styles.autoBrandBtn}
-              onPress={handleAutoBrand}
-              disabled={saving}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.autoBrandText}>
-                {saving ? '生成中...' : 'AIで投稿を分析して自動入力'}
-              </Text>
-            </TouchableOpacity>
-            <Text style={styles.resetBrandHint}>
-              ※ 連携中のInstagram投稿をAIが分析し、上の項目を自動入力します
-            </Text>
 
             <TouchableOpacity
               style={styles.resetBrandBtn}

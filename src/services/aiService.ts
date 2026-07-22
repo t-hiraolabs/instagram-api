@@ -565,8 +565,9 @@ ${sample}
 
   const res = await axios.post(
     CLAUDE_API_URL,
-    // skipCount: ブランド分析は通常のAI生成回数を消費しない（裏で別枠の上限あり）
-    { model: MODEL, messages: [{ role: 'user', content: prompt }], max_tokens: 400, skipCount: true },
+    // 以前は別枠の専用上限（brand_ai_used、フリーは累計3回・リセット無し）を使って
+    // いたが、通常のAI生成回数（ai_used）を1回分消費する扱いに統一した
+    { model: MODEL, messages: [{ role: 'user', content: prompt }], max_tokens: 400 },
     { headers }
   );
   const text: string = res.data?.content?.[0]?.text ?? res.data?.text ?? '';
