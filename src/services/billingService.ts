@@ -31,3 +31,33 @@ export async function createCheckoutUrl(plan: 'pro' | 'business' = 'pro'): Promi
   if (!data.url) throw new Error('決済URLを取得できませんでした');
   return data.url as string;
 }
+
+/**
+ * Stripe Customer Portal のURLを取得する（ログイン必須）。支払い方法の変更・請求書の
+ * 確認・プランの解約を、Stripeがホストする画面でユーザー自身が完結できるようにする
+ */
+export async function createPortalUrl(): Promise<string> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session?.access_token) {
+    throw new Error('ログインが必要です');
+  }
+
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/create-portal-session`, {
+    method: 'POST',
+    headers: {
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${session.access_token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.error) {
+    const detail = data.detail ? `\n${JSON.stringify(data.detail)}` : '';
+    throw new Error((data.error ?? `プラン管理ページの取得に失敗しました (${res.status})`) + detail);
+  }
+  if (!data.url) throw new Error('プラン管理ページのURLを取得できませんでした');
+  return data.url as string;
+}
