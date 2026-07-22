@@ -131,6 +131,10 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
   // 動かして離した後もtrueへは戻さない（＝移動操作の最後はプロパティを表示しない）。
   // 再び表示するには、もう一度タップして離す必要がある
   const [showProps, setShowProps] = useState(false);
+  // キャンバス上の何か（テキスト・写真スロット・追加写真ステッカーいずれか）を指で
+  // ドラッグしている最中かどうか。ブラウザの引っ張って更新・戻る/進むスワイプ
+  // ナビゲーションを防ぐためのtouch-action制御にのみ使う（下のuseEffect参照）
+  const [isDraggingCanvas, setIsDraggingCanvas] = useState(false);
   // 上部プレビューの入力欄（TextInput）は、<Text>と違って内容に合わせて自動的に
   // 縮まない（既定では実際の文字より大きな当たり判定を持つ）。そのままだと見えない
   // 余白部分が、キャンバス上の実際の（小さい）テキストへのドラッグ操作を奪ってしまう
@@ -422,6 +426,27 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
     };
   }, [showTextProps]);
 
+  // キャンバス上で写真（追加写真のステッカー・スロット内の写真とも）を指でドラッグ
+  // している間、上と同じ理由でtouch-action/overscroll-behaviorを厳しくする。これが
+  // ないと、指の動きが速い・大きい場合にブラウザ自身がスワイプ操作（Androidの
+  // 「引っ張って更新」やブラウザの戻る・進むスワイプナビゲーション）だと解釈して
+  // ページ全体を再読み込みしてしまい、キャッシュされた古いバージョンのアプリへ
+  // 切り替わってしまう不具合の原因になっていた（キャンバス中央への整列ガイド線が
+  // 出る場面は、ちょうど指の移動量が大きくなるタイミングと重なるため特に起きやすい）。
+  // テキスト編集中と違ってソフトキーボードは関係ないため、overflow自体は変更しない
+  React.useEffect(() => {
+    if (!isDraggingCanvas || Platform.OS !== 'web' || typeof document === 'undefined') return;
+    const body = document.body;
+    const prevOverscroll = (body.style as any).overscrollBehavior;
+    const prevTouchAction = body.style.touchAction;
+    (body.style as any).overscrollBehavior = 'none';
+    body.style.touchAction = 'none';
+    return () => {
+      (body.style as any).overscrollBehavior = prevOverscroll;
+      body.style.touchAction = prevTouchAction;
+    };
+  }, [isDraggingCanvas]);
+
   // パネル・テキスト編集を開いた直後は、その原因となったタップ自体の「余韻」
   // （実機のタッチ→マウスイベント合成は、touchstart/touchendの後にmousedown/mouseup/click
   // が別タスクとして遅れて発火することがある）を、下のuseEffectが「別の場所への
@@ -568,16 +593,17 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
               selectedId={selectedId}
               onSelectSlot={setActiveSlot}
               onSlotChange={(slotId, patch) => updatePhotoAssignment(slotId, patch)}
+              onSlotDragStateChange={setIsDraggingCanvas}
               // 写真の追加はツールバーの「写真」アイコンからのみ行う（プレビュー全体を
               // タップしても追加されないようにする）ため、ここではonPickPhotoを渡さない
               onSelectText={selectItem}
               onTextChange={(id, patch) => updateTextLayer(id, patch)}
               onTextTap={() => setShowProps(true)}
-              onTextDragStateChange={(dragging) => { if (dragging) setShowProps(false); }}
+              onTextDragStateChange={(dragging) => { if (dragging) setShowProps(false); setIsDraggingCanvas(dragging); }}
               onSelectPhotoLayer={selectItem}
               onPhotoLayerChange={(id, patch) => updatePhotoLayer(id, patch)}
               onPhotoLayerTap={() => setShowProps(true)}
-              onPhotoLayerDragStateChange={(dragging) => { if (dragging) setShowProps(false); }}
+              onPhotoLayerDragStateChange={(dragging) => { if (dragging) setShowProps(false); setIsDraggingCanvas(dragging); }}
             />
           </ViewShot>
 

@@ -597,6 +597,42 @@ test.describe('StoryTemplateEditor 追加写真（自由に動かせるステッ
     expect(Math.abs(after!.x - before!.x)).toBeGreaterThan(40);
   });
 
+  test('（回帰）追加写真をドラッグ中はbodyのtouch-actionが厳しくなり、ブラウザの引っ張り更新・戻るスワイプを防ぐ', async ({ page }) => {
+    await page.goto('/?e2e=storyTemplateEditor');
+    await page.waitForTimeout(1000);
+
+    await page.evaluate(() => (window as any).__e2eAddPhotoLayer('photo_sticker_1'));
+    await page.waitForTimeout(300);
+
+    const before = await page.evaluate(() => document.body.style.touchAction);
+    expect(before).not.toBe('none');
+
+    const layer = page.locator('[data-testid="layer-photo_sticker_1"]');
+    const box = await layer.boundingBox();
+    expect(box).not.toBeNull();
+    const cx = box!.x + box!.width / 2;
+    const cy = box!.y + box!.height / 2;
+
+    const client = await page.context().newCDPSession(page);
+    await dispatchTouch(client, 'touchStart', [{ x: cx, y: cy }]);
+    await page.waitForTimeout(80);
+    await dispatchTouch(client, 'touchMove', [{ x: cx + 20, y: cy + 20 }]);
+    await page.waitForTimeout(30);
+
+    const during = await page.evaluate(() => ({
+      touchAction: document.body.style.touchAction,
+      overscrollBehavior: (document.body.style as any).overscrollBehavior,
+    }));
+    expect(during.touchAction).toBe('none');
+    expect(during.overscrollBehavior).toBe('none');
+
+    await dispatchTouch(client, 'touchEnd', []);
+    await page.waitForTimeout(300);
+
+    const after = await page.evaluate(() => document.body.style.touchAction);
+    expect(after).toBe(before);
+  });
+
   test('タップして選択すると削除ボタンが表示され、削除できる', async ({ page }) => {
     await page.goto('/?e2e=storyTemplateEditor');
     await page.waitForTimeout(1000);
