@@ -18,9 +18,9 @@ export function canRecurring(plan: Plan): boolean {
   return plan !== 'free';
 }
 
-/** 連携できるInstagramアカウント数の上限（フリーは1、Pro以上は3） */
+/** 連携できるInstagramアカウント数の上限（フリー・Proは1、ビジネスのみ3） */
 export function maxInstagramAccounts(plan: Plan): number {
-  return plan === 'free' ? 1 : 3;
+  return plan === 'business' ? 3 : 1;
 }
 
 /** DBの値などを安全に Plan 型へ寄せる */
@@ -57,7 +57,6 @@ export const PLANS: PlanInfo[] = [
       'AIチャット 月50回',
       '予約投稿 無制限',
       'くりかえし投稿（毎日/毎週/毎月/平日）',
-      '複数アカウント連携（最大3つ）',
     ],
     color: COLORS.secondary,
   },
@@ -70,6 +69,7 @@ export const PLANS: PlanInfo[] = [
       'AI生成 月100回',
       'AIチャット 月150回',
       'Proのすべての機能',
+      '複数アカウント連携（最大3つ）',
       '📊 インサイト分析',
       '過去投稿の反応を分析してAI生成',
       'DM管理（近日対応）',

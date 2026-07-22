@@ -283,12 +283,12 @@ export default function ProfileScreen() {
     if (!loggedIn) { ensureLoggedIn('Instagram連携にはログインが必要です'); return; }
     connectInstagram(1);
   };
-  // 2つ目・3つ目のアカウント連携は、フリープランでは使えない（連携数の上限チェック）
+  // 2つ目・3つ目のアカウント連携は、ビジネスプラン以外では使えない（連携数の上限チェック）
   const requireMultiAccountPlan = (): boolean => {
     if (maxInstagramAccounts(currentPlan) >= 2) return true;
     Alert.alert(
-      '複数アカウント連携はPro以上の機能です',
-      '2つ目以降のInstagramアカウントを連携するには、Pro（¥980/月）以上のプランへのアップグレードが必要です。'
+      '複数アカウント連携はビジネスプランの機能です',
+      '2つ目以降のInstagramアカウントを連携するには、ビジネス（¥2,480/月）プランへのアップグレードが必要です。'
     );
     return false;
   };
