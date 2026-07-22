@@ -40,12 +40,10 @@ interface Props {
   onSelect: () => void;
   onChange: (patch: { offsetX: number; offsetY: number; scale: number; rotation: number }) => void;
   onPickPhoto?: () => void;
-  /** 指で実際に動かし始めた・動かし終えた瞬間に呼ぶ（DraggableLayerのonDragStateChangeと同じ意味） */
-  onDragStateChange?: (dragging: boolean) => void;
 }
 
 export default function DraggablePhotoSlot({
-  slot, assignment, displayScale, selected, locked, testID, activeOwner, activeRefs, guideV, guideH, canvasGestures, onSelect, onChange, onPickPhoto, onDragStateChange,
+  slot, assignment, displayScale, selected, locked, testID, activeOwner, activeRefs, guideV, guideH, canvasGestures, onSelect, onChange, onPickPhoto,
 }: Props) {
   const clipStyle = {
     position: 'absolute' as const,
@@ -104,7 +102,6 @@ export default function DraggablePhotoSlot({
         canvasGestures={canvasGestures}
         onSelect={onSelect}
         onChange={handleChange}
-        onDragStateChange={onDragStateChange}
       >
         <Image
           source={{ uri: assignment.uri }}
