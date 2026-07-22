@@ -840,20 +840,6 @@ export default function ProfileScreen() {
             );
           })}
         </ScrollView>
-        {currentPlan !== 'free' && (
-          <TouchableOpacity
-            style={styles.manageBillingBtn}
-            onPress={handleManageBilling}
-            disabled={managingBilling}
-            activeOpacity={0.7}
-          >
-            {managingBilling ? (
-              <ActivityIndicator color={COLORS.textSecondary} size="small" />
-            ) : (
-              <Text style={styles.manageBillingBtnText}>プランを管理・解約する</Text>
-            )}
-          </TouchableOpacity>
-        )}
 
         {/* Help */}
         <Text style={styles.sectionTitle}>ヘルプ</Text>
@@ -944,6 +930,26 @@ export default function ProfileScreen() {
       {/* アカウント設定画面（右スライド）: 連携解除・データ削除を分かりやすい場所にまとめる */}
       <SlideScreen visible={accountSettingsVisible} onBack={() => setAccountSettingsVisible(false)} title="アカウント設定">
         <ScrollView contentContainerStyle={{ padding: SPACING.md }}>
+          {currentPlan !== 'free' && (
+            <View style={styles.accountSettingsCard}>
+              <Text style={styles.accountSettingsUsername}>サブスクリプション</Text>
+              <TouchableOpacity
+                style={styles.accountSettingsRow}
+                onPress={handleManageBilling}
+                disabled={managingBilling}
+                activeOpacity={0.7}
+              >
+                {managingBilling ? (
+                  <ActivityIndicator color={COLORS.textSecondary} size="small" />
+                ) : (
+                  <>
+                    <Text style={styles.accountSettingsRowText}>プランを管理・解約する</Text>
+                    <Text style={styles.helpArrow}>›</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          )}
           {([
             { slot: 1 as const, creds: instagramCredentials, onDisconnect: handleDisconnect },
             { slot: 2 as const, creds: secondInstagramCredentials, onDisconnect: handleDisconnect2 },
@@ -1403,17 +1409,6 @@ const styles = StyleSheet.create({
     marginTop: SPACING.sm,
   },
   planUpgradeBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
-  manageBillingBtn: {
-    alignSelf: 'flex-start',
-    marginTop: SPACING.sm,
-    marginBottom: SPACING.lg,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    borderRadius: RADIUS.full,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  manageBillingBtnText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },
   helpRow: {
     backgroundColor: COLORS.surface,
     borderRadius: RADIUS.md,
