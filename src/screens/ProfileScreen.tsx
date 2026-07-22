@@ -902,13 +902,12 @@ export default function ProfileScreen() {
               activeOpacity={0.85}
             >
               <Text style={styles.autoBrandText}>
-                {saving ? '生成中...' : 'AIで投稿を分析して自動入力'}
+                {saving ? '生成中...' : '✨ AIで投稿を分析して自動入力'}
               </Text>
             </TouchableOpacity>
             <Text style={styles.resetBrandHint}>
               ※ 連携中のInstagram投稿をAIが分析し、下の項目を自動入力します
             </Text>
-            <Text style={styles.resetBrandHint}>✨ AI生成を1回消費します</Text>
 
             <Text style={styles.fieldLabel}>ブランド名・店舗名</Text>
             <TextInput
