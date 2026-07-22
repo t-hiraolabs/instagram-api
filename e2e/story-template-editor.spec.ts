@@ -517,6 +517,23 @@ test.describe('StoryTemplateEditor 写真の追加は「写真」アイコンか
     const hasImage = await page.evaluate(() => !!document.querySelector('[data-testid="layer-photo_1"] img'));
     expect(hasImage).toBe(true);
   });
+
+  test('メイン写真もブラウザのネイティブ画像ドラッグが無効化されている（同じくページ再読み込み不具合の対策）', async ({ page }) => {
+    await page.goto('/?e2e=storyTemplateEditor');
+    await page.waitForTimeout(1000);
+
+    await page.evaluate(() => (window as any).__e2eAssignPhoto());
+    await page.waitForTimeout(300);
+
+    const imgInfo = await page.evaluate(() => {
+      const img = document.querySelector('[data-testid="layer-photo_1"] img') as HTMLImageElement | null;
+      if (!img) return null;
+      return { draggable: img.draggable, pointerEvents: getComputedStyle(img).pointerEvents };
+    });
+    expect(imgInfo).not.toBeNull();
+    expect(imgInfo!.draggable).toBe(false);
+    expect(imgInfo!.pointerEvents).toBe('none');
+  });
 });
 
 test.describe('StoryTemplateEditor 追加写真（自由に動かせるステッカー）', () => {
@@ -531,6 +548,23 @@ test.describe('StoryTemplateEditor 追加写真（自由に動かせるステッ
     await expect(layer).toBeVisible();
     const hasImg = await page.evaluate(() => !!document.querySelector('[data-testid="layer-photo_sticker_1"] img'));
     expect(hasImg).toBe(true);
+  });
+
+  test('ブラウザのネイティブ画像ドラッグが無効化されている（指でのドラッグ操作と競合し、ページ再読み込みを引き起こす不具合対策）', async ({ page }) => {
+    await page.goto('/?e2e=storyTemplateEditor');
+    await page.waitForTimeout(1000);
+
+    await page.evaluate(() => (window as any).__e2eAddPhotoLayer('photo_sticker_1'));
+    await page.waitForTimeout(300);
+
+    const imgInfo = await page.evaluate(() => {
+      const img = document.querySelector('[data-testid="layer-photo_sticker_1"] img') as HTMLImageElement | null;
+      if (!img) return null;
+      return { draggable: img.draggable, pointerEvents: getComputedStyle(img).pointerEvents };
+    });
+    expect(imgInfo).not.toBeNull();
+    expect(imgInfo!.draggable).toBe(false);
+    expect(imgInfo!.pointerEvents).toBe('none');
   });
 
   test('指で実際にドラッグすると自由に移動できる（写真スロットのような固定枠に縛られない）', async ({ page }) => {

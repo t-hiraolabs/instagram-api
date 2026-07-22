@@ -357,6 +357,16 @@ export default function CreativeCanvas({
               source={{ uri: p.uri }}
               style={{ width: p.w * displayScale, height: p.h * displayScale }}
               resizeMode="cover"
+              // Web版のブラウザは<img>に既定でネイティブのドラッグ&ドロップ操作
+              // （画像そのものをドラッグして持ち出せる機能）を許可している。これが
+              // DraggableLayerのpanジェスチャーと競合し、指を動かした瞬間にブラウザが
+              // 独自にドラッグを開始してしまい、（data URIの画像をドロップした際の
+              // ブラウザの既定動作として）ページの再読み込みが起きてキャッシュされた
+              // 古いバンドルに切り替わってしまう不具合の原因になっていた。draggable={false}
+              // で無効化し、pointerEvents="none"でこの要素自体への当たり判定も外し、
+              // タッチ操作は必ず親のDraggableLayer（GestureDetector）が受け取るようにする
+              draggable={false}
+              pointerEvents="none"
             />
           </DraggableLayer>
         ))}
