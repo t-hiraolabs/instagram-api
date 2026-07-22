@@ -221,20 +221,27 @@ function ImageGenChat(
       setChatAutoSend(false);
       setChatForceNew(false);
       setChatFreeTrialEntry(false);
+      // messages/convIdは閉じても消さずに残しているため（この直前まで表示していた
+      // 会話がそのまま残っている）、新規チャットで始めるべき時に下のpurge等の非同期
+      // 処理の完了を待ってからリセットすると、開いた瞬間は一瞬前回の会話が見え、
+      // その後で新規チャットに切り替わる「ちらつき」が起きていた。表示直後の
+      // 最初のレンダーから既に新規チャットになっているよう、ここで同期的にリセットする
+      if (forceNew) {
+        setConvId(null);
+        setMessages([]);
+      }
       (async () => {
         await purgeOldConversations(30).catch(() => {});
         const rawConvs = await listConversations();
         const convs = await purgeEmptyConversations(rawConvs);
         setConversations(convs);
-        if (forceNew) {
-          // メッセージを送るまで会話は作らない（空の会話を保存しないため）
-          setConvId(null);
-          setMessages([]);
-        } else if (convs[0]) {
-          await openConversation(convs[0].id);
-        } else {
-          setConvId(null);
-          setMessages([]);
+        if (!forceNew) {
+          if (convs[0]) {
+            await openConversation(convs[0].id);
+          } else {
+            setConvId(null);
+            setMessages([]);
+          }
         }
         // ホームのミニチャットから送信済みの場合は、convIdの準備が整ってから自動送信する
         if (prefill && autoSend) {
