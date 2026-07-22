@@ -10,6 +10,7 @@ import { FIXTURE_PHOTO_URIS } from '../../e2e/fixtures';
 
 export default function E2EStoryTemplateEditorScreen() {
   const assignPhoto = useCreativeEditorStore((s) => s.assignPhoto);
+  const addPhotoLayer = useCreativeEditorStore((s) => s.addPhotoLayer);
 
   // expo-image-pickerの実際のファイル選択ダイアログはPlaywrightから自動化できないため、
   // 写真を選んだ状態をテストから直接再現できるフックをwindowへ公開する（StoryTemplateEditor
@@ -17,6 +18,10 @@ export default function E2EStoryTemplateEditorScreen() {
   // 難しい。通常のUI導線には出ない）
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
     (window as any).__e2eAssignPhoto = () => assignPhoto('photo_1', FIXTURE_PHOTO_URIS.photo1, 1600, 640);
+    // メイン写真とは別に、自由配置の「追加写真」（ステッカー）を直接追加するフック
+    (window as any).__e2eAddPhotoLayer = (
+      id: string, uri: string = FIXTURE_PHOTO_URIS.photo2, x = 300, y = 400,
+    ) => addPhotoLayer({ id, uri, x, y, w: 300, h: 300, scale: 1, rotation: 0 });
   }
 
   return (
