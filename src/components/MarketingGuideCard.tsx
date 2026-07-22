@@ -5,10 +5,11 @@
 // 再分析するが、フリープランはAIコストを抑えるため初回の分析のみ行い、以降は自動更新しない
 // （手動更新もなし）。
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, Platform, TextInput, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, TextInput, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
 import { useAppStore } from '../store/appStore';
+import { supabase } from '../services/supabaseClient';
 import {
   getInsightsSummary,
   computeInsightFacts,
@@ -41,8 +42,6 @@ function buildGuideFacts(rank: AccountRank, grade: AccountScoreGrade, guide: Mar
   );
 }
 
-const CACHE_KEY = 'aimark_marketing_guide_v2';
-
 interface CacheEntry {
   rank: AccountRank;
   grade: AccountScoreGrade;
@@ -50,29 +49,32 @@ interface CacheEntry {
   weekKey: string;
 }
 
-// アカウント（userId）ごとにエントリーを分けて保持する。複数のInstagramアカウントを
-// 連携していても、それぞれ独立して週1回分析される
-type CacheMap = Record<string, CacheEntry>;
-
-function readCacheMap(): CacheMap {
-  if (Platform.OS !== 'web' || typeof localStorage === 'undefined') return {};
-  try {
-    const raw = localStorage.getItem(CACHE_KEY);
-    return raw ? (JSON.parse(raw) as CacheMap) : {};
-  } catch {
-    return {};
-  }
+// 連携中のInstagramアカウント（ig_user_id）ごとにエントリーを分けて保持する。複数の
+// Instagramアカウントを連携していても、それぞれ独立して週1回分析される。
+// 以前はブラウザのlocalStorageに保存していたが、これだと端末・ブラウザに紐付いてしまい、
+// ログアウト後の別端末ログインや別ブラウザでのログインのたびに（本来は分析済みのはずが）
+// 再分析が走ってしまう不具合の原因になっていた。Supabase側（アカウントに紐付く形）に
+// 保存することで、どの端末・ブラウザからログインしても同じ結果を引き継げるようにする
+async function readCachedGuide(igUserId: string): Promise<CacheEntry | null> {
+  const { data, error } = await supabase
+    .from('marketing_guide_cache')
+    .select('rank, grade, guide, week_key')
+    .eq('ig_user_id', igUserId)
+    .maybeSingle();
+  if (error || !data) return null;
+  return { rank: data.rank as AccountRank, grade: data.grade as AccountScoreGrade, guide: data.guide as MarketingGuide, weekKey: data.week_key as string };
 }
 
-function writeCacheEntry(userId: string, entry: CacheEntry) {
-  if (Platform.OS !== 'web' || typeof localStorage === 'undefined') return;
-  try {
-    const map = readCacheMap();
-    map[userId] = entry;
-    localStorage.setItem(CACHE_KEY, JSON.stringify(map));
-  } catch {
-    // 保存に失敗しても致命的ではないので無視
-  }
+async function writeCachedGuide(igUserId: string, authUserId: string, entry: CacheEntry) {
+  await supabase.from('marketing_guide_cache').upsert({
+    ig_user_id: igUserId,
+    user_id: authUserId,
+    week_key: entry.weekKey,
+    rank: entry.rank,
+    grade: entry.grade,
+    guide: entry.guide,
+    updated_at: new Date().toISOString(),
+  });
 }
 
 export default function MarketingGuideCard({ onChatUsed }: Props) {
@@ -91,6 +93,19 @@ export default function MarketingGuideCard({ onChatUsed }: Props) {
   // 「再試行」を押すたびに増やし、下のuseEffectを再実行させる（userId/accessTokenは
   // 変わらないため、依存配列にこれを含めないと再試行のたびに同じ結果のまま止まってしまう）
   const [retryCount, setRetryCount] = useState(0);
+  // Supabaseのログインセッション復元は、Zustandの永続化ストア（instagramCredentials）の
+  // 復元とは非同期かつ独立したタイミングで完了する。これを待たずにキャッシュの読み書きを
+  // 行うと、まだ未確定のセッションでクエリを投げてしまい失敗する可能性があるため、
+  // セッション復元が確定するまでは何もしない
+  const [authUserId, setAuthUserId] = useState<string | null | undefined>(undefined);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setAuthUserId(data.session?.user?.id ?? null));
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setAuthUserId(session?.user?.id ?? null);
+    });
+    return () => listener.subscription.unsubscribe();
+  }, []);
 
   // ガイドに対する質問チャット。その場限りのやり取りなので保存はしない
   // （アカウント切り替え・再分析のたびにリセットする）
@@ -124,9 +139,11 @@ export default function MarketingGuideCard({ onChatUsed }: Props) {
   };
 
   useEffect(() => {
-    const userId = instagramCredentials?.userId;
+    const igUserId = instagramCredentials?.userId;
     const accessToken = instagramCredentials?.accessToken;
-    if (!userId || !accessToken) return;
+    // authUserIdがundefinedの間はセッション復元がまだ終わっていない（上のuseEffect参照）
+    if (authUserId === undefined) return;
+    if (!authUserId || !igUserId || !accessToken) return;
 
     let cancelled = false;
     (async () => {
@@ -135,7 +152,8 @@ export default function MarketingGuideCard({ onChatUsed }: Props) {
       setPlan(myPlan);
 
       const thisWeek = getIsoWeekKey(new Date());
-      const cached = readCacheMap()[userId];
+      const cached = await readCachedGuide(igUserId);
+      if (cancelled) return;
       // フリープランは初回分析のみ（毎週の自動再分析は行わない）。一度分析済みなら
       // 週が変わってもそのまま使い続ける。Pro/ビジネスは従来通り週が変わったら再分析する
       const cacheValid = !!cached && (myPlan === 'free' || cached.weekKey === thisWeek);
@@ -184,7 +202,7 @@ export default function MarketingGuideCard({ onChatUsed }: Props) {
         setRank(nextRank);
         setGrade(nextGrade);
         setGuide(nextGuide);
-        writeCacheEntry(userId, { rank: nextRank, grade: nextGrade, guide: nextGuide, weekKey: thisWeek });
+        writeCachedGuide(igUserId, authUserId, { rank: nextRank, grade: nextGrade, guide: nextGuide, weekKey: thisWeek });
       } catch {
         if (!cancelled) setFailed(true);
       } finally {
@@ -195,7 +213,7 @@ export default function MarketingGuideCard({ onChatUsed }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [instagramCredentials?.userId, instagramCredentials?.accessToken, retryCount]);
+  }, [instagramCredentials?.userId, instagramCredentials?.accessToken, retryCount, authUserId]);
 
   // 失敗時にカード自体を丸ごと消してしまうと、「分析中...」が一瞬出てすぐに何の説明も
   // なく消えたように見えてしまう（実際には裏で分析に失敗しているだけ）。連携さえ
