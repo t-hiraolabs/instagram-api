@@ -5,7 +5,7 @@
 // photoSlots配列の順序で決まり、描画順序（背景→背面装飾→写真→前面装飾→フレーム→文字）は
 // CreativeCanvas側で固定的に扱うため、ここでは扱わない。
 import { create } from 'zustand';
-import { PhotoSlot, TemplateLayer, TextLayer } from '../types/creativeTemplate';
+import { PhotoSlot, TemplateLayer, TextLayer, PhotoLayer } from '../types/creativeTemplate';
 
 export interface PhotoAssignment {
   slotId: string;
@@ -27,7 +27,11 @@ interface CreativeEditorState {
   photoAssignments: PhotoAssignment[];
   layers: TemplateLayer[];
   textLayers: TextLayer[];
-  /** 選択中の要素id。photoSlot/layer/textLayerのいずれかのidを指す */
+  /** スロットに縛られず自由に配置できる「追加写真」（ステッカーのように移動・拡大縮小・
+   *  回転できる）。テンプレートには含まれず、「ストーリー作成」画面でユーザーが
+   *  追加した分だけ増える */
+  photoLayers: PhotoLayer[];
+  /** 選択中の要素id。photoSlot/layer/textLayer/photoLayerのいずれかのidを指す */
   selectedId: string | null;
   /** 現在操作対象にしているスロットid。photoSlots.length>=2の時だけ意味を持つ */
   activeSlotId: string | null;
@@ -54,9 +58,13 @@ interface CreativeEditorState {
   removeTextLayer: (id: string) => void;
   toggleTextVisible: (id: string) => void;
 
-  /** idを含む配列（layers or textLayers）内で、その要素を末尾（最前面）へ移動する */
+  addPhotoLayer: (layer: PhotoLayer) => void;
+  updatePhotoLayer: (id: string, patch: Partial<Pick<PhotoLayer, 'x' | 'y' | 'scale' | 'rotation'>>) => void;
+  removePhotoLayer: (id: string) => void;
+
+  /** idを含む配列（layers or textLayers or photoLayers）内で、その要素を末尾（最前面）へ移動する */
   bringToFront: (id: string) => void;
-  /** idを含む配列（layers or textLayers）内で、その要素を先頭（最背面）へ移動する */
+  /** idを含む配列（layers or textLayers or photoLayers）内で、その要素を先頭（最背面）へ移動する */
   sendToBack: (id: string) => void;
 }
 
@@ -66,6 +74,7 @@ export const useCreativeEditorStore = create<CreativeEditorState>((set, get) => 
   photoAssignments: [],
   layers: [],
   textLayers: [],
+  photoLayers: [],
   selectedId: null,
   activeSlotId: null,
 
@@ -73,11 +82,12 @@ export const useCreativeEditorStore = create<CreativeEditorState>((set, get) => 
     set({
       templateId, photoSlots, layers, textLayers,
       photoAssignments: [],
+      photoLayers: [],
       selectedId: null,
       activeSlotId: photoSlots[0]?.id ?? null,
     }),
   reset: () => set({
-    templateId: null, photoSlots: [], photoAssignments: [], layers: [], textLayers: [],
+    templateId: null, photoSlots: [], photoAssignments: [], layers: [], textLayers: [], photoLayers: [],
     selectedId: null, activeSlotId: null,
   }),
 
@@ -132,6 +142,16 @@ export const useCreativeEditorStore = create<CreativeEditorState>((set, get) => 
   toggleTextVisible: (id) =>
     set((state) => ({ textLayers: state.textLayers.map((t) => (t.id === id ? { ...t, visible: !t.visible } : t)) })),
 
+  addPhotoLayer: (layer) =>
+    set((state) => ({ photoLayers: [...state.photoLayers, layer], selectedId: layer.id })),
+  updatePhotoLayer: (id, patch) =>
+    set((state) => ({ photoLayers: state.photoLayers.map((p) => (p.id === id ? { ...p, ...patch } : p)) })),
+  removePhotoLayer: (id) =>
+    set((state) => ({
+      photoLayers: state.photoLayers.filter((p) => p.id !== id),
+      selectedId: state.selectedId === id ? null : state.selectedId,
+    })),
+
   bringToFront: (id) => {
     const state = get();
     if (state.layers.some((l) => l.id === id)) {
@@ -140,6 +160,9 @@ export const useCreativeEditorStore = create<CreativeEditorState>((set, get) => 
     } else if (state.textLayers.some((t) => t.id === id)) {
       const target = state.textLayers.find((t) => t.id === id)!;
       set({ textLayers: [...state.textLayers.filter((t) => t.id !== id), target] });
+    } else if (state.photoLayers.some((p) => p.id === id)) {
+      const target = state.photoLayers.find((p) => p.id === id)!;
+      set({ photoLayers: [...state.photoLayers.filter((p) => p.id !== id), target] });
     }
   },
   sendToBack: (id) => {
@@ -150,6 +173,9 @@ export const useCreativeEditorStore = create<CreativeEditorState>((set, get) => 
     } else if (state.textLayers.some((t) => t.id === id)) {
       const target = state.textLayers.find((t) => t.id === id)!;
       set({ textLayers: [target, ...state.textLayers.filter((t) => t.id !== id)] });
+    } else if (state.photoLayers.some((p) => p.id === id)) {
+      const target = state.photoLayers.find((p) => p.id === id)!;
+      set({ photoLayers: [target, ...state.photoLayers.filter((p) => p.id !== id)] });
     }
   },
 }));

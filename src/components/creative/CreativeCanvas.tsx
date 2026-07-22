@@ -12,7 +12,7 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import DraggableLayer, { ActiveLayerRefs, GUIDE_COLOR } from './DraggableLayer';
 import DraggablePhotoSlot from './DraggablePhotoSlot';
 import BackgroundPresetSvg from './BackgroundPresetSvg';
-import { CANVAS_W, CANVAS_H, PhotoSlot, TemplateLayer, TextLayer, resolveLayerBand } from '../../types/creativeTemplate';
+import { CANVAS_W, CANVAS_H, PhotoSlot, TemplateLayer, TextLayer, PhotoLayer, resolveLayerBand } from '../../types/creativeTemplate';
 import { PhotoAssignment } from '../../store/creativeEditorStore';
 import { getFontPreset } from '../../utils/fontPresets';
 import { getBackgroundPreset } from '../../utils/backgroundPresets';
@@ -130,6 +130,9 @@ interface Props {
   layers: TemplateLayer[];
   textLayers: TextLayer[];
   photoAssignments: PhotoAssignment[];
+  /** スロットに縛られず自由に配置できる「追加写真」（ステッカーのように移動・拡大縮小・
+   *  回転できる）。省略時は空扱い */
+  photoLayers?: PhotoLayer[];
   /** 表示幅を上書きする（省略時はDISPLAY_W） */
   displayWidth?: number;
   /** trueの間はphotoSlots・textLayersも含め一切の操作を受け付けない（確定前のプレビュー用） */
@@ -146,13 +149,21 @@ interface Props {
   /** 移動を伴わない「テキストをタップして指を離した」時だけ呼ぶ（onSelectTextは
    *  ドラッグ開始時にも呼ばれるため、それとは区別してプロパティパネルを開く等に使う） */
   onTextTap?: (id: string) => void;
+  onSelectPhotoLayer?: (id: string) => void;
+  onPhotoLayerChange?: (id: string, patch: { x: number; y: number; scale: number; rotation: number }) => void;
+  /** テキストのonTextDragStateChangeと同じ意味（追加写真を実際に動かし始めた・
+   *  動かし終えた瞬間に呼ぶ） */
+  onPhotoLayerDragStateChange?: (dragging: boolean) => void;
+  /** テキストのonTextTapと同じ意味（移動を伴わないタップの時だけ呼ぶ） */
+  onPhotoLayerTap?: (id: string) => void;
 }
 
 export default function CreativeCanvas({
-  canvasRef, photoSlots, layers, textLayers, photoAssignments,
+  canvasRef, photoSlots, layers, textLayers, photoAssignments, photoLayers = [],
   displayWidth, locked,
   selectedId, onSelectSlot, onSlotChange, onPickPhoto, onSelectText, onTextChange,
-  onTextDragStateChange, onTextTap,
+  onTextDragStateChange, onTextTap, onSelectPhotoLayer, onPhotoLayerChange,
+  onPhotoLayerDragStateChange, onPhotoLayerTap,
 }: Props) {
   const width = displayWidth ?? DISPLAY_W;
   const displayScale = width / CANVAS_W;
@@ -178,15 +189,19 @@ export default function CreativeCanvas({
   // おき、中央整列ガイドの判定に使う（写真はimgW/imgHから計算できるため不要）
   const [textSizes, setTextSizes] = React.useState<Record<string, { width: number; height: number }>>({});
 
-  // ピンチ・回転操作が終わった時にReact state側へ確定する。対象がphotoSlotかtextLayer
-  // かでpatchの形が異なる（写真はoffsetX/offsetY、テキストはx/y/rotationそのまま）ため、
-  // ここで振り分ける
+  // ピンチ・回転操作が終わった時にReact state側へ確定する。対象がphotoSlotか
+  // photoLayer（自由配置の追加写真）かtextLayerかでpatchの形が異なる（スロット写真は
+  // offsetX/offsetY、それ以外はx/y/rotationそのまま）ため、ここで振り分ける
   const onCommitActive = (targetId: string, x: number, y: number, scale: number, rotation: number) => {
     const slot = photoSlots.find((s) => s.id === targetId);
     if (slot) {
       const assignment = photoAssignments.find((a) => a.slotId === targetId);
       if (!assignment) return;
       onSlotChange?.(targetId, clampPhotoOffset(slot, assignment, x, y, scale, rotation));
+      return;
+    }
+    if (photoLayers.some((p) => p.id === targetId)) {
+      onPhotoLayerChange?.(targetId, { x, y, scale, rotation });
       return;
     }
     onTextChange?.(targetId, { x, y, scale, rotation });
@@ -314,6 +329,36 @@ export default function CreativeCanvas({
             onChange={(patch) => onSlotChange?.(slot.id, patch)}
             onPickPhoto={() => onPickPhoto?.(slot.id)}
           />
+        ))}
+        {/* 3.5 自由配置の追加写真（ステッカーのように移動・拡大縮小・回転できる。
+              スロットのようなクリップ枠は持たず、テキストと同じ扱いで描画する） */}
+        {sortByZIndex(photoLayers).map((p) => (
+          <DraggableLayer
+            key={p.id}
+            id={p.id}
+            testID={`layer-${p.id}`}
+            x={p.x} y={p.y} scale={p.scale} rotation={p.rotation}
+            displayScale={displayScale}
+            selected={!locked && selectedId === p.id}
+            locked={locked}
+            width={p.w}
+            height={p.h}
+            guideV={guideV}
+            guideH={guideH}
+            activeOwner={activeOwner}
+            activeRefs={activeRefs}
+            canvasGestures={canvasGestures}
+            onSelect={() => onSelectPhotoLayer?.(p.id)}
+            onChange={(patch) => onPhotoLayerChange?.(p.id, patch)}
+            onDragStateChange={onPhotoLayerDragStateChange}
+            onTap={() => onPhotoLayerTap?.(p.id)}
+          >
+            <Image
+              source={{ uri: p.uri }}
+              style={{ width: p.w * displayScale, height: p.h * displayScale }}
+              resizeMode="cover"
+            />
+          </DraggableLayer>
         ))}
         {/* 4. decorFront（写真前面の装飾） */}
         {decorFront.map((l) => <StaticLayerImage key={l.id} layer={l} displayScale={displayScale} />)}

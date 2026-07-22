@@ -519,6 +519,123 @@ test.describe('StoryTemplateEditor 写真の追加は「写真」アイコンか
   });
 });
 
+test.describe('StoryTemplateEditor 追加写真（自由に動かせるステッカー）', () => {
+  test('メイン写真とは別に、スロットに縛られず自由な位置へ配置できる', async ({ page }) => {
+    await page.goto('/?e2e=storyTemplateEditor');
+    await page.waitForTimeout(1000);
+
+    await page.evaluate(() => (window as any).__e2eAddPhotoLayer('photo_sticker_1'));
+    await page.waitForTimeout(300);
+
+    const layer = page.locator('[data-testid="layer-photo_sticker_1"]');
+    await expect(layer).toBeVisible();
+    const hasImg = await page.evaluate(() => !!document.querySelector('[data-testid="layer-photo_sticker_1"] img'));
+    expect(hasImg).toBe(true);
+  });
+
+  test('指で実際にドラッグすると自由に移動できる（写真スロットのような固定枠に縛られない）', async ({ page }) => {
+    await page.goto('/?e2e=storyTemplateEditor');
+    await page.waitForTimeout(1000);
+
+    await page.evaluate(() => (window as any).__e2eAddPhotoLayer('photo_sticker_1'));
+    await page.waitForTimeout(300);
+
+    const layer = page.locator('[data-testid="layer-photo_sticker_1"]');
+    const before = await layer.boundingBox();
+    expect(before).not.toBeNull();
+    const cx = before!.x + before!.width / 2;
+    const cy = before!.y + before!.height / 2;
+
+    const client = await page.context().newCDPSession(page);
+    await dispatchTouch(client, 'touchStart', [{ x: cx, y: cy }]);
+    await page.waitForTimeout(80);
+    const steps = 10;
+    for (let i = 1; i <= steps; i++) {
+      await dispatchTouch(client, 'touchMove', [{ x: cx + i * 9, y: cy + i * 7 }]);
+      await page.waitForTimeout(30);
+    }
+    await page.waitForTimeout(100);
+    await dispatchTouch(client, 'touchEnd', []);
+    await page.waitForTimeout(300);
+
+    const after = await layer.boundingBox();
+    expect(after).not.toBeNull();
+    expect(Math.abs(after!.x - before!.x)).toBeGreaterThan(40);
+  });
+
+  test('タップして選択すると削除ボタンが表示され、削除できる', async ({ page }) => {
+    await page.goto('/?e2e=storyTemplateEditor');
+    await page.waitForTimeout(1000);
+
+    await page.evaluate(() => (window as any).__e2eAddPhotoLayer('photo_sticker_1'));
+    await page.waitForTimeout(300);
+
+    const layer = page.locator('[data-testid="layer-photo_sticker_1"]');
+    const box = await layer.boundingBox();
+    expect(box).not.toBeNull();
+    const cx = box!.x + box!.width / 2;
+    const cy = box!.y + box!.height / 2;
+
+    // 移動を伴わない、指を置いてすぐ離す「タップ」で選択する
+    const client = await page.context().newCDPSession(page);
+    await dispatchTouch(client, 'touchStart', [{ x: cx, y: cy }]);
+    await page.waitForTimeout(50);
+    await dispatchTouch(client, 'touchEnd', []);
+    await page.waitForTimeout(300);
+
+    await expect(page.getByTestId('story-editor-photo-panel')).toBeVisible();
+
+    await page.getByTestId('story-editor-photo-panel-delete-btn').click();
+    await page.waitForTimeout(300);
+
+    await expect(page.locator('[data-testid="layer-photo_sticker_1"]')).toHaveCount(0);
+    await expect(page.getByTestId('story-editor-photo-panel')).toHaveCount(0);
+  });
+
+  test('複数追加でき、それぞれ独立して操作できる', async ({ page }) => {
+    await page.goto('/?e2e=storyTemplateEditor');
+    await page.waitForTimeout(1000);
+
+    // 重なって片方の指操作がもう片方に奪われないよう、離れた位置に配置する
+    await page.evaluate(() => (window as any).__e2eAddPhotoLayer('photo_sticker_1', undefined, 100, 200));
+    await page.waitForTimeout(200);
+    await page.evaluate(() => (window as any).__e2eAddPhotoLayer('photo_sticker_2', undefined, 650, 1300));
+    await page.waitForTimeout(300);
+
+    await expect(page.locator('[data-testid="layer-photo_sticker_1"]')).toBeVisible();
+    await expect(page.locator('[data-testid="layer-photo_sticker_2"]')).toBeVisible();
+
+    // 1枚目だけを動かしても、2枚目の位置は変わらない
+    const layer1 = page.locator('[data-testid="layer-photo_sticker_1"]');
+    const layer2 = page.locator('[data-testid="layer-photo_sticker_2"]');
+    const before1 = await layer1.boundingBox();
+    const before2 = await layer2.boundingBox();
+    expect(before1).not.toBeNull();
+    const cx = before1!.x + before1!.width / 2;
+    const cy = before1!.y + before1!.height / 2;
+
+    const client = await page.context().newCDPSession(page);
+    await dispatchTouch(client, 'touchStart', [{ x: cx, y: cy }]);
+    await page.waitForTimeout(80);
+    const steps = 10;
+    for (let i = 1; i <= steps; i++) {
+      await dispatchTouch(client, 'touchMove', [{ x: cx - i * 10, y: cy - i * 8 }]);
+      await page.waitForTimeout(30);
+    }
+    await page.waitForTimeout(100);
+    await dispatchTouch(client, 'touchEnd', []);
+    await page.waitForTimeout(300);
+
+    const after1 = await layer1.boundingBox();
+    const after2 = await layer2.boundingBox();
+    expect(after1).not.toBeNull();
+    expect(Math.abs(after1!.x - before1!.x)).toBeGreaterThan(40);
+    expect(after2).not.toBeNull();
+    expect(Math.abs(after2!.x - before2!.x)).toBeLessThan(2);
+    expect(Math.abs(after2!.y - before2!.y)).toBeLessThan(2);
+  });
+});
+
 test.describe('StoryTemplateEditor 編集中カーソルの初期位置', () => {
   test('既存テキストを選択し直すと、カーソルは先頭ではなく末尾に置かれる', async ({ page }) => {
     await page.goto('/?e2e=storyTemplateEditor');

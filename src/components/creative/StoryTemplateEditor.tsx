@@ -18,7 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import ViewShot from 'react-native-view-shot';
 import { COLORS, SPACING, RADIUS } from '../../utils/theme';
 import { useCreativeEditorStore } from '../../store/creativeEditorStore';
-import { TextLayer, TemplateLayer, CANVAS_W, CANVAS_H } from '../../types/creativeTemplate';
+import { TextLayer, TemplateLayer, PhotoLayer, CANVAS_W, CANVAS_H } from '../../types/creativeTemplate';
 import { FONT_PRESETS, getFontPreset } from '../../utils/fontPresets';
 import { BACKGROUND_PRESETS } from '../../utils/backgroundPresets';
 import { STICKER_CATEGORIES } from '../../utils/stickerPresets';
@@ -144,6 +144,7 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
   const photoAssignments = useCreativeEditorStore((s) => s.photoAssignments);
   const layers = useCreativeEditorStore((s) => s.layers);
   const textLayers = useCreativeEditorStore((s) => s.textLayers);
+  const photoLayers = useCreativeEditorStore((s) => s.photoLayers);
   const selectedId = useCreativeEditorStore((s) => s.selectedId);
   const loadTemplate = useCreativeEditorStore((s) => s.loadTemplate);
   const setBackgroundLayer = useCreativeEditorStore((s) => s.setBackgroundLayer);
@@ -155,6 +156,9 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
   const addTextLayer = useCreativeEditorStore((s) => s.addTextLayer);
   const updateTextLayer = useCreativeEditorStore((s) => s.updateTextLayer);
   const removeTextLayer = useCreativeEditorStore((s) => s.removeTextLayer);
+  const addPhotoLayer = useCreativeEditorStore((s) => s.addPhotoLayer);
+  const updatePhotoLayer = useCreativeEditorStore((s) => s.updatePhotoLayer);
+  const removePhotoLayer = useCreativeEditorStore((s) => s.removePhotoLayer);
 
   const alertMsg = (msg: string, title = 'お知らせ') => {
     if (Platform.OS === 'web') window.alert(msg);
@@ -202,13 +206,36 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
       });
       if (res.canceled || !res.assets[0]) return;
       const asset = res.assets[0];
-      // 写真スロットがまだ無ければ作る（文字・ステッカー・背景は維持する。写真を
-      // 拡大率1.0未満に縮小すればスロット内に余白ができ、そこに背景が見えるため、
-      // 写真と背景は共存できる仕様にしている）
-      if (photoSlots.length === 0) {
-        loadTemplate({ templateId: templateId || '', photoSlots: [FULL_BLEED_SLOT], layers, textLayers });
+      // 1枚目は今まで通りメインの写真スロット（背景いっぱいに敷く写真）へ割り当てる。
+      // 既にメインの写真が入っている状態でさらに「写真」を選んだ場合は、既存の写真を
+      // 置き換えるのではなく、ステッカーのように自由に動かせる「追加写真」として
+      // 乗せる（何枚でも追加できる）
+      const primaryFilled = photoAssignments.some((a) => a.slotId === PHOTO_SLOT_ID);
+      if (!primaryFilled) {
+        // 写真スロットがまだ無ければ作る（文字・ステッカー・背景は維持する。写真を
+        // 拡大率1.0未満に縮小すればスロット内に余白ができ、そこに背景が見えるため、
+        // 写真と背景は共存できる仕様にしている）
+        if (photoSlots.length === 0) {
+          loadTemplate({ templateId: templateId || '', photoSlots: [FULL_BLEED_SLOT], layers, textLayers });
+        }
+        assignPhoto(PHOTO_SLOT_ID, asset.uri, asset.width || CANVAS_W, asset.height || CANVAS_H);
+      } else {
+        const naturalW = asset.width || CANVAS_W;
+        const naturalH = asset.height || CANVAS_H;
+        // 追加写真の初期表示サイズ: キャンバスの半分程度に収まる大きさへ、元画像の
+        // アスペクト比を保ったまま縮小する（大きすぎて操作しづらくならないように）
+        const maxDim = Math.min(CANVAS_W, CANVAS_H) * 0.5;
+        const fitScale = Math.min(maxDim / naturalW, maxDim / naturalH, 1);
+        const w = naturalW * fitScale;
+        const h = naturalH * fitScale;
+        const layer: PhotoLayer = {
+          id: `photo_${Date.now()}`, uri: asset.uri,
+          x: (CANVAS_W - w) / 2, y: (CANVAS_H - h) / 2,
+          w, h, scale: 1, rotation: 0,
+        };
+        addPhotoLayer(layer);
+        setShowProps(true);
       }
-      assignPhoto(PHOTO_SLOT_ID, asset.uri, asset.width || CANVAS_W, asset.height || CANVAS_H);
       setPanel('none');
     } finally {
       if (Platform.OS === 'web') {
@@ -232,6 +259,7 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
   };
 
   const selectedTextLayer = textLayers.find((t) => t.id === selectedId) as TextLayer | undefined;
+  const selectedPhotoLayer = photoLayers.find((p) => p.id === selectedId) as PhotoLayer | undefined;
   React.useEffect(() => { setPreviewInputSize(null); }, [selectedTextLayer?.id]);
 
   // テキストをタップしてプロパティ・上部プレビューを開いた時、Instagram同様に
@@ -345,9 +373,11 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
   const canvasWByHeight = availH * (CANVAS_W / CANVAS_H);
   const canvasW = Math.min(winW - SPACING.lg * 2, canvasWByHeight);
   // テキストをタップして選択した時だけプロパティ・上部プレビューを表示する
-  // （showPropsの管理はstate定義側のコメント参照）
+  // （showPropsの管理はstate定義側のコメント参照）。追加写真（ステッカー）を
+  // 選択した時も同じshowPropsを使って、削除ボタンだけの簡易パネルを表示する
   const showTextProps = !!selectedTextLayer && showProps;
-  const overlayActive = showTextProps || panel !== 'none';
+  const showPhotoProps = !!selectedPhotoLayer && showProps;
+  const overlayActive = showTextProps || showPhotoProps || panel !== 'none';
 
   // 上部プレビューの入力欄はキャンバス上のテキストの裏にpointerEvents="box-none"で
   // 重ねている（ドラッグ操作を奪わないため）。そのため、そのテキストを再タップした時、
@@ -427,11 +457,11 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
       if (stripPanelEl?.contains(target)) return;
       if (selectedEl?.contains(target)) return;
       if (panel !== 'none') setPanel('none');
-      if (showTextProps) { selectItem(null); setShowProps(false); }
+      if (showTextProps || showPhotoProps) { selectItem(null); setShowProps(false); }
     };
     document.addEventListener('mousedown', handleMouseDown, true);
     return () => document.removeEventListener('mousedown', handleMouseDown, true);
-  }, [overlayActive, panel, showTextProps, selectedId]);
+  }, [overlayActive, panel, showTextProps, showPhotoProps, selectedId]);
   const previewDisplayScale = canvasW / CANVAS_W;
   const previewFontSize = selectedTextLayer
     ? Math.min(64, Math.max(18, selectedTextLayer.size * previewDisplayScale * 2.0))
@@ -532,6 +562,7 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
               layers={layers}
               textLayers={textLayers}
               photoAssignments={photoAssignments}
+              photoLayers={photoLayers}
               selectedId={selectedId}
               onSelectSlot={setActiveSlot}
               onSlotChange={(slotId, patch) => updatePhotoAssignment(slotId, patch)}
@@ -541,6 +572,10 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
               onTextChange={(id, patch) => updateTextLayer(id, patch)}
               onTextTap={() => setShowProps(true)}
               onTextDragStateChange={(dragging) => { if (dragging) setShowProps(false); }}
+              onSelectPhotoLayer={selectItem}
+              onPhotoLayerChange={(id, patch) => updatePhotoLayer(id, patch)}
+              onPhotoLayerTap={() => setShowProps(true)}
+              onPhotoLayerDragStateChange={(dragging) => { if (dragging) setShowProps(false); }}
             />
           </ViewShot>
 
@@ -659,12 +694,29 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
             </View>
           )}
 
+          {/* 選択中の追加写真（ステッカー）のプロパティ。フォント・色のようなプロパティは
+              無いため、削除・完了の2ボタンだけの簡易パネルにする（textPanelRefは
+              テキストパネルと共有: 同時に両方表示されることはないため問題ない） */}
+          {showPhotoProps && selectedPhotoLayer && (
+            <View ref={textPanelRef} testID="story-editor-photo-panel" style={[styles.textPanel, styles.overlayPanel, { minHeight: 60, bottom: panelKeyboardOffset }]}>
+              <View style={styles.textPanelTopRow}>
+                <View style={{ flex: 1 }} />
+                <TouchableOpacity testID="story-editor-photo-panel-delete-btn" onPress={() => { removePhotoLayer(selectedPhotoLayer.id); }} hitSlop={8}>
+                  <Ionicons name="trash-outline" size={20} color={COLORS.error} />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => { selectItem(null); setShowProps(false); }} hitSlop={8}>
+                  <Text style={styles.doneText}>完了</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
           {/* 背景プリセット・ステッカーのインライン選択パネル（別モーダルにせず、キャンバスの上に重ねて表示）。
-              !selectedTextLayerではなく!showTextPropsで判定する: 移動して指を離した直後は
-              選択状態自体は続くがプロパティは非表示になる（state定義側のコメント参照）ため、
-              !selectedTextLayerのままだと移動直後にこれらのパネルもツールバーもずっと
-              出せなくなってしまう */}
-          {!showTextProps && panel === 'background' && (
+              !selectedTextLayerではなく!showTextProps/!showPhotoPropsで判定する: 移動して
+              指を離した直後は選択状態自体は続くがプロパティは非表示になる（state定義側の
+              コメント参照）ため、!selectedTextLayerのままだと移動直後にこれらのパネルも
+              ツールバーもずっと出せなくなってしまう */}
+          {!showTextProps && !showPhotoProps && panel === 'background' && (
             <View ref={stripPanelRef} style={[styles.stripPanel, styles.overlayPanel]}>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.stripContent}>
                 {BACKGROUND_PRESETS.map((preset) => (
@@ -678,7 +730,7 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
               </ScrollView>
             </View>
           )}
-          {!showTextProps && panel === 'sticker' && (
+          {!showTextProps && !showPhotoProps && panel === 'sticker' && (
             <View ref={stripPanelRef} style={[styles.stripPanel, styles.overlayPanel]}>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.stripContent}>
                 {STICKER_CATEGORIES.flatMap((cat) => cat.emojis).map((emoji, i) => (
@@ -693,9 +745,10 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
 
         {/* アイコンツールバー（常時同じ高さを確保。プロパティパネル表示中はキャンバスサイズを
             変えないため空のまま。移動して指を離した直後（選択は続くがプロパティは非表示）は
-            ここにアイコンを出す必要があるため、!selectedTextLayerではなく!showTextPropsで判定する） */}
+            ここにアイコンを出す必要があるため、!selectedTextLayerではなく
+            !showTextProps/!showPhotoPropsで判定する） */}
         <View style={styles.toolbar}>
-          {!showTextProps && (
+          {!showTextProps && !showPhotoProps && (
             <>
               <TouchableOpacity style={styles.toolBtn} onPress={pickPhoto} disabled={picking}>
                 {picking ? <ActivityIndicator size="small" color={COLORS.text} /> : <Ionicons name="image-outline" size={22} color={COLORS.text} />}

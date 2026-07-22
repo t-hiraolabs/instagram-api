@@ -71,6 +71,21 @@ export interface TextLayer {
   isCta?: boolean;
 }
 
+/** 自由に配置できる「追加写真」（ステッカーのように移動・拡大縮小・回転できる、
+ *  スロットに縛られない写真）。テンプレート側にはあらかじめ用意されておらず、
+ *  「ストーリー作成」画面でユーザーが追加した分だけ増える。座標はボックス左上基準
+ *  （テキストレイヤーと同じ扱い。キャンバス1080×1920px基準） */
+export interface PhotoLayer {
+  id: string;
+  uri: string;
+  x: number; y: number;
+  /** scale===1の時の表示サイズ（元画像のアスペクト比を維持したベースサイズ） */
+  w: number; h: number;
+  scale: number;
+  rotation: number;
+  zIndex?: number;
+}
+
 export interface CreativeTemplate {
   id: string;
   /** 今回のスコープでは常に'story'。将来feed等を足せるようUnionのまま残す */
