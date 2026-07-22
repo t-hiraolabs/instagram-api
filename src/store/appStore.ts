@@ -125,10 +125,6 @@ interface AppState {
   setBrandSettings3: (settings: Partial<BrandSettings>) => void;
   resetBrandSettings3: () => void;
 
-  /** 連携完了後のブランド設定確認モーダル */
-  brandConfirmModal: { slot: 1 | 2 | 3; draft: BrandSettings } | null;
-  setBrandConfirmModal: (val: { slot: 1 | 2 | 3; draft: BrandSettings } | null) => void;
-
   scheduledPosts: ScheduledPost[];
   addScheduledPost: (post: ScheduledPost) => void;
   removeScheduledPost: (id: string) => void;
@@ -254,9 +250,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   setBrandSettings3: (settings) =>
     set((state) => ({ brandSettings3: { ...state.brandSettings3, ...settings } })),
   resetBrandSettings3: () => set({ brandSettings3: { ...DEFAULT_BRAND_SETTINGS } }),
-
-  brandConfirmModal: null,
-  setBrandConfirmModal: (val) => set({ brandConfirmModal: val }),
 
   scheduledPosts: [],
   addScheduledPost: (post) =>
