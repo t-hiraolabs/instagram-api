@@ -8,12 +8,23 @@ import {
   TouchableOpacity,
   Image,
   RefreshControl,
+  useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import Svg, { Polyline, Circle, Line } from 'react-native-svg';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
 import { useAppStore } from '../store/appStore';
-import { getInsightsSummary, InsightsResult, InsightsMedia } from '../services/insightsService';
+import { supabase } from '../services/supabaseClient';
+import {
+  getInsightsSummary,
+  computeInsightFacts,
+  recordFollowerSnapshot,
+  getFollowerHistory,
+  InsightsResult,
+  InsightsMedia,
+  FollowerSnapshotPoint,
+} from '../services/insightsService';
 
 function fmt(n: number | null | undefined): string {
   if (n == null) return '—';
@@ -33,6 +44,58 @@ function shortDate(iso?: string): string {
   return `${d.getMonth() + 1}/${d.getDate()}`;
 }
 
+const CHART_H = 100;
+const CHART_PAD = 10;
+// growthCardのmarginHorizontal(md)*2 + padding(lg)*2 の分を画面幅から差し引いた実際の描画幅
+const CHART_HORIZONTAL_INSET = (SPACING.md + SPACING.lg) * 2;
+
+/** フォロワー推移の折れ線グラフ。記録が2日分未満だとまだ推移が描けないので案内文だけ出す */
+function FollowerGrowthChart({ points }: { points: FollowerSnapshotPoint[] }) {
+  const { width: windowWidth } = useWindowDimensions();
+  const chartW = Math.max(160, windowWidth - CHART_HORIZONTAL_INSET);
+
+  if (points.length < 2) {
+    return (
+      <Text style={styles.growthEmptyText}>
+        フォロワー数を毎日記録していきます。数日後に推移グラフが表示されます。
+      </Text>
+    );
+  }
+  const values = points.map((p) => p.followers);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = Math.max(1, max - min);
+  const stepX = (chartW - CHART_PAD * 2) / (points.length - 1);
+  const coords = points.map((p, i) => {
+    const x = CHART_PAD + i * stepX;
+    const y = CHART_PAD + (1 - (p.followers - min) / range) * (CHART_H - CHART_PAD * 2);
+    return { x, y };
+  });
+  const polylinePoints = coords.map((c) => `${c.x},${c.y}`).join(' ');
+  const first = points[0].followers;
+  const last = points[points.length - 1].followers;
+  const diff = last - first;
+
+  return (
+    <View>
+      <View style={styles.growthHeaderRow}>
+        <Text style={styles.growthValue}>{fmt(last)}人</Text>
+        <Text style={[styles.growthDiff, diff < 0 && styles.growthDiffNegative]}>
+          {diff > 0 ? '+' : ''}
+          {diff.toLocaleString()}人（{shortDate(points[0].date + 'T00:00:00')}〜{shortDate(points[points.length - 1].date + 'T00:00:00')}）
+        </Text>
+      </View>
+      <Svg width={chartW} height={CHART_H}>
+        <Line x1={CHART_PAD} y1={CHART_H - CHART_PAD} x2={chartW - CHART_PAD} y2={CHART_H - CHART_PAD} stroke={COLORS.border} strokeWidth={1} />
+        <Polyline points={polylinePoints} fill="none" stroke={COLORS.primary} strokeWidth={2.5} />
+        {coords.map((c, i) => (
+          <Circle key={i} cx={c.x} cy={c.y} r={i === coords.length - 1 ? 4 : 2.5} fill={COLORS.primary} />
+        ))}
+      </Svg>
+    </View>
+  );
+}
+
 export default function AnalyticsScreen() {
   const insets = useSafeAreaInsets();
   const creds1 = useAppStore((s) => s.instagramCredentials);
@@ -45,6 +108,16 @@ export default function AnalyticsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<InsightsResult | null>(null);
+  const [followerHistory, setFollowerHistory] = useState<FollowerSnapshotPoint[]>([]);
+  const [authUserId, setAuthUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: d }) => setAuthUserId(d.session?.user?.id ?? null));
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
+      setAuthUserId(session?.user?.id ?? null);
+    });
+    return () => sub.subscription.unsubscribe();
+  }, []);
 
   const load = useCallback(async () => {
     if (!instagramCredentials?.accessToken) {
@@ -53,12 +126,22 @@ export default function AnalyticsScreen() {
     }
     setError(null);
     try {
-      const res = await getInsightsSummary(instagramCredentials.accessToken, 12);
+      const res = await getInsightsSummary(instagramCredentials.accessToken, 24);
       setData(res);
+      const igUserId = instagramCredentials.userId;
+      if (igUserId && authUserId) {
+        // フォロワー推移の記録・取得はグラフ用のおまけ機能なので、失敗しても分析本体を壊さない
+        try {
+          await recordFollowerSnapshot(igUserId, authUserId, res.profile.followers_count, res.profile.media_count);
+          setFollowerHistory(await getFollowerHistory(igUserId, 30));
+        } catch {
+          // ignore
+        }
+      }
     } catch (e) {
       setError((e as { message?: string })?.message || '分析データの取得に失敗しました');
     }
-  }, [instagramCredentials?.accessToken]);
+  }, [instagramCredentials?.accessToken, instagramCredentials?.userId, authUserId]);
 
   useEffect(() => {
     setLoading(true);
@@ -89,38 +172,21 @@ export default function AnalyticsScreen() {
     ? [...data.media].sort((a, b) => (b.like_count ?? 0) - (a.like_count ?? 0))
     : [];
 
-  // 投稿タイプ別の平均反応（過去投稿の傾向分析）
-  const typeStats = (() => {
-    if (!data) return [];
-    const buckets: Record<string, { total: number; count: number }> = {};
-    for (const m of data.media) {
-      const label = mediaTypeLabel(m.media_type);
-      if (!buckets[label]) buckets[label] = { total: 0, count: 0 };
-      buckets[label].total += (m.like_count ?? 0) + (m.comments_count ?? 0);
-      buckets[label].count += 1;
-    }
-    return Object.entries(buckets)
-      .map(([label, v]) => ({ label, avg: Math.round((v.total / v.count) * 10) / 10, count: v.count }))
-      .sort((a, b) => b.avg - a.avg);
-  })();
-
-  // 曜日別の平均反応
-  const dowStats = (() => {
-    if (!data) return [];
-    const dowLabel = ['日', '月', '火', '水', '木', '金', '土'];
-    const buckets: Record<number, { total: number; count: number }> = {};
-    for (const m of data.media) {
-      if (!m.timestamp) continue;
-      const d = new Date(m.timestamp).getDay();
-      if (!buckets[d]) buckets[d] = { total: 0, count: 0 };
-      buckets[d].total += (m.like_count ?? 0) + (m.comments_count ?? 0);
-      buckets[d].count += 1;
-    }
-    return Object.entries(buckets)
-      .map(([d, v]) => ({ label: `${dowLabel[Number(d)]}曜`, avg: Math.round((v.total / v.count) * 10) / 10, count: v.count }))
-      .sort((a, b) => b.avg - a.avg);
-  })();
-  const maxAvg = Math.max(1, ...typeStats.map((t) => t.avg), ...dowStats.map((d) => d.avg));
+  // 投稿タイプ別・曜日別・時間帯別・ハッシュタグ別の反応、トレンド、最弱投稿（すべてinsightsServiceの共通ロジックで算出）
+  const facts = data ? computeInsightFacts(data) : null;
+  const typeStats = facts?.details.typeBreakdown ?? [];
+  const dowStats = facts?.details.dowBreakdown ?? [];
+  const timeOfDayStats = facts?.details.timeOfDayBreakdown ?? [];
+  const hashtagStats = facts?.details.hashtagBreakdown ?? [];
+  const bottomPost = facts?.details.bottomPost ?? null;
+  const trendPct = facts?.details.trendPct ?? null;
+  const maxAvg = Math.max(
+    1,
+    ...typeStats.map((t) => t.avg),
+    ...dowStats.map((d) => d.avg),
+    ...timeOfDayStats.map((t) => t.avg)
+  );
+  const maxHashtagAvg = Math.max(1, ...hashtagStats.map((h) => h.avg));
 
   return (
     <ScrollView
@@ -187,6 +253,12 @@ export default function AnalyticsScreen() {
             </View>
           </View>
 
+          {/* フォロワー推移 */}
+          <Text style={styles.sectionTitle}>フォロワー推移</Text>
+          <View style={styles.growthCard}>
+            <FollowerGrowthChart points={followerHistory} />
+          </View>
+
           {data.summary.engagement_rate != null && (
             <View style={styles.engagementCard}>
               <Text style={styles.engagementValue}>{data.summary.engagement_rate}%</Text>
@@ -198,11 +270,23 @@ export default function AnalyticsScreen() {
                   ? '平均的な反応です'
                   : '投稿時間やハッシュタグを見直してみましょう'}
               </Text>
+              {trendPct != null && (
+                <View style={styles.trendBadge}>
+                  <Ionicons
+                    name={trendPct >= 0 ? 'trending-up' : 'trending-down'}
+                    size={14}
+                    color={trendPct >= 0 ? COLORS.success : COLORS.error}
+                  />
+                  <Text style={[styles.trendBadgeText, { color: trendPct >= 0 ? COLORS.success : COLORS.error }]}>
+                    直近投稿は{trendPct > 0 ? '+' : ''}{trendPct}%（それ以前の投稿と比較）
+                  </Text>
+                </View>
+              )}
             </View>
           )}
 
-          {/* 過去投稿の傾向分析: 投稿タイプ別・曜日別 */}
-          {(typeStats.length > 1 || dowStats.length > 1) && (
+          {/* 過去投稿の傾向分析: 投稿タイプ別・曜日別・時間帯別 */}
+          {(typeStats.length > 1 || dowStats.length > 1 || timeOfDayStats.length > 1) && (
             <>
               <Text style={styles.sectionTitle}>過去投稿の傾向</Text>
               <View style={styles.breakdownCard}>
@@ -234,10 +318,56 @@ export default function AnalyticsScreen() {
                     ))}
                   </>
                 )}
+                {timeOfDayStats.length > 1 && (
+                  <>
+                    <Text style={[styles.breakdownLabel, { marginTop: SPACING.md }]}>投稿時間帯別の平均反応</Text>
+                    {timeOfDayStats.map((t) => (
+                      <View key={t.label} style={styles.breakdownRow}>
+                        <Text style={styles.breakdownRowLabel} numberOfLines={1}>{t.label}（{t.count}件）</Text>
+                        <View style={styles.breakdownBarTrack}>
+                          <View style={[styles.breakdownBarFill, { width: `${Math.max(4, (t.avg / maxAvg) * 100)}%` }]} />
+                        </View>
+                        <Text style={styles.breakdownRowValue}>{t.avg}</Text>
+                      </View>
+                    ))}
+                  </>
+                )}
               </View>
               <Text style={styles.footnote}>
                 チャットで「競合分析して」と聞くと、あなたの実績を基準に競合アカウントとの比較アドバイスももらえます。
               </Text>
+            </>
+          )}
+
+          {/* ハッシュタグ別の反応 */}
+          {hashtagStats.length > 0 && (
+            <>
+              <Text style={styles.sectionTitle}>反応が良いハッシュタグ</Text>
+              <View style={styles.breakdownCard}>
+                {hashtagStats.map((h) => (
+                  <View key={h.tag} style={styles.breakdownRow}>
+                    <Text style={styles.breakdownRowLabel} numberOfLines={1}>{h.tag}（{h.count}件）</Text>
+                    <View style={styles.breakdownBarTrack}>
+                      <View style={[styles.breakdownBarFill, { width: `${Math.max(4, (h.avg / maxHashtagAvg) * 100)}%` }]} />
+                    </View>
+                    <Text style={styles.breakdownRowValue}>{h.avg}</Text>
+                  </View>
+                ))}
+              </View>
+            </>
+          )}
+
+          {/* 反応が伸び悩んだ投稿 */}
+          {bottomPost && (
+            <>
+              <Text style={styles.sectionTitle}>改善のヒント</Text>
+              <View style={styles.hintCard}>
+                <Text style={styles.hintLabel}>反応が伸び悩んだ投稿</Text>
+                <Text style={styles.hintCaption} numberOfLines={2}>
+                  「{bottomPost.caption || '（キャプションなし）'}」
+                </Text>
+                <Text style={styles.hintStats}>いいね {fmt(bottomPost.likes)} ・ コメント {fmt(bottomPost.comments)}</Text>
+              </View>
             </>
           )}
 
@@ -330,6 +460,35 @@ const styles = StyleSheet.create({
   engagementValue: { fontSize: 34, fontWeight: '900', color: COLORS.primaryLight },
   engagementLabel: { fontSize: 13, color: COLORS.textSecondary, marginTop: 4, textAlign: 'center' },
   engagementHint: { fontSize: 13, color: COLORS.text, marginTop: SPACING.sm, fontWeight: '700' },
+  trendBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: SPACING.sm },
+  trendBadgeText: { fontSize: 12, fontWeight: '700' },
+
+  growthCard: {
+    marginHorizontal: SPACING.md,
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.md,
+    padding: SPACING.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+  },
+  growthEmptyText: { fontSize: 13, color: COLORS.textSecondary, textAlign: 'center', lineHeight: 20 },
+  growthHeaderRow: { flexDirection: 'row', alignItems: 'baseline', gap: SPACING.sm, marginBottom: SPACING.sm, alignSelf: 'flex-start' },
+  growthValue: { fontSize: 22, fontWeight: '900', color: COLORS.text },
+  growthDiff: { fontSize: 12, fontWeight: '700', color: COLORS.success },
+  growthDiffNegative: { color: COLORS.error },
+
+  hintCard: {
+    marginHorizontal: SPACING.md,
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.md,
+    padding: SPACING.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  hintLabel: { fontSize: 12, color: COLORS.textSecondary, fontWeight: '700', marginBottom: SPACING.xs },
+  hintCaption: { fontSize: 13, color: COLORS.text, fontWeight: '600', marginBottom: SPACING.xs },
+  hintStats: { fontSize: 12, color: COLORS.textSecondary, fontWeight: '700' },
 
   sectionTitle: {
     fontSize: 17,
