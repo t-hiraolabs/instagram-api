@@ -26,6 +26,7 @@ import { getInsightsSummary } from '../services/insightsService';
 import axios from 'axios';
 import { loadBrandSettingsFromDb, saveBrandSettingsToDb, brandLocalKey } from '../services/brandSettingsService';
 import { deleteAccountData } from '../services/dataDeletionService';
+import { showAlert } from '../utils/alert';
 import { supabase } from '../services/supabaseClient';
 import { getMyPlan } from '../services/scheduleService';
 import { ensureLoggedIn } from '../utils/requireLogin';
@@ -446,7 +447,7 @@ export default function ProfileScreen() {
   // 連携済みアカウントの投稿を分析してブランド設定を自動生成する
   const handleAutoBrand = async () => {
     if (!activeCredentials?.accessToken) {
-      Alert.alert('Instagram未連携', '先にこのアカウントでInstagramを連携してください');
+      showAlert('Instagram未連携', '先にこのアカウントでInstagramを連携してください');
       return;
     }
     setSaving(true);
@@ -464,7 +465,7 @@ export default function ProfileScreen() {
         if (desc && desc.trim()) captions = [desc.trim()];
       }
       if (captions.length === 0) {
-        Alert.alert(
+        showAlert(
           '分析できる情報がありません',
           '投稿・プロフィール情報が見つかりませんでした。ブランド設定は手動で入力してください。'
         );
@@ -479,9 +480,9 @@ export default function ProfileScreen() {
         targetAudience: s.targetAudience || p.targetAudience,
         tone: s.tone || p.tone,
       }));
-      Alert.alert('自動生成しました', '内容を確認して「保存」を押してください');
+      showAlert('自動生成しました', '内容を確認して「保存」を押してください');
     } catch {
-      Alert.alert('エラー', 'ブランドの自動生成に失敗しました');
+      showAlert('エラー', 'ブランドの自動生成に失敗しました');
     } finally {
       setSaving(false);
     }
@@ -490,7 +491,7 @@ export default function ProfileScreen() {
   const handleSaveBrand = async () => {
     const igUserId = activeCredentials?.userId ?? '';
     if (!igUserId) {
-      Alert.alert('Instagram未連携', 'ブランド設定を保存するには、先にこのアカウントでInstagramを連携してください');
+      showAlert('Instagram未連携', 'ブランド設定を保存するには、先にこのアカウントでInstagramを連携してください');
       return;
     }
     setSaving(true);
@@ -500,9 +501,9 @@ export default function ProfileScreen() {
       await save(brandLocalKey(igUserId), JSON.stringify(draftBrand));
       await saveBrandSettingsToDb(draftBrand, igUserId).catch(() => {});
       setBrandModalVisible(false);
-      Alert.alert('保存しました', 'ブランド設定を更新しました');
+      showAlert('保存しました', 'ブランド設定を更新しました');
     } catch {
-      Alert.alert('エラー', '保存に失敗しました');
+      showAlert('エラー', '保存に失敗しました');
     } finally {
       setSaving(false);
     }
@@ -572,7 +573,7 @@ export default function ProfileScreen() {
       if (value) {
         const ok = await registerPush();
         if (!ok) {
-          Alert.alert('通知を許可してください', 'ブラウザの設定から通知を許可してください。');
+          showAlert('通知を許可してください', 'ブラウザの設定から通知を許可してください。');
         }
         setPushEnabled(ok);
       } else {
@@ -847,7 +848,7 @@ export default function ProfileScreen() {
           {
             label: 'AIの使い方ガイド',
             icon: 'book-outline' as const,
-            action: () => Alert.alert(
+            action: () => showAlert(
               'AIの使い方ガイド',
               '「投稿を作成」タブで写真を選ぶかテーマを入力すると、AIがキャプションを生成します。プロフィール画面の「ブランド設定」で業種・雰囲気・ターゲット層・トーンを設定しておくと、そのお店らしい文章になります。「AIで投稿を分析して自動入力」ボタンを押せば、過去の投稿からブランド設定をAIに提案してもらうこともできます。\n\nホーム画面の「ネタ」カードをタップすると、AIチャットの入力欄に相談内容が入ります（内容を確認してから送信されます）。\n\nストーリー作成では、テンプレートを選んで写真を配置し、文字を編集するだけで画像が作れます。写真は何枚でも追加でき、自由に動かして配置できます。\n\nホーム画面の「マーケティングガイド」では、AIがフォロワー数やエンゲージメント率からアカウントの段階を判定し、次にやるべきことをアドバイスします（Pro以上は毎週自動更新、フリーは初回のみ）。'
             ),
@@ -855,7 +856,7 @@ export default function ProfileScreen() {
           {
             label: 'ハッシュタグについて',
             icon: 'pricetag-outline' as const,
-            action: () => Alert.alert(
+            action: () => showAlert(
               'ハッシュタグについて',
               '日本のInstagramはハッシュタグ検索の利用率がグローバル平均の3倍と言われています。1投稿につき15〜20個を目安に、以下を組み合わせるのが効果的です。\n\n・ビッグタグ（投稿数10万件以上）：露出は増えるが埋もれやすい\n・ミドルタグ（1万〜10万件）：見つけてもらいやすいバランス型\n・ニッチタグ（1万件未満）：競合が少なく上位表示されやすい\n・地域タグ（例: #渋谷カフェ）：地域のお客様に届きやすい\n\n毎回同じタグを使い回すより、いくつかのパターンを用意して使い分けるのがおすすめです。'
             ),
@@ -863,7 +864,7 @@ export default function ProfileScreen() {
           {
             label: '最適な投稿時間',
             icon: 'time-outline' as const,
-            action: () => Alert.alert(
+            action: () => showAlert(
               '最適な投稿時間',
               '平日: 12〜13時 / 18〜21時\n休日: 11〜13時 / 19〜21時\n\nこの時間帯は日本のInstagramユーザーのアクティブ率が最も高くなります。\n\n業種によっても傾向は変わります。飲食店なら食事の時間帯前後、美容系なら夜間や休日の閲覧が多くなりがちです。まずはこの目安から始めて、「分析」タブで実際に反応が良い時間帯を確認しながら調整していきましょう。'
             ),
@@ -871,7 +872,7 @@ export default function ProfileScreen() {
           {
             label: 'お問い合わせ',
             icon: 'chatbubble-outline' as const,
-            action: () => Alert.alert(
+            action: () => showAlert(
               'お問い合わせ',
               'ご質問・不具合のご報告は下記メールアドレスまでご連絡ください。\n\nhiraolabs@gmail.com\n\n発生した画面や操作の手順を添えていただけると、スムーズに対応できます。'
             ),
