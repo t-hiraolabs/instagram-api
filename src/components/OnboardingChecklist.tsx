@@ -45,13 +45,27 @@ export default function OnboardingChecklist({ onOpenAdviceChat, onStatusChange }
   }, []);
 
   useEffect(() => {
+    // ログイン状態の確認（上のuseEffectのgetSession()）が終わるまでは取得しない。
+    // Supabaseのセッション復元は非同期で、このuseEffectの発火タイミングとは
+    // 独立している。セッション復元が終わる前にgetScheduledPosts/getChatUsagePercentを
+    // 呼ぶと、まだ未ログイン扱いのままクエリが実行され（RLSで0件、またはgetChatUsageが
+    // 未ログイン用の既定値0%を返す）、実際には投稿済み・チャット利用済みでも
+    // 「未達成」の値がそのまま確定してしまい、以降ログイン状態が変わらない限り
+    // 再取得されずチェックリストが残り続けてしまっていた（起動タイミングによって
+    // セッション復元の速さが変わるため、再現が「たまに」になる）
+    if (loggedIn === null) return;
+    if (!loggedIn) {
+      setPostCount(0);
+      setChatUsedPct(0);
+      return;
+    }
     getScheduledPosts(instagramCredentials?.userId)
       .then((posts) => setPostCount(posts.length))
       .catch(() => setPostCount(0));
     getChatUsagePercent()
       .then((c) => setChatUsedPct(c.usedPct))
       .catch(() => setChatUsedPct(0));
-  }, [instagramCredentials]);
+  }, [instagramCredentials, loggedIn]);
 
   const openAccountCreation = () => {
     setAuthInitialMode('signup');
