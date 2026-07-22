@@ -1640,7 +1640,6 @@ export default function ScheduleScreen() {
                 </TouchableOpacity>
               </>
             )}
-            <Text style={styles.aiUsageHint}>✨ AI生成を1回消費します</Text>
 
             {/* キャプション（広めの入力欄） */}
             <Text style={styles.fieldLabel}>キャプション</Text>
@@ -3045,7 +3044,6 @@ const styles = StyleSheet.create({
   },
   aiBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
   aiBtnRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  aiUsageHint: { color: COLORS.textMuted, fontSize: 11, marginTop: 6, textAlign: 'center' },
   promptInput: { height: 140, textAlignVertical: 'top', paddingTop: SPACING.sm },
   aiHintText: { color: COLORS.textMuted, fontSize: 11, marginTop: 4, marginBottom: SPACING.sm },
   aiCard: {
