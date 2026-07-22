@@ -526,6 +526,7 @@ export default function ProfileScreen() {
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushLoading, setPushLoading] = useState(false);
   const [settingsVisible, setSettingsVisible] = useState(false);
+  const [accountSettingsVisible, setAccountSettingsVisible] = useState(false);
   const [notifVisible, setNotifVisible] = useState(false);
   const [loggedIn, setLoggedIn] = useState(false);
   const [accountEmail, setAccountEmail] = useState<string | null>(null);
@@ -872,6 +873,45 @@ export default function ProfileScreen() {
             <Text style={styles.helpLabel}>通知</Text>
             <Text style={styles.helpArrow}>›</Text>
           </TouchableOpacity>
+          <TouchableOpacity style={styles.helpRow} onPress={() => setAccountSettingsVisible(true)} activeOpacity={0.7}>
+            <Ionicons name="person-circle-outline" size={18} color={COLORS.textSecondary} style={styles.helpEmoji} />
+            <Text style={styles.helpLabel}>アカウント設定</Text>
+            <Text style={styles.helpArrow}>›</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </SlideScreen>
+
+      {/* アカウント設定画面（右スライド）: 連携解除・データ削除を分かりやすい場所にまとめる */}
+      <SlideScreen visible={accountSettingsVisible} onBack={() => setAccountSettingsVisible(false)} title="アカウント設定">
+        <ScrollView contentContainerStyle={{ padding: SPACING.md }}>
+          {([
+            { slot: 1 as const, creds: instagramCredentials, onDisconnect: handleDisconnect },
+            { slot: 2 as const, creds: secondInstagramCredentials, onDisconnect: handleDisconnect2 },
+            { slot: 3 as const, creds: thirdInstagramCredentials, onDisconnect: handleDisconnect3 },
+          ])
+            .filter(({ creds }) => !!creds)
+            .map(({ slot, creds, onDisconnect }) => (
+              <View key={slot} style={styles.accountSettingsCard}>
+                <Text style={styles.accountSettingsUsername}>
+                  {creds?.username ? `@${creds.username}` : `アカウント${slot}`}
+                </Text>
+                <TouchableOpacity style={styles.accountSettingsRow} onPress={onDisconnect} activeOpacity={0.7}>
+                  <Text style={styles.accountSettingsRowText}>連携を解除する</Text>
+                  <Text style={styles.helpArrow}>›</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.accountSettingsRow}
+                  onPress={() => handleDeleteAccountData(slot, creds?.userId, creds?.username)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.accountSettingsRowText, { color: COLORS.error }]}>データを削除する</Text>
+                  <Text style={[styles.helpArrow, { color: COLORS.error }]}>›</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+          {!instagramCredentials && !secondInstagramCredentials && !thirdInstagramCredentials && (
+            <Text style={styles.accountSettingsEmpty}>連携中のInstagramアカウントがありません</Text>
+          )}
         </ScrollView>
       </SlideScreen>
 
@@ -1118,15 +1158,6 @@ export default function ProfileScreen() {
                   >
                     <Text style={[styles.menuItemText, { color: COLORS.error }]}>連携を解除する</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.menuItem}
-                    onPress={() => {
-                      setAccountMenu(null);
-                      handleDeleteAccountData(slot, creds?.userId, creds?.username);
-                    }}
-                  >
-                    <Text style={[styles.menuItemText, { color: COLORS.error }]}>データを削除する</Text>
-                  </TouchableOpacity>
                   <TouchableOpacity style={styles.menuCancel} onPress={() => setAccountMenu(null)}>
                     <Text style={styles.menuCancelText}>キャンセル</Text>
                   </TouchableOpacity>
@@ -1324,6 +1355,31 @@ const styles = StyleSheet.create({
   helpEmoji: { fontSize: 20 },
   helpLabel: { flex: 1, color: COLORS.text, fontSize: 14 },
   helpArrow: { color: COLORS.textMuted, fontSize: 20 },
+  accountSettingsCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.md,
+    marginBottom: SPACING.md,
+    overflow: 'hidden',
+  },
+  accountSettingsUsername: {
+    color: COLORS.text,
+    fontSize: 14,
+    fontWeight: '700',
+    paddingHorizontal: SPACING.md,
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.sm,
+  },
+  accountSettingsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm + 2,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
+  accountSettingsRowText: { color: COLORS.text, fontSize: 14 },
+  accountSettingsEmpty: { color: COLORS.textMuted, fontSize: 13, textAlign: 'center', marginTop: SPACING.lg },
   notifRow: {
     flexDirection: 'row',
     alignItems: 'center',
