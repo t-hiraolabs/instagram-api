@@ -140,6 +140,9 @@ interface Props {
   selectedId?: string | null;
   onSelectSlot?: (slotId: string) => void;
   onSlotChange?: (slotId: string, patch: { offsetX: number; offsetY: number; scale: number; rotation: number }) => void;
+  /** テキストのonTextDragStateChangeと同じ意味（写真スロットの中身を実際に動かし始めた・
+   *  動かし終えた瞬間に呼ぶ） */
+  onSlotDragStateChange?: (dragging: boolean) => void;
   onPickPhoto?: (slotId: string) => void;
   onSelectText?: (id: string) => void;
   onTextChange?: (id: string, patch: { x: number; y: number; scale: number; rotation: number }) => void;
@@ -161,7 +164,7 @@ interface Props {
 export default function CreativeCanvas({
   canvasRef, photoSlots, layers, textLayers, photoAssignments, photoLayers = [],
   displayWidth, locked,
-  selectedId, onSelectSlot, onSlotChange, onPickPhoto, onSelectText, onTextChange,
+  selectedId, onSelectSlot, onSlotChange, onSlotDragStateChange, onPickPhoto, onSelectText, onTextChange,
   onTextDragStateChange, onTextTap, onSelectPhotoLayer, onPhotoLayerChange,
   onPhotoLayerDragStateChange, onPhotoLayerTap,
 }: Props) {
@@ -327,6 +330,7 @@ export default function CreativeCanvas({
             canvasGestures={canvasGestures}
             onSelect={() => onSelectSlot?.(slot.id)}
             onChange={(patch) => onSlotChange?.(slot.id, patch)}
+            onDragStateChange={onSlotDragStateChange}
             onPickPhoto={() => onPickPhoto?.(slot.id)}
           />
         ))}
