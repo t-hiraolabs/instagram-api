@@ -86,6 +86,13 @@ interface Props {
    *  表示する。テキストなど実寸が動的な要素は呼び出し側でonLayout等から測って渡す */
   width?: number;
   height?: number;
+  /** x/yが「キャンバス絶対座標」ではなく、写真スロットの矩形内などローカル座標で
+   *  渡される場合の、そのローカル原点のキャンバス絶対位置（論理px）。中央整列ガイドの
+   *  判定はキャンバス全体の中心（CANVAS_W/2, CANVAS_H/2）を基準にするため、ローカル座標の
+   *  ままだとスロットがキャンバス左上以外にある時にガイドの表示・判定位置がずれてしまう
+   *  （実際に発生していた不具合）。未指定なら0＝x/yは既にキャンバス絶対座標として扱う */
+  canvasOffsetX?: number;
+  canvasOffsetY?: number;
   /** キャンバス中央への整列時に表示する、キャンバス全体を貫くガイド線の表示状態
    *  （CreativeCanvas側で1つ生成し、全レイヤーで共有する） */
   guideV?: SharedValue<boolean>;
@@ -122,6 +129,7 @@ interface Props {
 export default function DraggableLayer({
   id, x, y, scale, rotation, displayScale, selected, locked, rotatable = true,
   minScale = 0.2, maxScale = 4, snapX, snapY, snapScale, width, height, guideV, guideH,
+  canvasOffsetX = 0, canvasOffsetY = 0,
   showSelectionBorder = true, activeOwner, activeRefs, canvasGestures, testID, onSelect, onChange,
   onDragStateChange, onTap, children,
 }: Props) {
@@ -233,14 +241,14 @@ export default function DraggableLayer({
       // 縦のガイド線、heightは垂直中央線＝横のガイド線に対応する）
       let vGuideHit = false, hGuideHit = false;
       if (width) {
-        const centerX = nx + width / 2;
+        const centerX = nx + canvasOffsetX + width / 2;
         const r = snapValueWithHit(centerX, [CANVAS_W / 2], zone);
-        if (r.hit !== null) { nx = r.value - width / 2; snapped = true; vGuideHit = true; }
+        if (r.hit !== null) { nx = r.value - width / 2 - canvasOffsetX; snapped = true; vGuideHit = true; }
       }
       if (height) {
-        const centerY = ny + height / 2;
+        const centerY = ny + canvasOffsetY + height / 2;
         const r = snapValueWithHit(centerY, [CANVAS_H / 2], zone);
-        if (r.hit !== null) { ny = r.value - height / 2; snapped = true; hGuideHit = true; }
+        if (r.hit !== null) { ny = r.value - height / 2 - canvasOffsetY; snapped = true; hGuideHit = true; }
       }
       translateX.value = nx;
       translateY.value = ny;
