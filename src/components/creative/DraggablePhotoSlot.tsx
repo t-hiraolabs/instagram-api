@@ -107,6 +107,14 @@ export default function DraggablePhotoSlot({
           source={{ uri: assignment.uri }}
           style={{ width: imgW * displayScale, height: imgH * displayScale }}
           resizeMode="cover"
+          // Web版のブラウザは<img>の既定のドラッグ&ドロップ操作を許可しており、これが
+          // DraggableLayerのpanジェスチャーと競合して、ブラウザ自身が独自にドラッグを
+          // 開始し、ページの再読み込み（キャッシュされた古いバンドルへの切り替わり）を
+          // 引き起こす不具合の原因になる。draggable={false}で無効化し、pointerEvents=
+          // "none"でこの要素自体への当たり判定も外し、タッチ操作は必ず親の
+          // DraggableLayer（GestureDetector）が受け取るようにする
+          draggable={false}
+          pointerEvents="none"
         />
       </DraggableLayer>
     </View>
