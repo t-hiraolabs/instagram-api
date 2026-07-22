@@ -546,6 +546,13 @@ export default function ProfileScreen() {
   const [pushLoading, setPushLoading] = useState(false);
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [accountSettingsVisible, setAccountSettingsVisible] = useState(false);
+  // プライバシーポリシーは、外部の別ページ（/privacy）へ画面遷移させると、戻ってきた
+  // 時にブラウザのbfcache（戻る操作を一瞬にするための、ページ全体のメモリスナップ
+  // ショット復元）が働き、直前の（デプロイ更新前の）古いアプリの状態がそのまま復元
+  // されてしまうことがあった。vercel.jsonにCache-Controlを設定してもbfcacheには
+  // 別の仕組みが働くため確実には防げない。そもそも画面遷移させなければこの問題自体
+  // が起こり得ないため、アプリ内の別画面として表示する
+  const [privacyVisible, setPrivacyVisible] = useState(false);
   const [notifVisible, setNotifVisible] = useState(false);
   const [loggedIn, setLoggedIn] = useState(false);
   const [accountEmail, setAccountEmail] = useState<string | null>(null);
@@ -877,7 +884,7 @@ export default function ProfileScreen() {
               'ご質問・不具合のご報告は下記メールアドレスまでご連絡ください。\n\nhiraolabs@gmail.com\n\n発生した画面や操作の手順を添えていただけると、スムーズに対応できます。'
             ),
           },
-          { label: 'プライバシーポリシー', icon: 'lock-closed-outline' as const, action: () => { if (Platform.OS === 'web') { window.open('/privacy', '_blank'); } else { Alert.alert('プライバシーポリシー', 'https://instagram-api-alpha.vercel.app/privacy'); } } },
+          { label: 'プライバシーポリシー', icon: 'lock-closed-outline' as const, action: () => setPrivacyVisible(true) },
         ].map((item) => (
           <TouchableOpacity key={item.label} style={styles.helpRow} onPress={item.action} activeOpacity={0.7}>
             <Ionicons name={item.icon} size={18} color={COLORS.textSecondary} style={styles.helpEmoji} />
@@ -979,6 +986,81 @@ export default function ProfileScreen() {
           {!instagramCredentials && !secondInstagramCredentials && !thirdInstagramCredentials && (
             <Text style={styles.accountSettingsEmpty}>連携中のInstagramアカウントがありません</Text>
           )}
+        </ScrollView>
+      </SlideScreen>
+
+      {/* プライバシーポリシー画面（右スライド）。外部ページへの画面遷移を挟まず
+          アプリ内で完結させることで、戻ってきた時にbfcacheが古いアプリの状態を
+          復元してしまう不具合を根本的に回避する */}
+      <SlideScreen visible={privacyVisible} onBack={() => setPrivacyVisible(false)} title="プライバシーポリシー">
+        <ScrollView contentContainerStyle={{ padding: SPACING.md }}>
+          <Text style={styles.privacyUpdated}>最終更新日：2026年7月22日</Text>
+          <Text style={styles.privacyParagraph}>
+            AImark（アイマーク）（以下「本サービス」）は、Instagramマーケティングの自動化を支援するアプリです。本プライバシーポリシーは、本サービスが収集する情報およびその利用方法について説明します。本サービスをご利用いただくことで、本ポリシーに同意したものとみなします。
+          </Text>
+
+          <Text style={styles.privacyHeading}>1. 収集する情報</Text>
+          <Text style={styles.privacyParagraph}>
+            ・Instagramアカウント情報：プロフィール情報（名前、ユーザー名、フォロワー数、プロフィール画像）{'\n'}
+            ・Instagramメディア情報：投稿コンテンツ、いいね数、コメント数、リーチ数、インプレッション数などのインサイトデータ{'\n'}
+            ・認証情報：Instagramが発行するアクセストークン（パスワードは収集しません）{'\n'}
+            ・ユーザーが入力した情報：投稿キャプション、ハッシュタグ、投稿スケジュール設定{'\n'}
+            ・利用ログ：サービス改善のためのアクセスログ（IPアドレス、ブラウザ種別）{'\n'}
+            ・プッシュ通知情報：プッシュ通知を有効にした場合のデバイストークン
+          </Text>
+
+          <Text style={styles.privacyHeading}>2. Instagramアクセス権限（スコープ）の利用目的</Text>
+          <Text style={styles.privacyParagraph}>
+            ・instagram_business_basic：プロフィール・フォロワー数の取得、アカウント管理画面の表示{'\n'}
+            ・instagram_business_content_publish：作成・予約した投稿コンテンツの自動投稿{'\n'}
+            ・instagram_business_manage_insights：投稿のインサイトデータ取得、分析レポート表示{'\n\n'}
+            これらの権限はユーザーが明示的に承認した場合にのみ付与され、上記目的以外には使用しません。
+          </Text>
+
+          <Text style={styles.privacyHeading}>3. 情報の利用方法</Text>
+          <Text style={styles.privacyParagraph}>
+            収集した情報は、投稿の自動化・スケジュール管理・分析レポート表示、AIによるキャプション生成補助、プッシュ通知の送信、サービスの品質向上、お問い合わせ対応にのみ使用します。広告目的での使用や第三者への販売は一切ありません。
+          </Text>
+
+          <Text style={styles.privacyHeading}>4. 情報の共有・第三者提供</Text>
+          <Text style={styles.privacyParagraph}>
+            以下の第三者サービスを利用しており、必要な範囲で情報を共有します：Meta（Instagram/Facebook・API連携）、Supabase（データベース・認証）、Anthropic（Claude AI・キャプション生成）、Vercel（ホスティング）。上記以外の第三者への情報提供は、法令に基づく開示が必要な場合を除き行いません。
+          </Text>
+
+          <Text style={styles.privacyHeading}>5. データの保存と保持期間</Text>
+          <Text style={styles.privacyParagraph}>
+            アカウント情報・設定データは退会まで、投稿・スケジュールデータはユーザーが削除するまで、インサイトデータは取得から最大12ヶ月保持します。アプリ内の「設定」＞「アカウント設定」から、いつでもご自身のInstagramアカウントに関連するデータを即時に完全削除できます。
+          </Text>
+
+          <Text style={styles.privacyHeading}>6. セキュリティ</Text>
+          <Text style={styles.privacyParagraph}>
+            通信の暗号化（HTTPS/TLS）、アクセストークンの暗号化保存、データベースへのアクセス制御（行レベルセキュリティ）、定期的なセキュリティ監査を実施しています。
+          </Text>
+
+          <Text style={styles.privacyHeading}>7. ユーザーの権利</Text>
+          <Text style={styles.privacyParagraph}>
+            自分のデータの確認・修正・削除を請求する権利、Instagramの設定からいつでもアクセス権限を取り消す権利、データのエクスポートを請求する権利があります。削除権はアプリ内の「設定」＞「アカウント設定」から即時にご自身で行使いただけます。その他の請求はお問い合わせ先までご連絡ください。
+          </Text>
+
+          <Text style={styles.privacyHeading}>8. Cookieについて</Text>
+          <Text style={styles.privacyParagraph}>
+            認証状態の維持およびサービス改善のためにCookieおよびローカルストレージを使用します。ブラウザの設定でCookieを無効にすることができますが、一部の機能が利用できなくなる場合があります。
+          </Text>
+
+          <Text style={styles.privacyHeading}>9. 未成年者のプライバシー</Text>
+          <Text style={styles.privacyParagraph}>
+            本サービスは13歳未満の方を対象としていません。13歳未満の方の個人情報を故意に収集することはありません。
+          </Text>
+
+          <Text style={styles.privacyHeading}>10. 本ポリシーの変更</Text>
+          <Text style={styles.privacyParagraph}>
+            法令の改正やサービス内容の変更に応じて更新することがあります。重要な変更がある場合は、サービス内の通知またはメールでお知らせします。
+          </Text>
+
+          <Text style={styles.privacyHeading}>11. お問い合わせ</Text>
+          <Text style={styles.privacyParagraph}>
+            本プライバシーポリシーに関するご質問・データ削除のご依頼は、hiraolabs@gmail.com までご連絡ください。
+          </Text>
         </ScrollView>
       </SlideScreen>
 
@@ -1447,6 +1529,9 @@ const styles = StyleSheet.create({
   },
   accountSettingsRowText: { color: COLORS.text, fontSize: 14 },
   accountSettingsEmpty: { color: COLORS.textMuted, fontSize: 13, textAlign: 'center', marginTop: SPACING.lg },
+  privacyUpdated: { color: COLORS.textMuted, fontSize: 12, marginBottom: SPACING.md },
+  privacyHeading: { color: COLORS.text, fontSize: 15, fontWeight: '700', marginTop: SPACING.lg, marginBottom: SPACING.sm },
+  privacyParagraph: { color: COLORS.textSecondary, fontSize: 13.5, lineHeight: 21 },
   notifRow: {
     flexDirection: 'row',
     alignItems: 'center',
