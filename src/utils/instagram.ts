@@ -6,8 +6,10 @@ const INSTAGRAM_APP_ID = process.env.EXPO_PUBLIC_INSTAGRAM_APP_ID ?? '';
 const REDIRECT_URI = 'https://instagram-api-alpha.vercel.app/';
 // 実際にアプリで使う権限だけを要求する（未使用の権限はMeta審査で却下されるため要求しない）。
 // basic: プロフィール/投稿の読み取り（いいね・コメント数を含む）/ content_publish: 投稿 / manage_insights: 分析・リーチ
+// manage_messages（DM機能用）は、DM画面自体はコード上存在するもののまだ実運用できる状態では
+// ないため、今回の審査では要求しない（今後DM機能を仕上げた段階で改めて審査申請する）
 const SCOPES =
-  'instagram_business_basic,instagram_business_content_publish,instagram_business_manage_insights,instagram_business_manage_messages';
+  'instagram_business_basic,instagram_business_content_publish,instagram_business_manage_insights';
 
 export const SK_USER_ID = 'instagram_user_id';
 export const SK_TOKEN = 'instagram_access_token';
