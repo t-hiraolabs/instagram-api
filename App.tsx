@@ -163,6 +163,7 @@ function BrandConfirmModal() {
             <Text style={ms.noteText}>
               💡 この設定はAIが投稿内容から推測したものです。正確でない場合は修正してください。
             </Text>
+            <Text style={ms.noteText}>✨ この自動生成でAI生成を1回消費しています</Text>
           </View>
         </ScrollView>
         <View style={ms.footer}>

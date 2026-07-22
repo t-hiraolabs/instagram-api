@@ -908,6 +908,7 @@ export default function ProfileScreen() {
             <Text style={styles.resetBrandHint}>
               ※ 連携中のInstagram投稿をAIが分析し、下の項目を自動入力します
             </Text>
+            <Text style={styles.resetBrandHint}>✨ AI生成を1回消費します</Text>
 
             <Text style={styles.fieldLabel}>ブランド名・店舗名</Text>
             <TextInput
