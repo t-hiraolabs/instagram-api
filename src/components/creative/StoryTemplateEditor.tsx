@@ -234,7 +234,9 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
           w, h, scale: 1, rotation: 0,
         };
         addPhotoLayer(layer);
-        setShowProps(true);
+        // メインの写真を追加した時と同じく、追加直後に削除・完了ボタンだけの
+        // パネルを自動表示しない（内容が薄く、キャンバス下に空白の枠が出ただけの
+        // ように見えてしまうため）。削除したい時は写真自体をタップして選び直せばよい
       }
       setPanel('none');
     } finally {
