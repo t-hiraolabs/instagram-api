@@ -1,5 +1,6 @@
 // インサイト（分析）: instagram-insights エッジ関数を呼んで集計データを取得する
 import { useAppStore } from '../store/appStore';
+import { supabase } from './supabaseClient';
 import type { TopPost } from './aiService';
 
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
@@ -195,6 +196,31 @@ export interface InsightDetails {
   topPost: { caption: string; likes: number; comments: number } | null;
   bottomPost: { caption: string; likes: number; comments: number } | null;
   typeBreakdown: { label: string; avg: number; count: number }[];
+  /** 曜日別の平均反応（全曜日、多い順） */
+  dowBreakdown: { label: string; avg: number; count: number }[];
+  /** 投稿時間帯別（深夜/朝/昼/夜の4分割）の平均反応。投稿数が少ないアカウントでも
+   * 24時間分割よりまとまった件数で比較できるようにするため、時間帯を4つに集約する */
+  timeOfDayBreakdown: { label: string; avg: number; count: number }[];
+  /** ハッシュタグ別の平均反応。ノイズを避けるため2件以上使われたタグのみ、上位5件 */
+  hashtagBreakdown: { tag: string; avg: number; count: number }[];
+}
+
+const TIME_OF_DAY_BUCKETS: { label: string; test: (h: number) => boolean }[] = [
+  { label: '深夜(0-5時)', test: (h) => h >= 0 && h <= 5 },
+  { label: '朝(6-11時)', test: (h) => h >= 6 && h <= 11 },
+  { label: '昼(12-17時)', test: (h) => h >= 12 && h <= 17 },
+  { label: '夜(18-23時)', test: (h) => h >= 18 && h <= 23 },
+];
+
+function timeOfDayLabel(hour: number): string {
+  return TIME_OF_DAY_BUCKETS.find((b) => b.test(hour))?.label ?? TIME_OF_DAY_BUCKETS[0].label;
+}
+
+/** キャプションからハッシュタグ（#〜、空白か次の#まで）を抽出する */
+function extractHashtags(caption?: string): string[] {
+  if (!caption) return [];
+  const matches = caption.match(/#[^\s#]+/g) ?? [];
+  return [...new Set(matches.map((t) => t.trim()))];
 }
 
 /**
@@ -262,6 +288,39 @@ export function computeInsightFacts(insights: InsightsResult): { lines: string[]
     .map(([d, v]) => ({ label: dowLabel[Number(d)], avg: v.total / v.count, count: v.count }))
     .sort((a, b) => b.avg - a.avg);
   const bestDow = dowAverages[0] ?? null;
+  const dowBreakdown = dowAverages.map((d) => ({ label: `${d.label}曜`, avg: Math.round(d.avg * 10) / 10, count: d.count }));
+
+  // 投稿時間帯別（深夜/朝/昼/夜）の平均反応
+  const todBuckets: Record<string, { total: number; count: number }> = {};
+  for (const m of media) {
+    const label = timeOfDayLabel(new Date(m.timestamp!).getHours());
+    if (!todBuckets[label]) todBuckets[label] = { total: 0, count: 0 };
+    todBuckets[label].total += engagement(m);
+    todBuckets[label].count += 1;
+  }
+  const timeOfDayBreakdown = TIME_OF_DAY_BUCKETS.map((b) => b.label)
+    .filter((label) => todBuckets[label])
+    .map((label) => ({
+      label,
+      avg: Math.round((todBuckets[label].total / todBuckets[label].count) * 10) / 10,
+      count: todBuckets[label].count,
+    }))
+    .sort((a, b) => b.avg - a.avg);
+
+  // ハッシュタグ別の平均反応（2件以上使われたタグのみ、上位5件）
+  const tagBuckets: Record<string, { total: number; count: number }> = {};
+  for (const m of media) {
+    for (const tag of extractHashtags(m.caption)) {
+      if (!tagBuckets[tag]) tagBuckets[tag] = { total: 0, count: 0 };
+      tagBuckets[tag].total += engagement(m);
+      tagBuckets[tag].count += 1;
+    }
+  }
+  const hashtagBreakdown = Object.entries(tagBuckets)
+    .filter(([, v]) => v.count >= 2)
+    .map(([tag, v]) => ({ tag, avg: Math.round((v.total / v.count) * 10) / 10, count: v.count }))
+    .sort((a, b) => b.avg - a.avg)
+    .slice(0, 5);
 
   const lines: string[] = [];
   const p = insights.profile;
@@ -296,6 +355,16 @@ export function computeInsightFacts(insights: InsightsResult): { lines: string[]
   if (bestDow) {
     lines.push(`最も反応が良い曜日: ${bestDow.label}曜日（平均反応${Math.round(bestDow.avg)}、該当${bestDow.count}件）`);
   }
+  if (timeOfDayBreakdown.length > 1) {
+    lines.push(
+      `投稿時間帯別の平均反応: ${timeOfDayBreakdown.map((t) => `${t.label}=${t.avg}（${t.count}件）`).join(' / ')}`
+    );
+  }
+  if (hashtagBreakdown.length > 0) {
+    lines.push(
+      `反応が良いハッシュタグ: ${hashtagBreakdown.map((t) => `${t.tag}=${t.avg}（${t.count}件）`).join(' / ')}`
+    );
+  }
 
   const details: InsightDetails = {
     bioSet: !!p.biography,
@@ -314,6 +383,9 @@ export function computeInsightFacts(insights: InsightsResult): { lines: string[]
         ? { caption: (bottom.caption ?? '').slice(0, 80), likes: bottom.like_count ?? 0, comments: bottom.comments_count ?? 0 }
         : null,
     typeBreakdown: typeAverages,
+    dowBreakdown,
+    timeOfDayBreakdown,
+    hashtagBreakdown,
   };
 
   return { lines, details };
@@ -342,4 +414,50 @@ export async function getAutoAnalysisFacts(): Promise<AnalysisFacts> {
   }
 
   return { ok: true, text: computed.lines.join('\n'), details: computed.details };
+}
+
+export interface FollowerSnapshotPoint {
+  date: string; // YYYY-MM-DD
+  followers: number;
+}
+
+/**
+ * 今日時点のフォロワー数をSupabaseに記録する（同日中に何度呼ばれてもupsertで上書き）。
+ * Instagram側のAPIは長期間のフォロワー推移を安定して返さないアカウントも多いため、
+ * アプリ側で毎日の値を自前で蓄積し、それをフォロワー推移グラフの元データにする。
+ * 失敗してもグラフが出ないだけで他の分析には影響しないよう、呼び出し側でbest-effort扱いにする。
+ */
+export async function recordFollowerSnapshot(
+  igUserId: string,
+  authUserId: string,
+  followersCount: number,
+  mediaCount: number | null
+): Promise<void> {
+  if (!igUserId || !authUserId) return;
+  const today = new Date().toISOString().slice(0, 10);
+  await supabase.from('follower_snapshots').upsert(
+    {
+      ig_user_id: igUserId,
+      user_id: authUserId,
+      snapshot_date: today,
+      followers_count: followersCount,
+      media_count: mediaCount,
+    },
+    { onConflict: 'ig_user_id,snapshot_date' }
+  );
+}
+
+/** 直近N日分のフォロワー推移を古い順で返す */
+export async function getFollowerHistory(igUserId: string, days = 30): Promise<FollowerSnapshotPoint[]> {
+  if (!igUserId) return [];
+  const since = new Date();
+  since.setDate(since.getDate() - days);
+  const { data, error } = await supabase
+    .from('follower_snapshots')
+    .select('snapshot_date, followers_count')
+    .eq('ig_user_id', igUserId)
+    .gte('snapshot_date', since.toISOString().slice(0, 10))
+    .order('snapshot_date', { ascending: true });
+  if (error || !data) return [];
+  return data.map((r) => ({ date: r.snapshot_date as string, followers: r.followers_count as number }));
 }

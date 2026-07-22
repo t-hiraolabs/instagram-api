@@ -17,5 +17,6 @@ export async function deleteAccountData(igUserId: string): Promise<void> {
     supabase.from('marketing_guide_cache').delete().eq('ig_user_id', igUserId),
     supabase.from('story_drafts').delete().eq('ig_user_id', igUserId),
     supabase.from('chat_conversations').delete().eq('ig_user_id', igUserId),
+    supabase.from('follower_snapshots').delete().eq('ig_user_id', igUserId),
   ]);
 }
