@@ -25,6 +25,7 @@ import { INDUSTRIES, analyzeBrandFromPosts } from '../services/aiService';
 import { getInsightsSummary } from '../services/insightsService';
 import axios from 'axios';
 import { loadBrandSettingsFromDb, saveBrandSettingsToDb, brandLocalKey } from '../services/brandSettingsService';
+import { deleteAccountData } from '../services/dataDeletionService';
 import { supabase } from '../services/supabaseClient';
 import { getMyPlan } from '../services/scheduleService';
 import { ensureLoggedIn } from '../utils/requireLogin';
@@ -345,6 +346,33 @@ export default function ProfileScreen() {
     Alert.alert('連携解除', '3つ目のInstagramアカウントの連携を解除しますか？', [
       { text: 'キャンセル', style: 'cancel' },
       { text: '解除', style: 'destructive', onPress: doDisconnect3 },
+    ]);
+  };
+
+  // 「連携解除」（ローカルの認証情報だけを消す）とは別に、サーバー側（Supabase）に
+  // 保存されているこのアカウント紐付けデータ（ブランド設定・チャット履歴・分析
+  // キャッシュ等）を完全に削除する導線。Meta App Reviewが求めるデータ削除要件に対応する。
+  // データを消した以上、連携も維持する意味がないため、削除後は連携解除もあわせて行う
+  const doDeleteAccountData = async (slot: 1 | 2 | 3, igUserId: string) => {
+    await deleteAccountData(igUserId).catch(() => {});
+    if (slot === 3) doDisconnect3();
+    else if (slot === 2) doDisconnect2();
+    else doDisconnect();
+  };
+
+  const handleDeleteAccountData = (slot: 1 | 2 | 3, igUserId: string | undefined, username: string | undefined) => {
+    if (!igUserId) return;
+    const label = username ? `@${username}` : `アカウント${slot}`;
+    const message =
+      `${label}に関連するブランド設定・チャット履歴・分析データなどを` +
+      'サーバーから完全に削除します。この操作は取り消せません。連携も同時に解除されます。';
+    if (Platform.OS === 'web') {
+      if (window.confirm(`${message}\n\n本当に削除しますか？`)) doDeleteAccountData(slot, igUserId);
+      return;
+    }
+    Alert.alert('データを削除', message, [
+      { text: 'キャンセル', style: 'cancel' },
+      { text: '削除する', style: 'destructive', onPress: () => doDeleteAccountData(slot, igUserId) },
     ]);
   };
 
@@ -1089,6 +1117,15 @@ export default function ProfileScreen() {
                     }}
                   >
                     <Text style={[styles.menuItemText, { color: COLORS.error }]}>連携を解除する</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.menuItem}
+                    onPress={() => {
+                      setAccountMenu(null);
+                      handleDeleteAccountData(slot, creds?.userId, creds?.username);
+                    }}
+                  >
+                    <Text style={[styles.menuItemText, { color: COLORS.error }]}>データを削除する</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={styles.menuCancel} onPress={() => setAccountMenu(null)}>
                     <Text style={styles.menuCancelText}>キャンセル</Text>
