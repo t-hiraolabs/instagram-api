@@ -29,7 +29,7 @@ import { deleteAccountData } from '../services/dataDeletionService';
 import { supabase } from '../services/supabaseClient';
 import { getMyPlan } from '../services/scheduleService';
 import { ensureLoggedIn } from '../utils/requireLogin';
-import { createCheckoutUrl } from '../services/billingService';
+import { createCheckoutUrl, createPortalUrl } from '../services/billingService';
 import { PLANS, Plan, PLAN_RANK, maxInstagramAccounts } from '../utils/plans';
 import { JP_PREFECTURES, JP_PREFECTURES_CITIES } from '../utils/jpLocations';
 import { registerPush, unregisterPush, isPushSupported, isPushEnabled } from '../services/pushService';
@@ -204,6 +204,24 @@ export default function ProfileScreen() {
       if (Platform.OS === 'web') window.alert(msg);
       else Alert.alert('エラー', msg);
       setUpgrading(false);
+    }
+  };
+
+  // 支払い方法の変更・請求書確認・解約を、Stripeがホストするポータル画面で行う
+  const [managingBilling, setManagingBilling] = useState(false);
+  const handleManageBilling = async () => {
+    if (managingBilling) return;
+    setManagingBilling(true);
+    try {
+      const url = await createPortalUrl();
+      if (Platform.OS === 'web') window.location.href = url;
+      else await Linking.openURL(url);
+    } catch (e) {
+      const msg = (e as { message?: string })?.message || 'プラン管理ページを開けませんでした';
+      if (Platform.OS === 'web') window.alert(msg);
+      else Alert.alert('エラー', msg);
+    } finally {
+      setManagingBilling(false);
     }
   };
 
@@ -822,6 +840,20 @@ export default function ProfileScreen() {
             );
           })}
         </ScrollView>
+        {currentPlan !== 'free' && (
+          <TouchableOpacity
+            style={styles.manageBillingBtn}
+            onPress={handleManageBilling}
+            disabled={managingBilling}
+            activeOpacity={0.7}
+          >
+            {managingBilling ? (
+              <ActivityIndicator color={COLORS.textSecondary} size="small" />
+            ) : (
+              <Text style={styles.manageBillingBtnText}>プランを管理・解約する</Text>
+            )}
+          </TouchableOpacity>
+        )}
 
         {/* Help */}
         <Text style={styles.sectionTitle}>ヘルプ</Text>
@@ -1343,6 +1375,17 @@ const styles = StyleSheet.create({
     marginTop: SPACING.sm,
   },
   planUpgradeBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  manageBillingBtn: {
+    alignSelf: 'flex-start',
+    marginTop: SPACING.sm,
+    marginBottom: SPACING.lg,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.full,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  manageBillingBtnText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },
   helpRow: {
     backgroundColor: COLORS.surface,
     borderRadius: RADIUS.md,
