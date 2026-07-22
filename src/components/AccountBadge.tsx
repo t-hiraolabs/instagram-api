@@ -14,11 +14,12 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../services/supabaseClient';
-import { useAppStore } from '../store/appStore';
+import { useAppStore, InstagramCredentials } from '../store/appStore';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
 import AuthScreen from '../screens/AuthScreen';
-import { connectInstagram, clearInstagramStorage, clearInstagramStorage2, clearInstagramStorage3 } from '../utils/instagram';
+import { connectInstagram, clearInstagramStorage, clearInstagramStorage2, clearInstagramStorage3, saveInstagramCredentialsToSlot } from '../utils/instagram';
 import { getMyPlan } from '../services/scheduleService';
+import { getInsightsSummary } from '../services/insightsService';
 import { PLANS, Plan, PLAN_RANK, maxInstagramAccounts } from '../utils/plans';
 import { createCheckoutUrl } from '../services/billingService';
 
@@ -29,6 +30,10 @@ export default function AccountBadge({ hideBadge }: { hideBadge?: boolean } = {}
   const [igPrompt, setIgPrompt] = useState(false);
   const [plan, setPlan] = useState<Plan>('free');
   const [upgrading, setUpgrading] = useState(false);
+  // profile_picture_urlは失効しうる一時URLのため（下のuseEffect参照）、読み込みに
+  // 失敗した場合は透明な壊れた画像のまま表示し続けず、アイコン自体を非表示にする
+  // （更新が間に合っていない一瞬だけの表示なので、次の描画で最新URLに置き換わる）
+  const [igImgFailed, setIgImgFailed] = useState(false);
   const instagramCredentials = useAppStore((s) => s.instagramCredentials);
   const setInstagramCredentials = useAppStore((s) => s.setInstagramCredentials);
   const secondInstagramCredentials = useAppStore((s) => s.secondInstagramCredentials);
@@ -39,6 +44,9 @@ export default function AccountBadge({ hideBadge }: { hideBadge?: boolean } = {}
   const setActiveAccountSlot = useAppStore((s) => s.setActiveAccountSlot);
   const disconnectInstagramSlot = useAppStore((s) => s.disconnectInstagramSlot);
   const activeCredentials = activeAccountSlot === 3 ? thirdInstagramCredentials : activeAccountSlot === 2 ? secondInstagramCredentials : instagramCredentials;
+  // 表示するURL自体が変わったら（更新に成功した、アカウントを切り替えた等）、
+  // 前回の失敗状態を引きずらないよう改めて表示を試す
+  useEffect(() => { setIgImgFailed(false); }, [activeCredentials?.profilePictureUrl]);
   const resetBrandSettings = useAppStore((s) => s.resetBrandSettings);
   const resetBrandSettings2 = useAppStore((s) => s.resetBrandSettings2);
   const resetBrandSettings3 = useAppStore((s) => s.resetBrandSettings3);
@@ -65,6 +73,38 @@ export default function AccountBadge({ hideBadge }: { hideBadge?: boolean } = {}
     if (session) getMyPlan().then(setPlan).catch(() => {});
     else setPlan('free');
   }, [session]);
+
+  // Instagramのprofile_picture_urlは署名付きの一時URL（数時間〜1日程度で失効する）で、
+  // 連携した瞬間の値を保存したまま更新していなかったため、時間が経つとホーム右上の
+  // アイコン等が読み込めなくなり「アイコンが見えなくなった」ように見えていた。
+  // アクセストークン自体はまだ有効なので、起動のたびにgetInsightsSummary（既存の
+  // instagram-insightsエッジ関数、profile_picture_urlも一緒に返す）で最新のURLを
+  // 取り直し、変わっていれば保存し直す（バックグラウンドで行い、失敗しても既存の
+  // 値のまま次回に持ち越すだけなので握りつぶしてよい）
+  useEffect(() => {
+    const refresh = async (
+      creds: InstagramCredentials | null,
+      setCreds: (c: InstagramCredentials) => void,
+      slot: 1 | 2 | 3,
+    ) => {
+      if (!creds?.accessToken) return;
+      try {
+        const insights = await getInsightsSummary(creds.accessToken, 1);
+        const fresh = insights.profile.profile_picture_url;
+        if (fresh && fresh !== creds.profilePictureUrl) {
+          const next = { ...creds, profilePictureUrl: fresh };
+          setCreds(next);
+          await saveInstagramCredentialsToSlot(slot, next);
+        }
+      } catch {
+        // 取得に失敗しても既存のURLのまま次回起動時に再試行する
+      }
+    };
+    refresh(instagramCredentials, setInstagramCredentials, 1);
+    refresh(secondInstagramCredentials, setSecondInstagramCredentials, 2);
+    refresh(thirdInstagramCredentials, setThirdInstagramCredentials, 3);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [instagramCredentials?.userId, secondInstagramCredentials?.userId, thirdInstagramCredentials?.userId]);
 
   // ログイン済みでInstagram未連携なら、連携を促すモーダルを一度だけ表示する
   useEffect(() => {
@@ -248,14 +288,20 @@ export default function AccountBadge({ hideBadge }: { hideBadge?: boolean } = {}
 
       {!hideBadge && (
         <>
-          {/* 連携済みなら、アカウントアイコンの左に隠れてInstagramのプロフィール写真を表示 */}
-          {activeCredentials?.profilePictureUrl ? (
+          {/* 連携済みなら、アカウントアイコンの左に隠れてInstagramのプロフィール写真を表示。
+              失効したURLで読み込みに失敗した場合は、透明な壊れた画像のまま表示し続けず
+              非表示にする（igImgFailedの定義側コメント参照） */}
+          {activeCredentials?.profilePictureUrl && !igImgFailed ? (
             <TouchableOpacity
               style={[styles.igBadge, { top: insets.top + SPACING.sm + 3, right: SPACING.md + 26 }]}
               onPress={() => setVisible(true)}
               activeOpacity={0.8}
             >
-              <Image source={{ uri: activeCredentials!.profilePictureUrl }} style={styles.igBadgeImg} />
+              <Image
+                source={{ uri: activeCredentials!.profilePictureUrl }}
+                style={styles.igBadgeImg}
+                onError={() => setIgImgFailed(true)}
+              />
             </TouchableOpacity>
           ) : null}
 
