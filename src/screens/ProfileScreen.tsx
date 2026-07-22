@@ -840,28 +840,42 @@ export default function ProfileScreen() {
             );
           })}
         </ScrollView>
-        {currentPlan !== 'free' && (
-          <TouchableOpacity
-            style={styles.manageBillingBtn}
-            onPress={handleManageBilling}
-            disabled={managingBilling}
-            activeOpacity={0.7}
-          >
-            {managingBilling ? (
-              <ActivityIndicator color={COLORS.textSecondary} size="small" />
-            ) : (
-              <Text style={styles.manageBillingBtnText}>プランを管理・解約する</Text>
-            )}
-          </TouchableOpacity>
-        )}
 
         {/* Help */}
         <Text style={styles.sectionTitle}>ヘルプ</Text>
         {[
-          { label: 'AIの使い方ガイド', icon: 'book-outline' as const, action: () => Alert.alert('ガイド', 'AI生成タブで写真を選択するか、テーマを入力してAIに投稿を生成させましょう。業種を設定するとより精度が上がります。') },
-          { label: 'ハッシュタグについて', icon: 'pricetag-outline' as const, action: () => Alert.alert('ハッシュタグ', '日本のInstagramではハッシュタグ検索がグローバル平均の3倍！15〜20個のタグを使い、人気タグとニッチタグをバランスよく組み合わせましょう。') },
-          { label: '最適な投稿時間', icon: 'time-outline' as const, action: () => Alert.alert('投稿時間', '平日: 12〜13時 / 18〜21時\n休日: 11〜13時 / 19〜21時\n\nこの時間帯は日本のInstagramユーザーのアクティブ率が最も高くなります。') },
-          { label: 'お問い合わせ', icon: 'chatbubble-outline' as const, action: () => Alert.alert('お問い合わせ', 'support@aimark.jp までご連絡ください') },
+          {
+            label: 'AIの使い方ガイド',
+            icon: 'book-outline' as const,
+            action: () => Alert.alert(
+              'AIの使い方ガイド',
+              '「投稿を作成」タブで写真を選ぶかテーマを入力すると、AIがキャプションを生成します。プロフィール画面の「ブランド設定」で業種・雰囲気・ターゲット層・トーンを設定しておくと、そのお店らしい文章になります。「AIで投稿を分析して自動入力」ボタンを押せば、過去の投稿からブランド設定をAIに提案してもらうこともできます。\n\nホーム画面の「ネタ」カードをタップすると、AIチャットの入力欄に相談内容が入ります（内容を確認してから送信されます）。\n\nストーリー作成では、テンプレートを選んで写真を配置し、文字を編集するだけで画像が作れます。写真は何枚でも追加でき、自由に動かして配置できます。\n\nホーム画面の「マーケティングガイド」では、AIがフォロワー数やエンゲージメント率からアカウントの段階を判定し、次にやるべきことをアドバイスします（Pro以上は毎週自動更新、フリーは初回のみ）。'
+            ),
+          },
+          {
+            label: 'ハッシュタグについて',
+            icon: 'pricetag-outline' as const,
+            action: () => Alert.alert(
+              'ハッシュタグについて',
+              '日本のInstagramはハッシュタグ検索の利用率がグローバル平均の3倍と言われています。1投稿につき15〜20個を目安に、以下を組み合わせるのが効果的です。\n\n・ビッグタグ（投稿数10万件以上）：露出は増えるが埋もれやすい\n・ミドルタグ（1万〜10万件）：見つけてもらいやすいバランス型\n・ニッチタグ（1万件未満）：競合が少なく上位表示されやすい\n・地域タグ（例: #渋谷カフェ）：地域のお客様に届きやすい\n\n毎回同じタグを使い回すより、いくつかのパターンを用意して使い分けるのがおすすめです。'
+            ),
+          },
+          {
+            label: '最適な投稿時間',
+            icon: 'time-outline' as const,
+            action: () => Alert.alert(
+              '最適な投稿時間',
+              '平日: 12〜13時 / 18〜21時\n休日: 11〜13時 / 19〜21時\n\nこの時間帯は日本のInstagramユーザーのアクティブ率が最も高くなります。\n\n業種によっても傾向は変わります。飲食店なら食事の時間帯前後、美容系なら夜間や休日の閲覧が多くなりがちです。まずはこの目安から始めて、「分析」タブで実際に反応が良い時間帯を確認しながら調整していきましょう。'
+            ),
+          },
+          {
+            label: 'お問い合わせ',
+            icon: 'chatbubble-outline' as const,
+            action: () => Alert.alert(
+              'お問い合わせ',
+              'ご質問・不具合のご報告は下記メールアドレスまでご連絡ください。\n\nhiraolabs@gmail.com\n\n発生した画面や操作の手順を添えていただけると、スムーズに対応できます。'
+            ),
+          },
           { label: 'プライバシーポリシー', icon: 'lock-closed-outline' as const, action: () => { if (Platform.OS === 'web') { window.open('/privacy', '_blank'); } else { Alert.alert('プライバシーポリシー', 'https://instagram-api-alpha.vercel.app/privacy'); } } },
         ].map((item) => (
           <TouchableOpacity key={item.label} style={styles.helpRow} onPress={item.action} activeOpacity={0.7}>
@@ -916,6 +930,26 @@ export default function ProfileScreen() {
       {/* アカウント設定画面（右スライド）: 連携解除・データ削除を分かりやすい場所にまとめる */}
       <SlideScreen visible={accountSettingsVisible} onBack={() => setAccountSettingsVisible(false)} title="アカウント設定">
         <ScrollView contentContainerStyle={{ padding: SPACING.md }}>
+          {currentPlan !== 'free' && (
+            <View style={styles.accountSettingsCard}>
+              <Text style={styles.accountSettingsUsername}>サブスクリプション</Text>
+              <TouchableOpacity
+                style={styles.accountSettingsRow}
+                onPress={handleManageBilling}
+                disabled={managingBilling}
+                activeOpacity={0.7}
+              >
+                {managingBilling ? (
+                  <ActivityIndicator color={COLORS.textSecondary} size="small" />
+                ) : (
+                  <>
+                    <Text style={styles.accountSettingsRowText}>プランを管理・解約する</Text>
+                    <Text style={styles.helpArrow}>›</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          )}
           {([
             { slot: 1 as const, creds: instagramCredentials, onDisconnect: handleDisconnect },
             { slot: 2 as const, creds: secondInstagramCredentials, onDisconnect: handleDisconnect2 },
@@ -1375,17 +1409,6 @@ const styles = StyleSheet.create({
     marginTop: SPACING.sm,
   },
   planUpgradeBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
-  manageBillingBtn: {
-    alignSelf: 'flex-start',
-    marginTop: SPACING.sm,
-    marginBottom: SPACING.lg,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    borderRadius: RADIUS.full,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  manageBillingBtnText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },
   helpRow: {
     backgroundColor: COLORS.surface,
     borderRadius: RADIUS.md,
