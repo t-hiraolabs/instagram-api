@@ -32,6 +32,10 @@ interface Props {
   /** キャンバス全体で共有するshared value（DraggableLayer参照） */
   activeOwner: SharedValue<string | null>;
   activeRefs: SharedValue<ActiveLayerRefs | null>;
+  /** 中央整列ガイド線の表示状態（DraggableLayer参照）。写真がスロット自身の中央に
+   *  揃った時、スロットの絶対中央位置（canvasの座標系）に線を表示する */
+  guideV: SharedValue<number | null>;
+  guideH: SharedValue<number | null>;
   /** CreativeCanvas側のキャンバス全体を覆うピンチ・回転ジェスチャー（DraggableLayer参照） */
   canvasGestures: GestureType[];
   onSelect: () => void;
@@ -40,7 +44,7 @@ interface Props {
 }
 
 export default function DraggablePhotoSlot({
-  slot, assignment, displayScale, selected, locked, testID, activeOwner, activeRefs, canvasGestures, onSelect, onChange, onPickPhoto,
+  slot, assignment, displayScale, selected, locked, testID, activeOwner, activeRefs, guideV, guideH, canvasGestures, onSelect, onChange, onPickPhoto,
 }: Props) {
   const clipStyle = {
     position: 'absolute' as const,
@@ -83,16 +87,17 @@ export default function DraggablePhotoSlot({
         maxScale={4}
         // 中央（隙間なくスロットに収まる基準位置）と、スロットをちょうど覆う倍率（scale=1、
         // 縮小していくとスロットの上下または左右がぴったり収まる境目）に近づいたら一瞬止まる。
-        // キャンバス全体を貫く中央整列ガイド線（width/height/guideV/guideH）はここでは
-        // 使わない：スロットに縛られた写真にとって意味のある「中央」はスロット自身の中央
-        // （snapX/snapY）であり、キャンバス全体の中央とは通常一致しない（グリッド型の
-        // テンプレートでは特に）。以前は渡していたが、キャンバス中央への一時的なスナップが
-        // クランプ可能範囲外の位置になることがあり、ガイド線が出た位置で指を離しても
-        // その位置には留まらず、実際にクランプされた（スロット自身の中央の）位置へ
-        // ずれて配置される不具合の原因になっていた
+        // ガイド線はキャンバス全体の絶対中央ではなく、スロット自身の絶対中央位置
+        // （guideVAt/guideHAt）に表示する：写真スロットにとって意味のある「中央」は
+        // スロット自身の中央だけであり、グリッド型テンプレートではスロットの位置に
+        // よってキャンバス全体の中央とは一致しない
         snapX={[centerX]}
         snapY={[centerY]}
         snapScale={[1]}
+        guideV={guideV}
+        guideH={guideH}
+        guideVAt={slot.x + slot.w / 2}
+        guideHAt={slot.y + slot.h / 2}
         showSelectionBorder={false}
         displayScale={displayScale}
         selected={selected}

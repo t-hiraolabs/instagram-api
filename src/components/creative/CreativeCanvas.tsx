@@ -103,25 +103,23 @@ function TextContent({
   );
 }
 
-/** キャンバス中央への整列ガイド線（水平・垂直）。guideV/guideHがtrueの間だけ表示する */
-function CenterGuideLine({ axis, guide, canvasWidth, canvasHeight }: {
-  axis: 'v' | 'h'; guide: SharedValue<boolean>; canvasWidth: number; canvasHeight: number;
+/** 整列ガイド線（水平・垂直）。guide.value（キャンバス絶対座標・論理px）がnullでない
+ *  間だけ、その位置に表示する。位置は要素ごとに異なりうる（写真スロットならスロット
+ *  自身の絶対中央、自由配置のテキスト・追加写真ならキャンバス全体の中央）ため、
+ *  表示位置自体もguideの値から動的に求める（固定のキャンバス中央ではない） */
+function CenterGuideLine({ axis, guide, canvasHeight, canvasWidth, displayScale }: {
+  axis: 'v' | 'h'; guide: SharedValue<number | null>; canvasWidth: number; canvasHeight: number; displayScale: number;
 }) {
-  const style = useAnimatedStyle(() => ({ opacity: guide.value ? 1 : 0 }));
+  const style = useAnimatedStyle(() => {
+    if (guide.value == null) return { opacity: 0 };
+    return axis === 'v'
+      ? { opacity: 1, left: guide.value * displayScale }
+      : { opacity: 1, top: guide.value * displayScale };
+  });
   if (axis === 'v') {
-    return (
-      <Animated.View
-        pointerEvents="none"
-        style={[styles.guideLineV, { left: canvasWidth / 2, height: canvasHeight }, style]}
-      />
-    );
+    return <Animated.View pointerEvents="none" style={[styles.guideLineV, { height: canvasHeight }, style]} />;
   }
-  return (
-    <Animated.View
-      pointerEvents="none"
-      style={[styles.guideLineH, { top: canvasHeight / 2, width: canvasWidth }, style]}
-    />
-  );
+  return <Animated.View pointerEvents="none" style={[styles.guideLineH, { width: canvasWidth }, style]} />;
 }
 
 interface Props {
@@ -181,10 +179,12 @@ export default function CreativeCanvas({
   // 最後の確定（commit）が失われることがあった。onBegin時点（まだ誰にもクリアされて
   // いない安全なタイミング）でこちらへ複製しておき、onUpdate/onEndは常にこちらを使う
   const sessionRefs = useSharedValue<ActiveLayerRefs | null>(null);
-  // キャンバス中央への整列ガイド線（縦線・横線）の表示状態。移動でキャンバス中央に
-  // 揃った時と、回転で水平・垂直（0/90/180/270度）に揃った時の両方で使う
-  const guideV = useSharedValue(false);
-  const guideH = useSharedValue(false);
+  // 整列ガイド線（縦線・横線）の表示状態。値は表示するキャンバス絶対座標（論理px）、
+  // nullなら非表示。移動でその要素にとっての中央に揃った時（写真スロットならスロット
+  // 自身の中央、自由配置の要素ならキャンバス全体の中央）と、回転で水平・垂直
+  // （0/90/180/270度）に揃った時の両方で使う
+  const guideV = useSharedValue<number | null>(null);
+  const guideH = useSharedValue<number | null>(null);
   // テキストレイヤーは内容によって実寸が変わるため、onLayoutで測った実寸をここに控えて
   // おき、中央整列ガイドの判定に使う（写真はimgW/imgHから計算できるため不要）
   const [textSizes, setTextSizes] = React.useState<Record<string, { width: number; height: number }>>({});
@@ -275,19 +275,19 @@ export default function CreativeCanvas({
         rotation -= bestDiff;
         refs.isSnapped.value = true;
         const isHorizontal = snappedCardinal % 180 === 0; // 0/180度＝水平、90/270度＝垂直
-        guideH.value = isHorizontal;
-        guideV.value = !isHorizontal;
+        guideH.value = isHorizontal ? CANVAS_H / 2 : null;
+        guideV.value = isHorizontal ? null : CANVAS_W / 2;
       } else {
         refs.isSnapped.value = false;
-        guideH.value = false;
-        guideV.value = false;
+        guideH.value = null;
+        guideV.value = null;
       }
       refs.savedRotation.value = rotation;
     })
     .onEnd(() => {
       const refs = sessionRefs.value;
-      guideV.value = false;
-      guideH.value = false;
+      guideV.value = null;
+      guideH.value = null;
       if (!refs || !refs.rotatable) return;
       runOnJS(onCommitActive)(refs.id, refs.translateX.value, refs.translateY.value, refs.savedScale.value, refs.savedRotation.value);
     });
@@ -322,6 +322,8 @@ export default function CreativeCanvas({
             locked={locked}
             activeOwner={activeOwner}
             activeRefs={activeRefs}
+            guideV={guideV}
+            guideH={guideH}
             canvasGestures={canvasGestures}
             onSelect={() => onSelectSlot?.(slot.id)}
             onChange={(patch) => onSlotChange?.(slot.id, patch)}
@@ -406,8 +408,8 @@ export default function CreativeCanvas({
           </DraggableLayer>
         ))}
         {/* キャンバス中央への整列ガイド線（移動・回転どちらのスナップでも使う） */}
-        <CenterGuideLine axis="v" guide={guideV} canvasWidth={width} canvasHeight={height} />
-        <CenterGuideLine axis="h" guide={guideH} canvasWidth={width} canvasHeight={height} />
+        <CenterGuideLine axis="v" guide={guideV} canvasWidth={width} canvasHeight={height} displayScale={displayScale} />
+        <CenterGuideLine axis="h" guide={guideH} canvasWidth={width} canvasHeight={height} displayScale={displayScale} />
       </View>
     </GestureDetector>
   );
