@@ -1,4 +1,4 @@
-# InstaAI - Instagram AI投稿生成アプリ
+# AImark - Instagram AI投稿生成アプリ
 
 Instagram のフィード投稿・ストーリーをAIで自動生成するReact Native (Expo) アプリです。
 
