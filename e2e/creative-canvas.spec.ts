@@ -520,13 +520,18 @@ test.describe('CreativeCanvas', () => {
     expect(x).toBeLessThan(500);
   });
 
-  test('キャンバス左上以外に置かれたスロット（photo_3）でも、中央整列ガイドが実際のキャンバス中央位置で表示される', async ({ page }) => {
-    // 回帰テスト: DraggablePhotoSlot内のDraggableLayerには、スロット自身の矩形内での
-    // ローカル座標（centerX/centerY基準）が渡される。中央整列ガイドの判定はキャンバス
-    // 全体の絶対座標（CANVAS_W/2, CANVAS_H/2）を基準にする必要があるが、以前は
-    // ローカル座標のままキャンバス絶対座標と比較していたため、スロットがキャンバス
-    // 左上（x:0,y:0）以外の位置にある場合（photo_3はx:540,y:640）にガイドの表示・
-    // 判定位置が実際の見た目の中央とずれてしまっていた（canvasOffsetX/Yで補正済み）。
+  test('写真スロットをドラッグしてもキャンバス全体を貫く中央整列ガイド線は表示されない（離した位置からずれて配置される不具合の再発防止）', async ({ page }) => {
+    // 回帰テスト: 以前はDraggablePhotoSlotがwidth/height/canvasOffsetX/Yを
+    // DraggableLayerへ渡し、写真の中心がキャンバス全体の絶対中央（CANVAS_W/2,
+    // CANVAS_H/2）に近づくと一瞬止まってガイド線を表示していた。しかし写真スロットの
+    // クランプ可能範囲（clampPhotoOffset）はスロット自身の中央（centerX/centerY）
+    // 基準であり、キャンバス全体の中央はスロットの位置によってはクランプ範囲外に
+    // なる（特にグリッド型テンプレートのphoto_3のように、スロットがキャンバス左上
+    // 以外にある場合）。その結果、ガイド線が出た位置で指を離しても、実際にはクランプ
+    // されたスロット自身の中央位置へずれて配置されてしまう不具合があった。
+    // 写真スロットにとって意味のある「中央」はスロット自身の中央だけであり、それは
+    // 既にsnapX/snapY（isSnapped表示）で正しくカバーされているため、キャンバス全体の
+    // ガイド線はスロットの操作では一切表示しないようにした。
     await page.goto('/?e2e=creativeCanvas');
     await page.waitForTimeout(1000);
 
@@ -536,7 +541,7 @@ test.describe('CreativeCanvas', () => {
     const cy = box!.y + box!.height / 2;
 
     // layer-bgはキャンバス全面(0,0)-(1080,1920)を占めるので、その中心＝キャンバスの
-    // 真の絶対中央位置（スクリーン座標）の基準として使える
+    // 絶対中央位置（スクリーン座標）の基準として使える
     const bgBox = await page.getByTestId('layer-bg').boundingBox();
     expect(bgBox).not.toBeNull();
     const targetX = bgBox!.x + bgBox!.width / 2;
@@ -556,24 +561,20 @@ test.describe('CreativeCanvas', () => {
     await dispatchTouch(client, 'touchStart', [{ x: cx, y: cy }]);
     await page.waitForTimeout(100);
     const steps = 60;
-    const OVERSHOOT = 1.3;
+    // キャンバスの絶対中央（bgBoxの中心）をちょうど通過する経路でドラッグする。
+    // photo_3のようにスロットがキャンバス左上以外にある場合、この経路は以前の
+    // 実装だとガイド線が誤って表示される（そしてクランプで位置がずれる）経路だった
     let sawGuide = false;
-    let hitX = 0, hitY = 0;
     for (let i = 1; i <= steps; i++) {
-      const x = cx + ((targetX - cx) * OVERSHOOT * i) / steps;
-      const y = cy + ((targetY - cy) * OVERSHOOT * i) / steps;
+      const x = cx + ((targetX - cx) * i) / steps;
+      const y = cy + ((targetY - cy) * i) / steps;
       await dispatchTouch(client, 'touchMove', [{ x, y }]);
       await page.waitForTimeout(25);
-      if (await guideLineVisible()) { sawGuide = true; hitX = x; hitY = y; break; }
+      if (await guideLineVisible()) { sawGuide = true; break; }
     }
     await dispatchTouch(client, 'touchEnd', []);
     await page.waitForTimeout(300);
 
-    // ガイドが表示された瞬間の指の位置が、実際のキャンバス絶対中央（bgBoxの中心）の
-    // すぐ近くになっているはず。修正前は判定がスロットのローカル座標基準だったため、
-    // photo_3（x:540のオフセット付き）ではこの位置に近づいてもガイドが正しく反応しなかった
-    expect(sawGuide).toBe(true);
-    expect(Math.abs(hitX - targetX)).toBeLessThan(15);
-    expect(Math.abs(hitY - targetY)).toBeLessThan(15);
+    expect(sawGuide).toBe(false);
   });
 });
