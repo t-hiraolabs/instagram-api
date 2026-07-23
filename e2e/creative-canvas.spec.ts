@@ -520,18 +520,86 @@ test.describe('CreativeCanvas', () => {
     expect(x).toBeLessThan(500);
   });
 
-  test('写真スロットをドラッグしてもキャンバス全体を貫く中央整列ガイド線は表示されない（離した位置からずれて配置される不具合の再発防止）', async ({ page }) => {
-    // 回帰テスト: 以前はDraggablePhotoSlotがwidth/height/canvasOffsetX/Yを
-    // DraggableLayerへ渡し、写真の中心がキャンバス全体の絶対中央（CANVAS_W/2,
-    // CANVAS_H/2）に近づくと一瞬止まってガイド線を表示していた。しかし写真スロットの
-    // クランプ可能範囲（clampPhotoOffset）はスロット自身の中央（centerX/centerY）
-    // 基準であり、キャンバス全体の中央はスロットの位置によってはクランプ範囲外に
-    // なる（特にグリッド型テンプレートのphoto_3のように、スロットがキャンバス左上
-    // 以外にある場合）。その結果、ガイド線が出た位置で指を離しても、実際にはクランプ
-    // されたスロット自身の中央位置へずれて配置されてしまう不具合があった。
-    // 写真スロットにとって意味のある「中央」はスロット自身の中央だけであり、それは
-    // 既にsnapX/snapY（isSnapped表示）で正しくカバーされているため、キャンバス全体の
-    // ガイド線はスロットの操作では一切表示しないようにした。
+  test('写真スロットの中央整列ガイド線は、キャンバス全体の中央ではなくスロット自身の中央位置に表示される', async ({ page }) => {
+    // 回帰テスト: ガイド線自体は表示したままにしつつ、写真スロットにとって意味のある
+    // 「中央」はスロット自身の中央であるべき（グリッド型テンプレートではキャンバス
+    // 全体の中央と一致しないことが多いため）。photo_3（x:540,y:640,w:540,h:640）は
+    // キャンバス全体の中央（x:540,y:960）とはX座標がずれた位置にあるスロットなので、
+    // ガイド線がスロット自身の中央（x:810,y:960）に出ることを確認する
+    await page.goto('/?e2e=creativeCanvas');
+    await page.waitForTimeout(1000);
+
+    // layer-bgはキャンバス全面(0,0)-(1080,1920)を占めるので、そのbox自体が
+    // キャンバスのスクリーン座標系の原点・スケールの基準として使える
+    const bgBox = await page.getByTestId('layer-bg').boundingBox();
+    expect(bgBox).not.toBeNull();
+    const displayScale = bgBox!.width / 1080;
+    const expectedGuideX = bgBox!.x + (540 + 540 / 2) * displayScale; // slot.x + slot.w/2
+    const expectedGuideY = bgBox!.y + (640 + 640 / 2) * displayScale; // slot.y + slot.h/2
+
+    const box = await page.getByTestId('layer-photo_3').boundingBox();
+    expect(box).not.toBeNull();
+    const cx = box!.x + box!.width / 2;
+    const cy = box!.y + box!.height / 2;
+
+    async function guideLineRects() {
+      return page.evaluate(() => {
+        const guides = Array.from(document.querySelectorAll('div')).filter((el) => {
+          const s = getComputedStyle(el);
+          return s.backgroundColor === 'rgb(0, 229, 255)' && (s.width === '1px' || s.height === '1px') && s.opacity === '1';
+        });
+        return guides.map((g) => {
+          const r = g.getBoundingClientRect();
+          return { x: r.x, y: r.y, width: r.width, height: r.height };
+        });
+      });
+    }
+
+    const client = await page.context().newCDPSession(page);
+    await dispatchTouch(client, 'touchStart', [{ x: cx, y: cy }]);
+    await page.waitForTimeout(100);
+    // まずスロットの中央から少しずつ離れる（ガイドが消えることを確認する起点）
+    const awaySteps = 20;
+    for (let i = 1; i <= awaySteps; i++) {
+      await dispatchTouch(client, 'touchMove', [{ x: cx + (60 * i) / awaySteps, y: cy + (60 * i) / awaySteps }]);
+      await page.waitForTimeout(20);
+    }
+    await page.waitForTimeout(80);
+    expect((await guideLineRects()).length).toBe(0);
+
+    // スロット自身の中央（＝ドラッグ開始位置）へ少し行き過ぎるくらいまで戻し、
+    // ガイドが見えた瞬間の位置を記録する（合成タッチイベントは計算通りの座標に
+    // きっちり届かないことがあるため、既存の中央整列テストと同じ方式にしている）
+    const steps = 60;
+    const OVERSHOOT = 1.3;
+    let rects: { x: number; y: number; width: number; height: number }[] = [];
+    for (let i = 1; i <= steps; i++) {
+      const x = cx + 60 - (60 * OVERSHOOT * i) / steps;
+      const y = cy + 60 - (60 * OVERSHOOT * i) / steps;
+      await dispatchTouch(client, 'touchMove', [{ x, y }]);
+      await page.waitForTimeout(20);
+      rects = await guideLineRects();
+      if (rects.length > 0) break;
+    }
+    await dispatchTouch(client, 'touchEnd', []);
+    await page.waitForTimeout(300);
+
+    expect(rects.length).toBeGreaterThan(0);
+    const vLine = rects.find((r) => r.width <= 2);
+    const hLine = rects.find((r) => r.height <= 2);
+    expect(vLine).toBeTruthy();
+    expect(hLine).toBeTruthy();
+    expect(Math.abs(vLine!.x - expectedGuideX)).toBeLessThan(3);
+    expect(Math.abs(hLine!.y - expectedGuideY)).toBeLessThan(3);
+  });
+
+  test('片方の軸に動く余地が無い写真（スロットと同じ縦横比）をドラッグしても、もう一方の軸だけで枠線が誤って点灯し続けない', async ({ page }) => {
+    // 回帰テスト: 以前は縦(Y)・横(X)いずれかの軸が基準に「ヒット」しただけで
+    // スナップ中の枠線を点灯させていた（OR判定）。photo_3はスロットと写真の縦横比が
+    // 完全に一致しており、縦方向には常に基準位置（centerY）にしか存在し得ないため、
+    // 横方向にどれだけドラッグしていても縦方向は常に「ヒット」扱いになり、実際には
+    // 中央から遠く離れた位置でも枠線が点灯し続けてしまっていた。両方の軸が同時に
+    // 基準に収まった時だけ点灯するよう修正済み（AND判定）
     await page.goto('/?e2e=creativeCanvas');
     await page.waitForTimeout(1000);
 
@@ -540,41 +608,30 @@ test.describe('CreativeCanvas', () => {
     const cx = box!.x + box!.width / 2;
     const cy = box!.y + box!.height / 2;
 
-    // layer-bgはキャンバス全面(0,0)-(1080,1920)を占めるので、その中心＝キャンバスの
-    // 絶対中央位置（スクリーン座標）の基準として使える
-    const bgBox = await page.getByTestId('layer-bg').boundingBox();
-    expect(bgBox).not.toBeNull();
-    const targetX = bgBox!.x + bgBox!.width / 2;
-    const targetY = bgBox!.y + bgBox!.height / 2;
-
-    async function guideLineVisible() {
+    async function borderColor() {
       return page.evaluate(() => {
-        const guides = Array.from(document.querySelectorAll('div')).filter((el) => {
-          const s = getComputedStyle(el);
-          return s.backgroundColor === 'rgb(0, 229, 255)' && s.width === '1px';
-        });
-        return guides.some((g) => getComputedStyle(g).opacity === '1');
+        const el = document.querySelector('[data-testid="layer-photo_3"] > div') as HTMLElement | null;
+        return el ? getComputedStyle(el).borderTopColor : null;
       });
     }
 
     const client = await page.context().newCDPSession(page);
     await dispatchTouch(client, 'touchStart', [{ x: cx, y: cy }]);
     await page.waitForTimeout(100);
-    const steps = 60;
-    // キャンバスの絶対中央（bgBoxの中心）をちょうど通過する経路でドラッグする。
-    // photo_3のようにスロットがキャンバス左上以外にある場合、この経路は以前の
-    // 実装だとガイド線が誤って表示される（そしてクランプで位置がずれる）経路だった
-    let sawGuide = false;
+    // Y座標は一切動かさず、X方向にだけスナップ範囲を大きく超える距離を少しずつ動かす
+    // （合成タッチイベントは1回の大きなジャンプだと実際の移動量が正しく伝わらないことが
+    // あるため、他のテストと同じく細かいステップに分けて送る）
+    const steps = 30;
+    let sawSnapWhileFarFromCenter = false;
     for (let i = 1; i <= steps; i++) {
-      const x = cx + ((targetX - cx) * i) / steps;
-      const y = cy + ((targetY - cy) * i) / steps;
-      await dispatchTouch(client, 'touchMove', [{ x, y }]);
-      await page.waitForTimeout(25);
-      if (await guideLineVisible()) { sawGuide = true; break; }
+      await dispatchTouch(client, 'touchMove', [{ x: cx + (80 * i) / steps, y: cy }]);
+      await page.waitForTimeout(20);
+      if (i >= steps / 2 && (await borderColor()) === 'rgb(0, 229, 255)') sawSnapWhileFarFromCenter = true;
     }
+    await page.waitForTimeout(80);
+    expect(sawSnapWhileFarFromCenter).toBe(false);
+    expect(await borderColor()).toBe('rgba(0, 0, 0, 0)');
     await dispatchTouch(client, 'touchEnd', []);
     await page.waitForTimeout(300);
-
-    expect(sawGuide).toBe(false);
   });
 });

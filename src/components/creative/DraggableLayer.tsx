@@ -86,10 +86,18 @@ interface Props {
    *  表示する。テキストなど実寸が動的な要素は呼び出し側でonLayout等から測って渡す */
   width?: number;
   height?: number;
-  /** キャンバス中央への整列時に表示する、キャンバス全体を貫くガイド線の表示状態
-   *  （CreativeCanvas側で1つ生成し、全レイヤーで共有する） */
-  guideV?: SharedValue<boolean>;
-  guideH?: SharedValue<boolean>;
+  /** キャンバス全体を貫くガイド線の表示状態（CreativeCanvas側で1つ生成し、全レイヤーで
+   *  共有する）。値はガイド線を描画するキャンバス絶対座標（論理px）。該当軸がスナップして
+   *  いない間はnullで非表示にする。写真スロットのようにx/yがスロット内ローカル座標の
+   *  要素でも、線自体は常にキャンバス絶対座標で正しい位置に描ける */
+  guideV?: SharedValue<number | null>;
+  guideH?: SharedValue<number | null>;
+  /** guideV/guideHがヒットした時に実際に表示する位置（論理px、キャンバス絶対座標）。
+   *  省略時はキャンバス全体の中心（CANVAS_W/2, CANVAS_H/2）。写真スロットは自分自身の
+   *  中央（スロットの絶対位置＋幅高さの半分）を渡し、「スロットにとっての中央」を
+   *  正しく示す線にする */
+  guideVAt?: number;
+  guideHAt?: number;
   /** falseにすると選択中の青い枠線を表示しない（写真は枠線なしにしたいが、スナップ中の
    *  見えやすい枠線(isSnapped)は選択枠線とは別物なので、falseでも影響を受けない） */
   showSelectionBorder?: boolean;
@@ -121,7 +129,7 @@ interface Props {
 
 export default function DraggableLayer({
   id, x, y, scale, rotation, displayScale, selected, locked, rotatable = true,
-  minScale = 0.2, maxScale = 4, snapX, snapY, snapScale, width, height, guideV, guideH,
+  minScale = 0.2, maxScale = 4, snapX, snapY, snapScale, width, height, guideV, guideH, guideVAt, guideHAt,
   showSelectionBorder = true, activeOwner, activeRefs, canvasGestures, testID, onSelect, onChange,
   onDragStateChange, onTap, children,
 }: Props) {
@@ -226,33 +234,43 @@ export default function DraggableLayer({
       const zone = POSITION_SNAP_SCREEN_PX / displayScale;
       let nx = baseX.value + e.translationX / displayScale;
       let ny = baseY.value + e.translationY / displayScale;
-      let snapped = false;
-      if (snapX) { const r = snapValueWithHit(nx, snapX, zone); nx = r.value; if (r.hit !== null) snapped = true; }
-      if (snapY) { const r = snapValueWithHit(ny, snapY, zone); ny = r.value; if (r.hit !== null) snapped = true; }
+      // 縦(X)・横(Y)、それぞれ実際に基準が指定されている軸だけを判定する。写真スロット
+      // のように片方の軸に元々動く余地が無い要素（例: スロットと写真の縦横比が一致し、
+      // 縦方向には常にセンター位置しか取り得ない）だと、その軸は指を全く動かさなくても
+      // 常に基準へ「ヒット」してしまう。これを考慮せず「どちらか一方でもヒットしたら
+      // スナップ中」（OR）にしてしまうと、もう片方の軸（実際に動かしている側）がどこに
+      // あってもずっと枠線が点灯し続け、「止まって見えた位置」と「実際に指を離した位置」
+      // が食い違う不具合の原因になっていた。指定された軸すべてが同時に基準に収まった
+      // 時だけ「中央に揃った」とみなす（AND）ことで、この誤検知を防ぐ
+      const xConfigured = !!snapX || !!width;
+      const yConfigured = !!snapY || !!height;
+      let xHit = false;
+      let yHit = false;
+      if (snapX) { const r = snapValueWithHit(nx, snapX, zone); nx = r.value; if (r.hit !== null) xHit = true; }
+      if (snapY) { const r = snapValueWithHit(ny, snapY, zone); ny = r.value; if (r.hit !== null) yHit = true; }
       // キャンバス中央への整列ガイド（実寸がわかっている要素のみ。widthは水平中央線＝
       // 縦のガイド線、heightは垂直中央線＝横のガイド線に対応する）
-      let vGuideHit = false, hGuideHit = false;
       if (width) {
         const centerX = nx + width / 2;
         const r = snapValueWithHit(centerX, [CANVAS_W / 2], zone);
-        if (r.hit !== null) { nx = r.value - width / 2; snapped = true; vGuideHit = true; }
+        if (r.hit !== null) { nx = r.value - width / 2; xHit = true; }
       }
       if (height) {
         const centerY = ny + height / 2;
         const r = snapValueWithHit(centerY, [CANVAS_H / 2], zone);
-        if (r.hit !== null) { ny = r.value - height / 2; snapped = true; hGuideHit = true; }
+        if (r.hit !== null) { ny = r.value - height / 2; yHit = true; }
       }
       translateX.value = nx;
       translateY.value = ny;
-      isSnapped.value = snapped;
-      if (guideV) guideV.value = vGuideHit;
-      if (guideH) guideH.value = hGuideHit;
+      isSnapped.value = (xConfigured ? xHit : true) && (yConfigured ? yHit : true) && (xConfigured || yConfigured);
+      if (guideV) guideV.value = xHit ? (guideVAt ?? CANVAS_W / 2) : null;
+      if (guideH) guideH.value = yHit ? (guideHAt ?? CANVAS_H / 2) : null;
     })
     .onEnd(() => {
       if (!isActiveSession.value) return;
       isSnapped.value = false;
-      if (guideV) guideV.value = false;
-      if (guideH) guideH.value = false;
+      if (guideV) guideV.value = null;
+      if (guideH) guideH.value = null;
       // ここではdragNotified.valueをfalseへ戻さない：同じ指を離す瞬間にtap側の
       // onEndも同時に発火するが、2つのジェスチャーのonEnd同士の実行順序は保証
       // されないため、ここでリセットしてしまうとtap側が「動いていない」と
