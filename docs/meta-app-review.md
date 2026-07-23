@@ -55,7 +55,7 @@ can understand how their posts perform.
 3. Go to the **「プロフィール」(Profile)** tab → tap **「Instagram連携」(Connect Instagram)** →
    log in with the provided Instagram **Business/Creator** test account and approve permissions.
 4. **Publish (content_publish)**: Go to **「投稿」(Post)** tab → 「フィード」 →
-   choose a photo → write or AI-generate a caption → tap **「🚀 今すぐ投稿する」(Post now)**.
+   choose a photo → write or AI-generate a caption → tap **「今すぐ投稿する」(Post now)**.
    The post appears on the connected Instagram account.
 5. **Scheduling**: 「予約投稿」(Schedule) tab → 「＋追加」 → set a future date → 「予約する」.
 6. **Insights (manage_insights) + basic**: Go to the **「分析」(Analytics)** tab.
@@ -74,6 +74,28 @@ can understand how their posts perform.
 - [ ] ② content_publish: 写真選択 → キャプション作成 → 「今すぐ投稿」→ 実際にIGに反映される様子
 - [ ] ③ manage_insights: 分析タブでリーチ等が表示される様子
 - [ ] 画面に表示されるアプリ名がMetaに登録したアプリ名と一致していること
+
+### 録画シナリオ（このまま読み上げながら操作すればOK）
+
+準備: テスト用のログイン情報（アプリのメール/パスワード）と、Instagramビジネス/クリエイターの
+テストアカウントを用意してから撮影を始める。1本の動画に全部つなげて撮る（つなぎ直し不要）。
+
+1. `https://instagram-api-alpha.vercel.app/` を開く
+2. テスト用メール/パスワードでログイン
+3. 下タブ「プロフィール」をタップ
+4. 「連携する」ボタンをタップ → Instagramのログイン画面が開く →
+   テスト用Instagramビジネス/クリエイターアカウントでログイン → 権限の同意画面まで映す → 同意する
+5. 下タブ「ホーム」に戻る → ユーザー名・フォロワー数・投稿一覧が表示される様子を数秒映す
+   （**① instagram_business_basic** の使用箇所）
+6. 下タブ「分析」をタップ → フォロワー数・平均いいね・エンゲージメント率・人気投稿ランキングが
+   表示される様子を数秒映す（**③ instagram_business_manage_insights** の使用箇所。リーチが
+   表示される投稿があればそこも指させるとなお良い）
+7. 下タブ「投稿」をタップ → 「フィード」を選ぶ → 写真を1枚選ぶ →
+   キャプションを書く（またはAI生成ボタンで自動生成）→「今すぐ投稿する」をタップ →
+   確認ダイアログで「OK」→ 投稿完了の表示まで映す（**② instagram_business_content_publish**
+   の使用箇所）
+8. （任意・録画してもよい）実際にInstagram側（アプリまたはブラウザ）を開き、
+   手順7で投稿した内容が反映されていることを見せる（審査担当者が実際にIG側で確認できるとよりスムーズ）
 
 ---
 
