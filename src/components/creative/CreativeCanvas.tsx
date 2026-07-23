@@ -322,8 +322,6 @@ export default function CreativeCanvas({
             locked={locked}
             activeOwner={activeOwner}
             activeRefs={activeRefs}
-            guideV={guideV}
-            guideH={guideH}
             canvasGestures={canvasGestures}
             onSelect={() => onSelectSlot?.(slot.id)}
             onChange={(patch) => onSlotChange?.(slot.id, patch)}
