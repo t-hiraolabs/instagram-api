@@ -461,3 +461,22 @@ export async function getFollowerHistory(igUserId: string, days = 30): Promise<F
   if (error || !data) return [];
   return data.map((r) => ({ date: r.snapshot_date as string, followers: r.followers_count as number }));
 }
+
+export interface FollowerDelta {
+  date: string; // YYYY-MM-DD（この日の記録時点）
+  change: number; // 前回記録からの純増減（+なら増加、-なら減少）
+}
+
+/**
+ * 記録されているフォロワー数の推移から、記録日ごとの純増減を計算する（新しい順）。
+ * Instagram公式APIでは「誰が」「何人フォローし何人解除したか」は取得できず、
+ * その日時点の合計フォロワー数しか分からないため、ここで算出できるのはあくまで
+ * 前回記録との差分（純増減）まで。フォロー数・解除数を別々の数字で出すことはできない。
+ */
+export function computeFollowerDeltas(history: FollowerSnapshotPoint[]): FollowerDelta[] {
+  const deltas: FollowerDelta[] = [];
+  for (let i = 1; i < history.length; i++) {
+    deltas.push({ date: history[i].date, change: history[i].followers - history[i - 1].followers });
+  }
+  return deltas.reverse();
+}
