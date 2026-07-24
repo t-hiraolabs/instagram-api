@@ -3,3 +3,8 @@ id = "your-project-id"
 
 [functions.publish-scheduled]
 schedule = "* * * * *"
+
+# Metaが承認取り消し時にsigned_requestをPOSTしてくる際、Supabaseの認証ヘッダーは
+# 一切付かないため、JWT検証を無効化する必要がある（署名検証は関数内でHMAC-SHA256により行う）
+[functions.instagram-deauthorize]
+verify_jwt = false

@@ -102,7 +102,7 @@ can understand how their posts perform.
 
 ## 5. 公開前に必要なその他（Metaの必須要件）
 
-- [ ] **プライバシーポリシー** の公開URL（アプリで取得するデータと用途、第三者提供の有無）
+- [x] **プライバシーポリシー** の公開URL: `https://aimark-es.com/privacy`
 - [x] **データ削除手順**（プロフィール画面のアカウント切替メニュー →「データを削除する」。
       連携解除とは別に、そのInstagramアカウントに紐づくサーバー側データ
       〈ブランド設定・チャット履歴・分析キャッシュ・ストーリー下書き〉を完全削除できる）
@@ -110,7 +110,19 @@ can understand how their posts perform.
 - [ ] アプリアイコン・正式名称の設定
 - [ ] ビジネス認証（Business Verification）が求められる場合あり
 
-> プライバシーポリシーはこのリポジトリで別途用意します（次のステップ候補）。
+### Instagramビジネスログイン設定 → 承認取り消しURL・データ削除リクエストURL
+
+Metaダッシュボード「ユースケース」→ Instagramのユースケース →「ビジネスログイン設定」に
+以下を入力する（申請前必須）:
+
+- **承認取り消しURL（Deauthorize callback URL）**:
+  `https://lishzooepqtrtupneftq.supabase.co/functions/v1/instagram-deauthorize`
+  （`supabase/functions/instagram-deauthorize/`。Metaからのsigned_requestを検証し、
+  該当Instagramアカウントに紐づくサーバー側データを削除する。要デプロイ:
+  `supabase functions deploy instagram-deauthorize --no-verify-jwt`）
+- **データ削除リクエストURL**: `https://aimark-es.com/privacy`
+  （プライバシーポリシー内「11. お問い合わせ」にデータ削除依頼の連絡先を記載済みのため、
+  専用の自動処理エンドポイントではなく案内ページURLとして登録する）
 
 ---
 
@@ -122,7 +134,8 @@ can understand how their posts perform.
 | 投稿（feed/carousel/story/reel）機能 | ✅ 実装済み |
 | 分析（basic + insights） | ✅ 実装済み |
 | データ削除導線 | ✅ 実装済み（`supabase/sql/30_account_data_deletion_policies.sql`の適用が別途必要） |
+| 承認取り消しURL（instagram-deauthorize） | ✅ 実装済み（要デプロイ・Metaダッシュボードへの登録） |
 | テスト用ログイン情報の用意 | ⬜ 未（審査申請時に用意） |
 | 録画 | ⬜ 未 |
-| プライバシーポリシー | ⬜ 未（要作成） |
-| ビジネス認証 | ⬜ 未確認 |
+| プライバシーポリシー | ✅ 公開済み（`https://aimark-es.com/privacy`） |
+| ビジネス認証 | 🔄 対応中 |
