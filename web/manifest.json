@@ -2,7 +2,7 @@
   "name": "AImark アイマーク",
   "short_name": "AImark",
   "description": "AIでInstagramマーケティングを自動化",
-  "start_url": "/",
+  "start_url": "/app",
   "display": "standalone",
   "background_color": "#000000",
   "theme_color": "#833AB4",
