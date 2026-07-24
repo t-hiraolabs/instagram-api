@@ -50,7 +50,8 @@ can understand how their posts perform.
 > Meta審査ではテスト用ログイン情報を求められます。アプリのテスト用メール/パスワードと、
 > Instagram連携用のテスト用ビジネスアカウントを用意して記載します。
 
-1. Open https://instagram-api-alpha.vercel.app/
+1. Open https://aimark-es.com/app/ (note: the bare domain https://aimark-es.com/ is a
+   marketing landing page; the app itself is under /app)
 2. Sign in with the provided test email / password.
 3. Go to the **「プロフィール」(Profile)** tab → tap **「Instagram連携」(Connect Instagram)** →
    log in with the provided Instagram **Business/Creator** test account and approve permissions.
@@ -80,7 +81,7 @@ can understand how their posts perform.
 準備: テスト用のログイン情報（アプリのメール/パスワード）と、Instagramビジネス/クリエイターの
 テストアカウントを用意してから撮影を始める。1本の動画に全部つなげて撮る（つなぎ直し不要）。
 
-1. `https://instagram-api-alpha.vercel.app/` を開く
+1. `https://aimark-es.com/app/` を開く（`https://aimark-es.com/` はLPなので開かないこと）
 2. テスト用メール/パスワードでログイン
 3. 下タブ「プロフィール」をタップ
 4. 「連携する」ボタンをタップ → Instagramのログイン画面が開く →
