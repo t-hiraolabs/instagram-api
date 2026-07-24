@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Platform, Alert, View, ActivityIndicator } from 'react-native';
 import RootNavigator from './src/navigation/RootNavigator';
 import AccountBadge from './src/components/AccountBadge';
+import ResetPasswordScreen from './src/screens/ResetPasswordScreen';
 import { supabase } from './src/services/supabaseClient';
 import { useAppStore, BrandSettings } from './src/store/appStore';
 import { COLORS } from './src/utils/theme';
@@ -222,8 +223,27 @@ function OAuthHandler() {
   return null;
 }
 
+// パスワード再設定メールのリンクから開かれたかどうかを、URLが書き換えられる前に
+// 最初のレンダリングだけで判定する（?codeの交換・URLクリーンアップはOAuthHandler側の
+// useEffectで後から行われるため、useStateの遅延初期化で先に一度だけ読み取っておく）。
+// SupabaseのPKCEコールバックは?code=を付けて返すだけでリンクの種類までは教えてくれない
+// ため、Instagram連携のstate=slotNと同じ考え方でredirectToに自前の目印(pwreset=1)を
+// 付けている（AuthScreen.tsx参照）。type=recoveryは実装系によって付く場合の保険。
+function checkIsRecoveryUrl(): boolean {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') return false;
+  try {
+    const hash = window.location.hash ?? '';
+    const search = window.location.search ?? '';
+    if (new URLSearchParams(search).get('pwreset') === '1') return true;
+    return hash.includes('type=recovery') || new URLSearchParams(search).get('type') === 'recovery';
+  } catch {
+    return false;
+  }
+}
+
 function AuthGate() {
   const [loading, setLoading] = useState(true);
+  const [isRecovery] = useState(checkIsRecoveryUrl);
 
   useEffect(() => {
     supabase.auth.getSession().then(() => setLoading(false));
@@ -234,6 +254,15 @@ function AuthGate() {
       <View style={{ flex: 1, backgroundColor: COLORS.background, justifyContent: 'center', alignItems: 'center' }}>
         <ActivityIndicator color={COLORS.primary} size="large" />
       </View>
+    );
+  }
+
+  if (isRecovery) {
+    return (
+      <>
+        <OAuthHandler />
+        <ResetPasswordScreen />
+      </>
     );
   }
 
