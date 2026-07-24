@@ -14,6 +14,7 @@ cp web/manifest.json dist/manifest.json
 cp web/privacy.html dist/privacy.html
 cp web/robots.txt dist/robots.txt
 cp web/sitemap.xml dist/sitemap.xml
+cp web/og-image.jpg dist/og-image.jpg
 cp web/lp.html dist/index.html
 
 sed -i 's/<title>.*<\/title>/<title>AImark アイマーク<\/title>/' dist/app/index.html
