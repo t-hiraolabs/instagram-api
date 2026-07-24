@@ -11,7 +11,12 @@ export const supabase = createClient(
   {
     auth: {
       flowType: 'pkce',
-      detectSessionInUrl: true,
+      // Instagram連携も同じ?code=パラメータを使うOAuthフローのため、有効なままだと
+      // SupabaseがInstagram発行のcodeを自分のPKCEコードだと誤認して自動的に交換を試み、
+      // 失敗した拍子に既存のログインセッションを巻き込んで消してしまう不具合があった
+      // （Googleログイン・パスワード再設定は、App.tsxのOAuthHandlerで
+      // exchangeCodeForSession()を明示的に呼んでいるため、これをfalseにしても壊れない）
+      detectSessionInUrl: false,
       persistSession: true,
       autoRefreshToken: true,
     },

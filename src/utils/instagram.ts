@@ -5,7 +5,9 @@ import type { InstagramCredentials } from '../store/appStore';
 const INSTAGRAM_APP_ID = process.env.EXPO_PUBLIC_INSTAGRAM_APP_ID ?? '';
 // アプリ本体はルート(/)ではなく/app配下（scripts/build.sh参照。/にはLPを置いている）に
 // あるため、ここも/appを指す。Metaアプリダッシュボードの「有効なOAuthリダイレクトURI」を
-// この文字列と完全一致させておくこと（不一致だと連携時にredirect_uri_mismatchで失敗する）
+// この文字列と完全一致させておくこと（不一致だと連携時にredirect_uri_mismatchで失敗する）。
+// 末尾のスラッシュ込みで登録済みのため、この形のまま維持する（vercel.jsonのrewritesで
+// /app・/app/どちらでも/app/index.htmlへ確実に解決されるようにしている）
 const REDIRECT_URI = 'https://aimark-es.com/app/';
 // 実際にアプリで使う権限だけを要求する（未使用の権限はMeta審査で却下されるため要求しない）。
 // basic: プロフィール/投稿の読み取り（いいね・コメント数を含む）/ content_publish: 投稿 / manage_insights: 分析・リーチ
