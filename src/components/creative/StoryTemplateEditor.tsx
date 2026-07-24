@@ -21,7 +21,8 @@ import { useCreativeEditorStore } from '../../store/creativeEditorStore';
 import { TextLayer, TemplateLayer, PhotoLayer, CANVAS_W, CANVAS_H } from '../../types/creativeTemplate';
 import { FONT_PRESETS, getFontPreset } from '../../utils/fontPresets';
 import { BACKGROUND_PRESETS } from '../../utils/backgroundPresets';
-import { STICKER_CATEGORIES } from '../../utils/stickerPresets';
+import { Plan, PLANS, maxStoryStamps } from '../../utils/plans';
+import { StoryStamp, listStoryStamps, createStoryStamp, deleteStoryStamp } from '../../services/storyStampService';
 import CreativeCanvas from './CreativeCanvas';
 import BackgroundPresetSvg from './BackgroundPresetSvg';
 
@@ -32,7 +33,7 @@ const ALIGN_OPTIONS: { key: NonNullable<TextLayer['align']>; icon: keyof typeof 
   { key: 'left', icon: 'menu-outline' }, { key: 'center', icon: 'reorder-two-outline' }, { key: 'right', icon: 'menu-outline' },
 ];
 
-type Panel = 'none' | 'background' | 'sticker';
+type Panel = 'none' | 'background' | 'stamp';
 
 // フォント一覧の各行の高さ（スナップ幅と一致させる）
 const FONT_ROW_H = 44;
@@ -104,9 +105,11 @@ interface Props {
   onClose: () => void;
   /** 完成した画像（PNG dataURL/URI）を渡す。呼び出し側でアップロード・投稿フローへ */
   onFinish: (dataUrl: string) => void;
+  /** マイスタンプの保存可能件数の判定に使う（未指定時はフリー扱い） */
+  plan?: Plan;
 }
 
-export default function StoryTemplateEditor({ visible, onClose, onFinish }: Props) {
+export default function StoryTemplateEditor({ visible, onClose, onFinish, plan = 'free' }: Props) {
   // useWindowDimensions()は、ソフトキーボード表示中はキーボード分だけ縮んだ高さを
   // 返すプラットフォームがあり、これをキャンバス表示サイズの計算に使うと、文字入力中
   // （キーボード表示中）にキャンバス・上部プレビューの文字サイズまでもが一緒に縮んで
@@ -136,6 +139,15 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
   // 余白部分が、キャンバス上の実際の（小さい）テキストへのドラッグ操作を奪ってしまう
   // ため、内容の実寸を測って追従させ、見た目とほぼ同じ大きさの当たり判定に留める
   const [previewInputSize, setPreviewInputSize] = useState<{ width: number; height: number } | null>(null);
+
+  // 「マイスタンプ」（保存したテキストをテンプレートとして再利用する機能）。
+  // 保存件数はアカウント（ログインユーザー）単位で、エディターの開閉やセッションの
+  // やり直し（reset）とは無関係に維持されるため、visible中は一度だけ読み込む
+  const [stamps, setStamps] = useState<StoryStamp[]>([]);
+  React.useEffect(() => {
+    if (!visible) return;
+    listStoryStamps().then(setStamps).catch(() => {});
+  }, [visible]);
 
   const canvasShotRef = useRef<ViewShot>(null);
 
@@ -316,15 +328,55 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]);
 
-  const handleAddSticker = (emoji: string) => {
+  // 保存済みの「マイスタンプ」をテンプレートとして使う: そのテキスト・フォント・色・
+  // サイズ・揃えをそのまま持った新しいテキストレイヤーとしてキャンバスに追加する
+  // （スタンプ側のデータはコピーするだけで、以後は独立した文字として自由に編集できる）
+  const handleUseStamp = (stamp: StoryStamp) => {
     const layer: TextLayer = {
-      id: `sticker_${Date.now()}`, label: 'ステッカー', text: emoji,
-      x: (CANVAS_W - 160) / 2, y: (CANVAS_H - 160) / 2, font: 'gothic', color: '#FFFFFF', size: 160,
-      scale: 1, rotation: 0, visible: true,
+      id: `text_${Date.now()}`, text: stamp.text,
+      x: 120, y: 860, font: stamp.font, color: stamp.color, size: stamp.size,
+      align: stamp.align, scale: 1, rotation: 0, visible: true,
     };
     addTextLayer(layer);
     setPanel('none');
     setShowProps(true);
+  };
+
+  // 現在編集中のテキストを「マイスタンプ」として保存する（プランごとの上限あり）
+  const handleSaveStamp = async () => {
+    if (!selectedTextLayer) return;
+    if (!selectedTextLayer.text.trim()) {
+      alertMsg('テキストを入力してから保存してください');
+      return;
+    }
+    const limit = maxStoryStamps(plan);
+    if (stamps.length >= limit) {
+      const planName = PLANS.find((p) => p.id === plan)?.name ?? plan;
+      alertMsg(`マイスタンプは${planName}プランでは${limit}個まで保存できます。上限に達しているため、不要なスタンプを削除するか、プランをアップグレードしてください。`);
+      return;
+    }
+    try {
+      const created = await createStoryStamp({
+        text: selectedTextLayer.text,
+        font: selectedTextLayer.font,
+        color: selectedTextLayer.color,
+        size: selectedTextLayer.size,
+        align: selectedTextLayer.align,
+      });
+      setStamps((prev) => [created, ...prev]);
+      alertMsg('マイスタンプとして保存しました');
+    } catch {
+      alertMsg('保存に失敗しました');
+    }
+  };
+
+  const handleDeleteStamp = async (id: string) => {
+    try {
+      await deleteStoryStamp(id);
+      setStamps((prev) => prev.filter((s) => s.id !== id));
+    } catch {
+      alertMsg('削除に失敗しました');
+    }
   };
 
   const capture = async (): Promise<string | null> => {
@@ -689,6 +741,9 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
               <View style={styles.textPanelTopRow}>
                 {/* 文字内容の編集は上部プレビュー側の入力欄で直接行う（ここには重複させない） */}
                 <View style={{ flex: 1 }} />
+                <TouchableOpacity testID="story-editor-save-stamp-btn" onPress={handleSaveStamp} hitSlop={8}>
+                  <Ionicons name="bookmark-outline" size={20} color={COLORS.primary} />
+                </TouchableOpacity>
                 <TouchableOpacity onPress={() => { removeTextLayer(selectedTextLayer.id); }} hitSlop={8}>
                   <Ionicons name="trash-outline" size={20} color={COLORS.error} />
                 </TouchableOpacity>
@@ -763,15 +818,31 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
               </ScrollView>
             </View>
           )}
-          {!showTextProps && !showPhotoProps && panel === 'sticker' && (
+          {!showTextProps && !showPhotoProps && panel === 'stamp' && (
             <View ref={stripPanelRef} style={[styles.stripPanel, styles.overlayPanel]}>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.stripContent}>
-                {STICKER_CATEGORIES.flatMap((cat) => cat.emojis).map((emoji, i) => (
-                  <TouchableOpacity key={`${emoji}_${i}`} style={styles.stickerItem} onPress={() => handleAddSticker(emoji)} activeOpacity={0.7}>
-                    <Text style={styles.stickerEmoji}>{emoji}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
+              {stamps.length === 0 ? (
+                <Text style={styles.stampEmptyText}>
+                  まだマイスタンプがありません。文字を入力し、プロパティの保存ボタン（🔖）から保存すると、ここから使い回せます
+                </Text>
+              ) : (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.stripContent}>
+                  {stamps.map((stamp) => (
+                    <View key={stamp.id} style={styles.stampItemWrap}>
+                      <TouchableOpacity style={styles.stampItem} onPress={() => handleUseStamp(stamp)} activeOpacity={0.7}>
+                        <Text
+                          style={[styles.stampItemText, { fontFamily: getFontPreset(stamp.font).family, color: stamp.color }]}
+                          numberOfLines={2}
+                        >
+                          {stamp.text}
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.stampDeleteBtn} onPress={() => handleDeleteStamp(stamp.id)} hitSlop={8}>
+                        <Ionicons name="close-circle" size={16} color={COLORS.textMuted} />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </ScrollView>
+              )}
             </View>
           )}
         </View>
@@ -795,9 +866,9 @@ export default function StoryTemplateEditor({ visible, onClose, onFinish }: Prop
                 <Ionicons name="text-outline" size={22} color={COLORS.text} />
                 <Text style={styles.toolBtnText}>文字</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.toolBtn} onPress={() => setPanel((p) => (p === 'sticker' ? 'none' : 'sticker'))}>
-                <Ionicons name="happy-outline" size={22} color={panel === 'sticker' ? COLORS.primary : COLORS.text} />
-                <Text style={[styles.toolBtnText, panel === 'sticker' && styles.toolBtnTextActive]}>ステッカー</Text>
+              <TouchableOpacity style={styles.toolBtn} onPress={() => setPanel((p) => (p === 'stamp' ? 'none' : 'stamp'))}>
+                <Ionicons name="bookmark-outline" size={22} color={panel === 'stamp' ? COLORS.primary : COLORS.text} />
+                <Text style={[styles.toolBtnText, panel === 'stamp' && styles.toolBtnTextActive]}>スタンプ</Text>
               </TouchableOpacity>
             </>
           )}
@@ -856,8 +927,19 @@ const styles = StyleSheet.create({
   bgSwatchItem: { alignItems: 'center', gap: 4 },
   bgSwatch: { width: 44, height: 78, borderRadius: RADIUS.sm, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border },
   bgSwatchLabel: { color: COLORS.textMuted, fontSize: 9, maxWidth: 50, textAlign: 'center' },
-  stickerItem: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: RADIUS.md, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border },
-  stickerEmoji: { fontSize: 24 },
+  stampItemWrap: { position: 'relative' },
+  stampItem: {
+    width: 96, height: 64, alignItems: 'center', justifyContent: 'center',
+    borderRadius: RADIUS.md, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border,
+    paddingHorizontal: SPACING.xs,
+  },
+  stampItemText: { fontSize: 13, textAlign: 'center' },
+  stampDeleteBtn: {
+    position: 'absolute', top: -6, right: -6, backgroundColor: COLORS.surfaceElevated, borderRadius: 8,
+  },
+  stampEmptyText: {
+    color: COLORS.textMuted, fontSize: 12, textAlign: 'center', paddingHorizontal: SPACING.lg, lineHeight: 17,
+  },
   textPanel: { minHeight: 132, paddingVertical: SPACING.sm, gap: SPACING.xs },
   textPanelTopRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, paddingHorizontal: SPACING.md },
   doneText: { color: COLORS.primary, fontSize: 14, fontWeight: '700' },
