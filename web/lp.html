@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AImark（アイマーク）| Instagram投稿・ストーリーをAIで自動生成</title>
+  <meta name="description" content="AImark（アイマーク）は、Instagramのフィード投稿とストーリーをAIが自動生成する運用支援アプリ。テーマとトーンを選ぶだけでキャプション・ハッシュタグを作成し、予約投稿まで管理できます。ブラウザからすぐに無料で試せます。">
+  <link rel="canonical" href="https://aimark-es.com/">
+
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="AImark アイマーク">
+  <meta property="og:title" content="AImark（アイマーク）| Instagram投稿・ストーリーをAIで自動生成">
+  <meta property="og:description" content="テーマとトーンを選ぶだけで、Instagramのキャプション・ハッシュタグ・ストーリーをAIが自動生成。予約投稿の管理もこれ一つで。">
+  <meta property="og:url" content="https://aimark-es.com/">
+  <meta property="og:image" content="https://aimark-es.com/icon.png">
+  <meta property="og:locale" content="ja_JP">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="AImark（アイマーク）| Instagram投稿・ストーリーをAIで自動生成">
+  <meta name="twitter:description" content="テーマとトーンを選ぶだけで、Instagramのキャプション・ハッシュタグ・ストーリーをAIが自動生成。予約投稿の管理もこれ一つで。">
+  <meta name="twitter:image" content="https://aimark-es.com/icon.png">
+
+  <meta name="theme-color" content="#0A0A0A">
+  <link rel="icon" href="/favicon.ico">
+  <link rel="apple-touch-icon" href="/icon.png">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "AImark アイマーク",
+    "alternateName": "AImark",
+    "url": "https://aimark-es.com/",
+    "applicationCategory": "BusinessApplication",
+    "operatingSystem": "Web",
+    "description": "Instagramのフィード投稿・ストーリーをAIで自動生成する運用支援アプリ。",
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "JPY"
+    }
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "AImarkはどんなアプリですか？",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Instagramのフィード投稿・ストーリーをAIで自動生成する運用支援アプリです。テーマやトーンを選ぶだけでキャプションとハッシュタグを生成し、予約投稿の管理もできます。"
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "無料で使えますか？",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "無料プランからすぐに試せます。生成回数などの上限はプラン（Free / Pro / Business）によって異なります。"
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Instagramアカウントとの連携は必要ですか？",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "投稿の自動化や予約投稿にはInstagram Graph APIとの連携が必要です。ビジネス／クリエイターアカウントに対応しています。"
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "アプリのインストールは必要ですか？",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "不要です。ブラウザからそのままご利用いただけます（ホーム画面に追加してアプリのように使うことも可能です）。"
+        }
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', sans-serif;
+      background: #0A0A0A;
+      color: #e0e0e0;
+      line-height: 1.8;
+    }
+    a { color: #c77dff; text-decoration: none; }
+    .wrap { max-width: 960px; margin: 0 auto; padding: 0 20px; }
+
+    header {
+      position: sticky; top: 0; z-index: 10;
+      background: rgba(10,10,10,0.9); backdrop-filter: blur(6px);
+      border-bottom: 1px solid #222;
+    }
+    header .wrap { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; }
+    .logo { font-size: 20px; font-weight: 700; background: linear-gradient(135deg, #833AB4, #E1306C); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+
+    .btn-primary {
+      display: inline-block;
+      background: linear-gradient(135deg, #833AB4, #E1306C, #F77737);
+      color: #fff; font-weight: 700; font-size: 15px;
+      padding: 12px 28px; border-radius: 999px;
+      box-shadow: 0 4px 20px rgba(225,48,108,0.35);
+    }
+    .btn-primary.small { padding: 9px 20px; font-size: 14px; }
+
+    .hero { text-align: center; padding: 72px 20px 56px; }
+    .hero h1 { font-size: 30px; font-weight: 800; color: #fff; line-height: 1.5; margin-bottom: 18px; }
+    .hero h1 span { background: linear-gradient(135deg, #833AB4, #E1306C); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .hero p { font-size: 16px; color: #aaa; max-width: 560px; margin: 0 auto 32px; }
+
+    section { padding: 56px 20px; border-top: 1px solid #1a1a1a; }
+    section h2 { font-size: 22px; font-weight: 700; color: #fff; text-align: center; margin-bottom: 40px; }
+    section h2 .accent { color: #c77dff; }
+
+    .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; }
+    .feature-card { background: #111; border: 1px solid #262626; border-radius: 16px; padding: 24px; }
+    .feature-card .icon { font-size: 28px; margin-bottom: 12px; }
+    .feature-card h3 { font-size: 16px; color: #fff; margin-bottom: 8px; }
+    .feature-card p { font-size: 13.5px; color: #999; }
+
+    .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 24px; counter-reset: step; }
+    .step { text-align: center; }
+    .step .num {
+      counter-increment: step; display: flex; align-items: center; justify-content: center;
+      width: 40px; height: 40px; margin: 0 auto 14px; border-radius: 50%;
+      background: linear-gradient(135deg, #833AB4, #E1306C); color: #fff; font-weight: 700;
+    }
+    .step .num::before { content: counter(step); }
+    .step h3 { font-size: 15px; color: #fff; margin-bottom: 6px; }
+    .step p { font-size: 13.5px; color: #999; }
+
+    .faq-item { max-width: 680px; margin: 0 auto 24px; }
+    .faq-item h3 { font-size: 15px; color: #fff; margin-bottom: 6px; }
+    .faq-item h3::before { content: "Q. "; color: #c77dff; }
+    .faq-item p { font-size: 13.5px; color: #999; }
+    .faq-item p::before { content: "A. "; color: #666; }
+
+    .cta-final { text-align: center; padding: 64px 20px; }
+    .cta-final h2 { margin-bottom: 16px; }
+    .cta-final p { color: #999; margin-bottom: 28px; }
+
+    footer { border-top: 1px solid #1a1a1a; padding: 32px 20px; text-align: center; }
+    footer .links { margin-bottom: 12px; }
+    footer .links a { margin: 0 10px; font-size: 13px; color: #888; }
+    footer .copyright { font-size: 12px; color: #555; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <span class="logo">AImark</span>
+      <a class="btn-primary small" href="/app">アプリを使用する</a>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="wrap">
+        <h1>Instagram運用を、<br><span>AIで自動生成</span>する。</h1>
+        <p>テーマとトーンを選ぶだけで、フィード投稿のキャプション・ハッシュタグからストーリーまでAImarkがまとめて作成。予約投稿の管理もこれ一つで完結します。</p>
+        <a class="btn-primary" href="/app">アプリを使用する</a>
+      </div>
+    </section>
+
+    <section id="features">
+      <div class="wrap">
+        <h2>AImarkで<span class="accent">できること</span></h2>
+        <div class="features">
+          <div class="feature-card">
+            <div class="icon">✨</div>
+            <h3>AI投稿生成</h3>
+            <p>テーマ・トーンを選ぶだけでキャプション＋ハッシュタグを自動生成</p>
+          </div>
+          <div class="feature-card">
+            <div class="icon">📖</div>
+            <h3>ストーリー生成</h3>
+            <p>お知らせ・アンケート・プロモなどタイプ別にAIが生成</p>
+          </div>
+          <div class="feature-card">
+            <div class="icon">📅</div>
+            <h3>予約投稿管理</h3>
+            <p>投稿のスケジュール管理・一覧表示をまとめて管理</p>
+          </div>
+          <div class="feature-card">
+            <div class="icon">👤</div>
+            <h3>アカウント管理</h3>
+            <p>Instagramアカウント連携・プラン管理も画面ひとつで</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="how-it-works">
+      <div class="wrap">
+        <h2>使い方は<span class="accent">3ステップ</span></h2>
+        <div class="steps">
+          <div class="step">
+            <div class="num"></div>
+            <h3>テーマ・トーンを選ぶ</h3>
+            <p>投稿したい内容の方向性を選ぶだけ</p>
+          </div>
+          <div class="step">
+            <div class="num"></div>
+            <h3>AIが自動生成</h3>
+            <p>キャプション・ハッシュタグ・ストーリーをAIが作成</p>
+          </div>
+          <div class="step">
+            <div class="num"></div>
+            <h3>投稿 or 予約</h3>
+            <p>そのまま投稿、または予約投稿として登録</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="faq">
+      <div class="wrap">
+        <h2>よくある<span class="accent">質問</span></h2>
+        <div class="faq-item">
+          <h3>AImarkはどんなアプリですか？</h3>
+          <p>Instagramのフィード投稿・ストーリーをAIで自動生成する運用支援アプリです。テーマやトーンを選ぶだけでキャプションとハッシュタグを生成し、予約投稿の管理もできます。</p>
+        </div>
+        <div class="faq-item">
+          <h3>無料で使えますか？</h3>
+          <p>無料プランからすぐに試せます。生成回数などの上限はプラン（Free / Pro / Business）によって異なります。</p>
+        </div>
+        <div class="faq-item">
+          <h3>Instagramアカウントとの連携は必要ですか？</h3>
+          <p>投稿の自動化や予約投稿にはInstagram Graph APIとの連携が必要です。ビジネス／クリエイターアカウントに対応しています。</p>
+        </div>
+        <div class="faq-item">
+          <h3>アプリのインストールは必要ですか？</h3>
+          <p>不要です。ブラウザからそのままご利用いただけます（ホーム画面に追加してアプリのように使うことも可能です）。</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="cta-final">
+      <div class="wrap">
+        <h2>今すぐAImarkを試す</h2>
+        <p>アカウント登録は数分で完了。ブラウザからすぐに始められます。</p>
+        <a class="btn-primary" href="/app">アプリを使用する</a>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="links">
+      <a href="/privacy">プライバシーポリシー</a>
+      <a href="/app">アプリを使用する</a>
+    </div>
+    <div class="copyright">&copy; <span id="year"></span> AImark</div>
+  </footer>
+  <script>document.getElementById('year').textContent = new Date().getFullYear();</script>
+</body>
+</html>
