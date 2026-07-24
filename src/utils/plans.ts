@@ -23,6 +23,11 @@ export function maxInstagramAccounts(plan: Plan): number {
   return plan === 'business' ? 3 : 1;
 }
 
+/** 「ストーリー作成」で保存できるマイスタンプ（テキストをテンプレートとして保存したもの）の上限数 */
+export function maxStoryStamps(plan: Plan): number {
+  return plan === 'business' ? 30 : plan === 'pro' ? 10 : 3;
+}
+
 /** DBの値などを安全に Plan 型へ寄せる */
 export function asPlan(value: unknown): Plan {
   return value === 'pro' || value === 'business' ? value : 'free';
