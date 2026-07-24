@@ -34,9 +34,11 @@ export default function AuthScreen() {
     setMessage(null);
     setGoogleLoading(true);
     try {
+      // アプリ本体はルート(/)ではなく/app配下にある（/にはLPを置いている。
+      // scripts/build.sh参照）ため、戻り先も/appを明示する
       const redirectTo =
         Platform.OS === 'web' && typeof window !== 'undefined'
-          ? window.location.origin
+          ? `${window.location.origin}/app/`
           : undefined;
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
@@ -66,7 +68,7 @@ export default function AuthScreen() {
       // 教えてくれないため、Instagram連携時のstate=slotNと同じ考え方で自前の目印を使う。
       const redirectTo =
         Platform.OS === 'web' && typeof window !== 'undefined'
-          ? `${window.location.origin}/?pwreset=1`
+          ? `${window.location.origin}/app/?pwreset=1`
           : undefined;
       const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
         redirectTo,
