@@ -21,6 +21,7 @@ import {
   computeInsightFacts,
   recordFollowerSnapshot,
   getFollowerHistory,
+  computeFollowerDeltas,
   InsightsResult,
   InsightsMedia,
   FollowerSnapshotPoint,
@@ -42,6 +43,12 @@ function shortDate(iso?: string): string {
   if (!iso) return '';
   const d = new Date(iso);
   return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+const DOW_LABEL = ['日', '月', '火', '水', '木', '金', '土'];
+function shortDateWithDow(dateStr: string): string {
+  const d = new Date(`${dateStr}T00:00:00`);
+  return `${d.getMonth() + 1}/${d.getDate()}(${DOW_LABEL[d.getDay()]})`;
 }
 
 const CHART_H = 100;
@@ -187,6 +194,7 @@ export default function AnalyticsScreen() {
     ...timeOfDayStats.map((t) => t.avg)
   );
   const maxHashtagAvg = Math.max(1, ...hashtagStats.map((h) => h.avg));
+  const followerDeltas = computeFollowerDeltas(followerHistory);
 
   return (
     <ScrollView
@@ -258,6 +266,28 @@ export default function AnalyticsScreen() {
           <View style={styles.growthCard}>
             <FollowerGrowthChart points={followerHistory} />
           </View>
+
+          {/* 日ごとのフォロワー増減。Instagram公式APIでは「誰が」フォロー・解除したかは
+              取得できないため、記録している合計フォロワー数から前日比の純増減のみを示す */}
+          {followerDeltas.length > 0 && (
+            <>
+              <Text style={styles.sectionTitle}>日ごとのフォロワー増減</Text>
+              <View style={styles.breakdownCard}>
+                {followerDeltas.map((d) => (
+                  <View key={d.date} style={styles.deltaRow}>
+                    <Text style={styles.deltaDate}>{shortDateWithDow(d.date)}</Text>
+                    <Text style={[styles.deltaValue, d.change < 0 && styles.deltaValueNegative]}>
+                      {d.change > 0 ? '+' : ''}
+                      {d.change}人
+                    </Text>
+                  </View>
+                ))}
+              </View>
+              <Text style={styles.footnote}>
+                ※ Instagramの仕様上、誰がフォロー・フォロー解除したかは分かりません。前回記録時からの合計フォロワー数の増減（純増減）のみ表示しています。
+              </Text>
+            </>
+          )}
 
           {data.summary.engagement_rate != null && (
             <View style={styles.engagementCard}>
@@ -512,6 +542,14 @@ const styles = StyleSheet.create({
   breakdownBarTrack: { flex: 1, height: 8, borderRadius: 4, backgroundColor: COLORS.surfaceElevated, overflow: 'hidden' },
   breakdownBarFill: { height: 8, borderRadius: 4, backgroundColor: COLORS.primary },
   breakdownRowValue: { width: 34, textAlign: 'right', fontSize: 12, color: COLORS.textSecondary, fontWeight: '700' },
+  deltaRow: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingVertical: SPACING.xs,
+    borderBottomWidth: 1, borderBottomColor: COLORS.border,
+  },
+  deltaDate: { fontSize: 13, color: COLORS.text, fontWeight: '600' },
+  deltaValue: { fontSize: 14, color: COLORS.success, fontWeight: '800' },
+  deltaValueNegative: { color: COLORS.error },
   postRow: {
     flexDirection: 'row',
     alignItems: 'center',
