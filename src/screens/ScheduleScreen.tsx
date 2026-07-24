@@ -1494,6 +1494,7 @@ export default function ScheduleScreen() {
         visible={storyCreativeVisible}
         onClose={() => setStoryCreativeVisible(false)}
         onFinish={handleStoryCreativeFinish}
+        plan={plan}
       />
 
       {/* AI画像生成チャット */}

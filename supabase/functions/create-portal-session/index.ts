@@ -5,7 +5,8 @@ import Stripe from 'https://esm.sh/stripe@16?target=deno';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const STRIPE_SECRET_KEY = Deno.env.get('STRIPE_SECRET_KEY')!;
-const APP_URL = Deno.env.get('APP_URL') ?? 'https://instagram-api-alpha.vercel.app/';
+// アプリ本体はルート(/)ではなく/app配下にある(/にはLPを置いている)ため、/appを指す
+const APP_URL = Deno.env.get('APP_URL') ?? 'https://aimark-es.com/app/';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;

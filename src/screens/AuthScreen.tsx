@@ -14,7 +14,7 @@ import { supabase } from '../services/supabaseClient';
 import { COLORS, SPACING, RADIUS } from '../utils/theme';
 import { useAppStore } from '../store/appStore';
 
-type Mode = 'login' | 'signup';
+type Mode = 'login' | 'signup' | 'forgot';
 
 export default function AuthScreen() {
   // AI機能・アカウント作成の導線から開いたときは「新規登録」タブを初期表示にする
@@ -34,9 +34,11 @@ export default function AuthScreen() {
     setMessage(null);
     setGoogleLoading(true);
     try {
+      // アプリ本体はルート(/)ではなく/app配下にある（/にはLPを置いている。
+      // scripts/build.sh参照）ため、戻り先も/appを明示する
       const redirectTo =
         Platform.OS === 'web' && typeof window !== 'undefined'
-          ? window.location.origin
+          ? `${window.location.origin}/app/`
           : undefined;
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
@@ -50,9 +52,44 @@ export default function AuthScreen() {
     }
   };
 
+  const handleForgotSubmit = async () => {
+    setError(null);
+    setMessage(null);
+
+    if (!email.trim()) {
+      setError('メールアドレスを入力してください');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // redirectToに独自の目印(?pwreset=1)を付けておく。SupabaseはPKCEの?code=を
+      // このURLに追記して返すだけで、リンクの種類（通常ログイン/パスワード再設定）は
+      // 教えてくれないため、Instagram連携時のstate=slotNと同じ考え方で自前の目印を使う。
+      const redirectTo =
+        Platform.OS === 'web' && typeof window !== 'undefined'
+          ? `${window.location.origin}/app/?pwreset=1`
+          : undefined;
+      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+        redirectTo,
+      });
+      if (error) throw error;
+      setMessage('パスワード再設定用のメールを送信しました。メール内のリンクを開いて、新しいパスワードを設定してください。');
+    } catch (e: any) {
+      setError(translateError(e?.message ?? '送信に失敗しました'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSubmit = async () => {
     setError(null);
     setMessage(null);
+
+    if (mode === 'forgot') {
+      await handleForgotSubmit();
+      return;
+    }
 
     if (!email.trim() || !password) {
       setError('メールアドレスとパスワードを入力してください');
@@ -99,7 +136,11 @@ export default function AuthScreen() {
         <Text style={styles.logo}>AImark</Text>
         <Text style={[styles.subtitle, { fontSize: 13, marginTop: -6, marginBottom: 4, opacity: 0.7 }]}>アイマーク</Text>
         <Text style={styles.subtitle}>
-          {mode === 'login' ? 'ログインして始めましょう' : 'アカウントを作成しましょう'}
+          {mode === 'login'
+            ? 'ログインして始めましょう'
+            : mode === 'signup'
+            ? 'アカウントを作成しましょう'
+            : 'パスワードを再設定します'}
         </Text>
 
         <View style={styles.card}>
@@ -115,16 +156,33 @@ export default function AuthScreen() {
             autoCorrect={false}
           />
 
-          <Text style={styles.label}>パスワード</Text>
-          <TextInput
-            style={styles.input}
-            value={password}
-            onChangeText={setPassword}
-            placeholder="6文字以上"
-            placeholderTextColor={COLORS.textMuted}
-            secureTextEntry
-            autoCapitalize="none"
-          />
+          {mode !== 'forgot' && (
+            <>
+              <Text style={styles.label}>パスワード</Text>
+              <TextInput
+                style={styles.input}
+                value={password}
+                onChangeText={setPassword}
+                placeholder="6文字以上"
+                placeholderTextColor={COLORS.textMuted}
+                secureTextEntry
+                autoCapitalize="none"
+              />
+            </>
+          )}
+
+          {mode === 'login' && (
+            <TouchableOpacity
+              style={styles.forgotBtn}
+              onPress={() => {
+                setMode('forgot');
+                setError(null);
+                setMessage(null);
+              }}
+            >
+              <Text style={styles.forgotText}>パスワードをお忘れですか？</Text>
+            </TouchableOpacity>
+          )}
 
           {error && <Text style={styles.error}>{error}</Text>}
           {message && <Text style={styles.message}>{message}</Text>}
@@ -138,47 +196,64 @@ export default function AuthScreen() {
               <ActivityIndicator color="#fff" />
             ) : (
               <Text style={styles.submitText}>
-                {mode === 'login' ? 'ログイン' : '新規登録'}
+                {mode === 'login' ? 'ログイン' : mode === 'signup' ? '新規登録' : 'リセットメールを送信'}
               </Text>
             )}
           </TouchableOpacity>
 
-          <View style={styles.divider}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>または</Text>
-            <View style={styles.dividerLine} />
-          </View>
+          {mode !== 'forgot' && (
+            <>
+              <View style={styles.divider}>
+                <View style={styles.dividerLine} />
+                <Text style={styles.dividerText}>または</Text>
+                <View style={styles.dividerLine} />
+              </View>
 
-          <TouchableOpacity
-            style={[styles.googleBtn, googleLoading && styles.submitBtnDisabled]}
-            onPress={handleGoogleLogin}
-            disabled={googleLoading}
-          >
-            {googleLoading ? (
-              <ActivityIndicator color={COLORS.text} />
-            ) : (
-              <>
-                <Text style={styles.googleIcon}>G</Text>
-                <Text style={styles.googleText}>Googleで続ける</Text>
-              </>
-            )}
-          </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.googleBtn, googleLoading && styles.submitBtnDisabled]}
+                onPress={handleGoogleLogin}
+                disabled={googleLoading}
+              >
+                {googleLoading ? (
+                  <ActivityIndicator color={COLORS.text} />
+                ) : (
+                  <>
+                    <Text style={styles.googleIcon}>G</Text>
+                    <Text style={styles.googleText}>Googleで続ける</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </>
+          )}
         </View>
 
-        <TouchableOpacity
-          style={styles.switchBtn}
-          onPress={() => {
-            setMode((m) => (m === 'login' ? 'signup' : 'login'));
-            setError(null);
-            setMessage(null);
-          }}
-        >
-          <Text style={styles.switchText}>
-            {mode === 'login'
-              ? 'アカウントをお持ちでない方はこちら（新規登録）'
-              : 'すでにアカウントをお持ちの方はこちら（ログイン）'}
-          </Text>
-        </TouchableOpacity>
+        {mode === 'forgot' ? (
+          <TouchableOpacity
+            style={styles.switchBtn}
+            onPress={() => {
+              setMode('login');
+              setError(null);
+              setMessage(null);
+            }}
+          >
+            <Text style={styles.switchText}>ログイン画面に戻る</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={styles.switchBtn}
+            onPress={() => {
+              setMode((m) => (m === 'login' ? 'signup' : 'login'));
+              setError(null);
+              setMessage(null);
+            }}
+          >
+            <Text style={styles.switchText}>
+              {mode === 'login'
+                ? 'アカウントをお持ちでない方はこちら（新規登録）'
+                : 'すでにアカウントをお持ちの方はこちら（ログイン）'}
+            </Text>
+          </TouchableOpacity>
+        )}
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -189,6 +264,7 @@ function translateError(msg: string): string {
   if (/User already registered/i.test(msg)) return 'このメールアドレスは既に登録されています';
   if (/Email not confirmed/i.test(msg)) return 'メール確認が完了していません。確認メールのリンクを開いてください';
   if (/Password should be/i.test(msg)) return 'パスワードは6文字以上にしてください';
+  if (/Failed to fetch|NetworkError/i.test(msg)) return '通信エラーが発生しました。ネットワーク接続をご確認のうえ、もう一度お試しください';
   return msg;
 }
 
@@ -240,6 +316,8 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     fontSize: 15,
   },
+  forgotBtn: { alignSelf: 'flex-end', marginTop: SPACING.sm },
+  forgotText: { color: COLORS.primary, fontSize: 13, fontWeight: '600' },
   error: {
     color: COLORS.error,
     fontSize: 13,
